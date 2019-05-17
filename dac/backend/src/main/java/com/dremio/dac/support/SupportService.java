@@ -137,10 +137,10 @@ public class SupportService implements Service {
   public static final int TIMEOUT_IN_SECONDS = 5 * 60;
   public static final String DREMIO_LOG_PATH_PROPERTY = "dremio.log.path";
 
-  public static final BooleanValidator USERS_CHAT = new BooleanValidator("support.users.chat", true);
-  public static final BooleanValidator USERS_UPLOAD = new BooleanValidator("support.users.upload", true);
-  public static final BooleanValidator USERS_DOWNLOAD = new BooleanValidator("support.users.download", true);
-  public static final BooleanValidator USERS_EMAIL = new BooleanValidator("support.users.email", true);
+  public static final BooleanValidator USERS_CHAT = new BooleanValidator("support.users.chat", false);
+  public static final BooleanValidator USERS_UPLOAD = new BooleanValidator("support.users.upload", false);
+  public static final BooleanValidator USERS_DOWNLOAD = new BooleanValidator("support.users.download", false);
+  public static final BooleanValidator USERS_EMAIL = new BooleanValidator("support.users.email", false);
 
   public static final StringValidator SUPPORT_EMAIL_ADDR = new StringValidator("support.email.addr", "");
   public static final StringValidator SUPPORT_EMAIL_SUBJECT = new StringValidator("support.email.jobs.subject", "");
@@ -148,7 +148,7 @@ public class SupportService implements Service {
   public static final StringValidator SUPPORT_UPLOAD_BASE = new StringValidator("support.upload.base", "https://s3-us-west-2.amazonaws.com/supportuploads.dremio.com/");
   public static final StringValidator TEMPORARY_SUPPORT_PATH = new StringValidator("support.temp", "/tmp/dremio-support/");
 
-  public static final BooleanValidator OUTSIDE_COMMUNICATION_DISABLED = new BooleanValidator("dremio.ui.outside_communication_disabled", false);
+  public static final BooleanValidator OUTSIDE_COMMUNICATION_DISABLED = new BooleanValidator("dremio.ui.outside_communication_disabled", true);
 
   public static final String NAME = "support";
 
