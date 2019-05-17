@@ -25,8 +25,11 @@ import { loginUser } from 'actions/account';
 import { applyValidators, isRequired } from 'utils/validation';
 import Spinner from 'components/Spinner';
 
+import config from 'utils/config';
+
 import * as ButtonTypes from 'components/Buttons/ButtonTypes';
 import Button from 'components/Buttons/Button';
+import SimpleButton from 'components/Buttons/SimpleButton';
 import { InnerComplexForm, connectComplexForm } from 'components/Forms/connectComplexForm';
 import FieldWithError from 'components/Fields/FieldWithError.js';
 import TextField from 'components/Fields/TextField.js';
@@ -69,6 +72,18 @@ export class LoginForm extends Component {
 
   render() {
     const { fields: { userName, password }, viewState, location } = this.props;
+
+    const oauthForm = (
+      <div style={{marginTop: 20}}>
+        <h2 style={{color: '#43B8C9'}}>or login via external provider</h2>
+        <a href={'/apiv2/oauth/login'}>
+          <SimpleButton
+          buttonStyle='primary'>
+          OAuth login
+          </SimpleButton>
+        </a>
+      </div>
+          );
 
     return (
       <div id='login-form' style={[styles.base]}>
@@ -122,6 +137,7 @@ export class LoginForm extends Component {
               </div>}
             </div>
           </InnerComplexForm>
+          {config.authType === 'oauth' ? oauthForm : null}
         </ViewStateWrapper>
         <div className='largerFontSize' style={{textAlign: 'right'}}>
           <Link to={{ ...location, state: { modal: 'AboutModal' }}}>

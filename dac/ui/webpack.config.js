@@ -93,6 +93,7 @@ class BuildInfo {
           serverStatus: ${JSON.stringify(isProductionBuild ? '${dremio.status}' : 'OK')},
           environment: ${JSON.stringify(isProductionBuild ? 'PRODUCTION' : 'DEVELOPMENT')},
           isReleaseBuild: ${isRelease},
+          authType: ${JSON.stringify('${dremio.authType}')},
           ts: "${new Date()}",
           intercomAppId: ${JSON.stringify(isProductionBuild ? '${dremio.config.intercom.appid}' : userConfig.intercomAppId)},
           shouldEnableBugFiling: ${!isProductionBuild || '${dremio.debug.bug.filing.enabled?c}'},

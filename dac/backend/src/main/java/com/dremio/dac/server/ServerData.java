@@ -32,7 +32,8 @@ public class ServerData {
   private final ClientSettings settings;
   private final VersionInfo versionInfo;
   private final String clusterId;
-
+  private final String authType;
+  
   public ServerData(String environment, ServerHealthMonitor healthMonitor, DremioConfig dremioConfig, ClientSettings settings, VersionInfo versionInfo, String clusterId) {
     this.environment = environment;
     this.healthMonitor = healthMonitor;
@@ -41,6 +42,7 @@ public class ServerData {
     this.settings = settings;
     this.versionInfo = versionInfo;
     this.clusterId = clusterId;
+    this.authType = dremioConfig.getString(DremioConfig.WEB_AUTH_TYPE);
   }
 
   public String getEnvironment() {
@@ -69,6 +71,10 @@ public class ServerData {
 
   public String getClusterId() {
     return clusterId;
+  }
+  
+  public String getAuthType() {
+	  return authType;
   }
 
   /**
