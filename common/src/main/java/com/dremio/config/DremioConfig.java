@@ -154,6 +154,15 @@ public class DremioConfig extends NestedConfig {
   public static final String MAX_KILL_ATTEMPTS = "provisioning.yarn.watchdog.max.kill.attempts";
   public static final String KILL_REATTEMPT_INTERVAL_MS = "provisioning.yarn.watchdog.kill.reattempt.interval";
 
+  //oauth
+  public static final String WEB_AUTH_OAUTH_AUTHORIZATION_URL = "services.coordinator.web.auth.oauth.authorizationUrl";
+  public static final String WEB_AUTH_OAUTH_TOKEN_URL = "services.coordinator.web.auth.oauth.tokenUrl";
+  public static final String WEB_AUTH_OAUTH_USERINFO_URL = "services.coordinator.web.auth.oauth.userInfoUrl";
+  public static final String WEB_AUTH_OAUTH_CALLBACK_URL = "services.coordinator.web.auth.oauth.callbackUrl";
+  public static final String WEB_AUTH_OAUTH_CLIENT_ID = "services.coordinator.web.auth.oauth.clientId";
+  public static final String WEB_AUTH_OAUTH_CLIENT_SECRET = "services.coordinator.web.auth.oauth.clientSecret";
+  
+  
   private final Config unresolved;
   private final Config reference;
   private final SabotConfig sabot;

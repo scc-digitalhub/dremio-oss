@@ -362,6 +362,13 @@
       <version>5.2.4.Final</version>
       <scope>compile</scope>
     </dependency>
+	    
+	<dependency>
+	    <groupId>com.github.scribejava</groupId>
+	    <artifactId>scribejava-core</artifactId>
+	    <version>6.5.1</version>
+	</dependency>    
+    
   </dependencies>
 
   <build>
