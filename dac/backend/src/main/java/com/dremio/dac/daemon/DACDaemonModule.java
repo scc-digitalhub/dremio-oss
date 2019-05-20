@@ -648,11 +648,11 @@ public class DACDaemonModule implements DACModule {
       logger.info("Internal user/group service is configured.");
       return true;
     }
-    
+
     if ("oauth".equals(authType)) {
-	    registry.bind(UserService.class, SimpleUserService.class);
-	    logger.info("Internal+OAuth user/group service is configured.");
-	    return true;
+      registry.bind(UserService.class, SimpleUserService.class);
+      logger.info("Internal+OAuth user/group service is configured.");
+      return true;
     }
 
     logger.error("Unknown value '{}' set for {}. Accepted values are ['internal', 'ldap']", authType, WEB_AUTH_TYPE);

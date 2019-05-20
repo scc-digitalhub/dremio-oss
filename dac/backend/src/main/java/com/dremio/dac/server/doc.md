@@ -339,9 +339,6 @@
  - GET /oauth/login   
    > `<=` javax.ws.rs.core.Response   
 
- - GET /oauth/test   
-   > `<=` javax.ws.rs.core.Response   
-
 
 ## Resource defined by class com.dremio.dac.admin.ProfileResource
 

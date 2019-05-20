@@ -47,17 +47,13 @@ public class DACSecurityContext implements SecurityContext {
 
   @Override
   public boolean isUserInRole(String role) {
-	  //allow only SYSTEM and "admin" for admin role
-	if(role.equals("admin"))  {
-		if(user.getUserName().getName().equals("admin") || 
-				user.getUserName().getName().equals(SystemUser.SYSTEM_USERNAME)) {
-			return true;
-		} else {
-			return false;
-		}
-	} else {
-		return true;
-	}
+    // allow only SYSTEM and "admin" for admin role
+    if ("admin".equals(role)) {
+      return ("admin".equals(user.getUserName().getName()) ||
+          SystemUser.SYSTEM_USERNAME.equals(user.getUserName().getName()));
+    } else {
+      return true;
+    }
   }
 
   @Override
