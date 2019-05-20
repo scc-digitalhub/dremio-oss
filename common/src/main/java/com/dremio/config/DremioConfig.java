@@ -161,7 +161,9 @@ public class DremioConfig extends NestedConfig {
   public static final String WEB_AUTH_OAUTH_CALLBACK_URL = "services.coordinator.web.auth.oauth.callbackUrl";
   public static final String WEB_AUTH_OAUTH_CLIENT_ID = "services.coordinator.web.auth.oauth.clientId";
   public static final String WEB_AUTH_OAUTH_CLIENT_SECRET = "services.coordinator.web.auth.oauth.clientSecret";
-  
+  public static final String WEB_AUTH_OAUTH_ROLE_FIELD = "services.coordinator.web.auth.oauth.roleField";
+  public static final String WEB_AUTH_OAUTH_ROLE_USER= "services.coordinator.web.auth.oauth.roleUser";
+  public static final String WEB_AUTH_OAUTH_ROLE_ADMIN = "services.coordinator.web.auth.oauth.roleAdmin";
   
   private final Config unresolved;
   private final Config reference;

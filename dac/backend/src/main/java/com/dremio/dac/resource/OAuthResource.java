@@ -58,6 +58,7 @@ import com.github.scribejava.core.model.Verb;
 import com.github.scribejava.core.oauth.OAuth20Service;
 import com.github.scribejava.core.oauth2.clientauthentication.ClientAuthentication;
 import com.github.scribejava.core.oauth2.clientauthentication.HttpBasicAuthenticationScheme;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
@@ -102,27 +103,6 @@ public class OAuthResource {
 	}
 
 	@GET
-	@Path("/test")
-	@Produces(MediaType.APPLICATION_JSON)
-	public Response test(@Context HttpServletRequest request) {
-		try {
-			logger.error("call to oauth test");
-
-			StringBuilder sb = new StringBuilder();
-			sb.append(oauthConfig.getAuthorizationUrl()).append("\n");
-			sb.append(oauthConfig.getTokenUrl()).append("\n");
-			sb.append(oauthConfig.getUserInfoUrl()).append("\n");
-			sb.append(oauthConfig.getCallbackUrl()).append("\n");
-			sb.append(oauthConfig.getClientId()).append(" ").append(oauthConfig.getClientSecret());
-
-			return Response.ok(sb.toString()).build();
-		} catch (Exception ex) {
-			ex.printStackTrace();
-			return Response.serverError().build();
-		}
-	}
-
-	@GET
 	@Path("/login")
 	@Produces(MediaType.APPLICATION_JSON)
 	public Response login(@Context HttpServletRequest request) {
@@ -155,16 +135,42 @@ public class OAuthResource {
 			final com.github.scribejava.core.model.Response res = service.execute(req);
 
 			User userInfo = null;
+			String role = "";
 
 			if (res.getCode() == 200) {
 				JsonObject json = new JsonParser().parse(res.getBody()).getAsJsonObject();
 				userInfo = getUserInfo(json);
+
+				if (oauthConfig.requireRoles()) {
+					// fetch role from json
+					if (json.has(oauthConfig.getRoleField())) {
+						JsonArray roles = json.get(oauthConfig.getRoleField()).getAsJsonArray();
+						while (roles.iterator().hasNext()) {
+							String r = roles.iterator().next().getAsString();
+							if (r.equals(oauthConfig.getRoleUserMapping())) {
+								role = "user";
+							}
+							if (r.equals(oauthConfig.getRoleUserMapping())) {
+								role = "admin";
+							}
+							if (!role.isEmpty()) {
+								break;
+							}
+
+						}
+					}
+				}
+
 			} else {
 				throw new UserLoginException("", "oauth error");
 			}
 
 			if ((userInfo == null) || (userInfo.getUserName().isEmpty() || userInfo.getEmail().isEmpty())) {
 				throw new IllegalArgumentException("user name or email cannot be null or empty");
+			}
+
+			if (oauthConfig.requireRoles() && role.isEmpty()) {
+				throw new UserLoginException("", "role required");
 			}
 
 			User user = null;
@@ -229,9 +235,15 @@ public class OAuthResource {
 					opt.getOption(SupportService.USERS_CHAT));
 
 			// build an "internal" session
+			// if required check oauth token for role, otherwise
 			// flag admin=false for all oauth users
+			boolean isAdmin = false;
+			if (oauthConfig.requireRoles()) {
+				isAdmin = role.equals("admin");
+			}
+
 			UserLoginSession login = new UserLoginSession(tokenDetails.token, user.getUserName(), user.getFirstName(),
-					user.getLastName(), tokenDetails.expiresAt, user.getEmail(), user.getUID().getId(), false,
+					user.getLastName(), tokenDetails.expiresAt, user.getEmail(), user.getUID().getId(), isAdmin,
 					user.getCreatedAt(), support.getClusterId().getIdentity(), support.getClusterId().getCreated(),
 					true, DremioVersionInfo.getVersion(), perms);
 
@@ -241,7 +253,7 @@ public class OAuthResource {
 		} catch (IllegalArgumentException | UserLoginException | UserNotFoundException e) {
 			return Response.status(UNAUTHORIZED).entity(new GenericErrorMessage(e.getMessage())).build();
 
-		} catch (IOException | InterruptedException | ExecutionException e) {
+		} catch (IOException | InterruptedException | ExecutionException | NullPointerException e) {
 			return Response.serverError().build();
 
 		}
