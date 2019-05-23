@@ -125,6 +125,7 @@ public class OAuthResource {
     String code = request.getParameter("code");
 
     if (code == null) {
+      logger.error("code is null");
       return Response.serverError().build();
     }
 
@@ -255,6 +256,7 @@ public class OAuthResource {
       return Response.status(UNAUTHORIZED).entity(new GenericErrorMessage(e.getMessage())).build();
 
     } catch (IOException | InterruptedException | ExecutionException | NullPointerException e) {
+      logger.error("server error: "+e.getMessage());
       return Response.serverError().build();
 
     }
