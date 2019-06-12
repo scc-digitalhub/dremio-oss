@@ -136,11 +136,11 @@ public class S3FileSystem extends ContainerFileSystem implements AsyncByteReader
     .build(new CacheLoader<String, S3Client>() {
       @Override
       public S3Client load(String bucket) throws Exception {
-        software.amazon.awssdk.regions.Region region = getAWSBucketRegion(bucket);
+//        software.amazon.awssdk.regions.Region region = getAWSBucketRegion(bucket);
         S3ClientBuilder builder = S3Client
           .builder()
-          .credentialsProvider(getAsync2Provider(getConf()))
-          .region(region);
+          .credentialsProvider(getAsync2Provider(getConf()));
+//          .region(region);
 
         Optional<String> endPoint = getEndpoint();
         if (endPoint.isPresent()) {
@@ -160,12 +160,12 @@ public class S3FileSystem extends ContainerFileSystem implements AsyncByteReader
     .build(new CacheLoader<String, S3AsyncClient>() {
       @Override
       public S3AsyncClient load(String bucket) {
-        software.amazon.awssdk.regions.Region region = getAWSBucketRegion(bucket);
+//        software.amazon.awssdk.regions.Region region = getAWSBucketRegion(bucket);
 
         S3AsyncClientBuilder builder = S3AsyncClient
           .builder()
-          .credentialsProvider(getAsync2Provider(getConf()))
-          .region(region);
+          .credentialsProvider(getAsync2Provider(getConf()));
+//          .region(region);
 
         Optional<String> endPoint = getEndpoint();
         if (endPoint.isPresent()) {
@@ -326,10 +326,10 @@ public class S3FileSystem extends ContainerFileSystem implements AsyncByteReader
     return null;
   }
 
-  software.amazon.awssdk.regions.Region getAWSBucketRegion(String bucketName) throws SdkClientException {
-    String awsRegionName = Region.fromValue(s3.getBucketLocation(bucketName)).toAWSRegion().getName();
-    return software.amazon.awssdk.regions.Region.of(awsRegionName);
-  }
+//  software.amazon.awssdk.regions.Region getAWSBucketRegion(String bucketName) throws SdkClientException {
+//    String awsRegionName = Region.fromValue(s3.getBucketLocation(bucketName)).toAWSRegion().getName();
+//    return software.amazon.awssdk.regions.Region.of(awsRegionName);
+//  }
 
   @Override
   public boolean supportsAsync() {
@@ -409,9 +409,12 @@ public class S3FileSystem extends ContainerFileSystem implements AsyncByteReader
       return new ContainerHolder(bucketName, new FileSystemSupplier() {
         @Override
         public FileSystem create() throws IOException {
+          logger.info("s3filesys create for bucket "+bucketName);         
           final String bucketRegion = s3.getBucketLocation(bucketName);
           final String projectedBucketEndPoint = "s3." + bucketRegion + ".amazonaws.com";
           String regionEndPoint = projectedBucketEndPoint;
+          logger.info("s3filesys projectedBucketEndPoint for bucket "+projectedBucketEndPoint);
+
           try {
             Region region = Region.fromValue(bucketRegion);
             com.amazonaws.regions.Region awsRegion = region.toAWSRegion();
@@ -430,9 +433,12 @@ public class S3FileSystem extends ContainerFileSystem implements AsyncByteReader
             logger.error("Could not get AWSRegion for bucket {}. Will use following fs.s3a.endpoint: " + "{} ",
               bucketName, projectedBucketEndPoint);
           }
+          logger.info("s3filesys regionendpoint for bucket "+regionEndPoint);
           String location = S3_URI_SCHEMA + bucketName + "/";
+          logger.info("s3filesys location for bucket "+location);
+
           final Configuration bucketConf = new Configuration(parentConf);
-          bucketConf.set(ENDPOINT, (regionEndPoint != null) ? regionEndPoint : projectedBucketEndPoint);
+//          bucketConf.set(ENDPOINT, (regionEndPoint != null) ? regionEndPoint : projectedBucketEndPoint);
           return fsCache.get(new Path(location).toUri(), bucketConf, S3ClientKey.UNIQUE_PROPS);
         }
       });
