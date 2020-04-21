@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,8 +15,9 @@
  */
 package com.dremio.exec.store.dfs;
 
-import org.apache.hadoop.fs.FSDataInputStream;
-import org.apache.hadoop.fs.Path;
+
+import com.dremio.io.FSInputStream;
+import com.dremio.io.file.Path;
 
 /**
  * Interface to track opening and closing of files.
@@ -25,11 +26,11 @@ public interface OpenFileTracker {
   /**
    * Add new file location and {@link FSDataInputStream} to list.
    */
-  public void fileOpened(Path path, FSDataInputStream fsDataInputStream);
+  public void fileOpened(Path path, FSInputStream fsDataInputStream);
 
   /**
    * Remove the given {@link FSDataInputStream} from opened file list.
    * @param fsDataInputStream
    */
-  public void fileClosed(FSDataInputStream fsDataInputStream);
+  public void fileClosed(FSInputStream fsDataInputStream);
 }

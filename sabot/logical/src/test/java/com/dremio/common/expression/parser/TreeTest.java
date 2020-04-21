@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -47,6 +47,11 @@ public class TreeTest extends DremioTest {
   @Test
   public void testIfWithCase() throws Exception{
     testExpressionParsing("if ($F1) then case when (_MAP.R_NAME = 'AFRICA') then 2 else 4 end else if(4==3) then 1 else if(x==3) then 7 else (if(2==1) then 6 else 4 end) end");
+  }
+
+  @Test
+  public void testSideReference() throws Exception {
+    testExpressionParsing("INPUT_REFERENCE(3, field1)");
   }
 
   @Test

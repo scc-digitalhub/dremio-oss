@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,11 +17,11 @@ package com.dremio.exec.store.parquet.columnreaders;
 
 import java.io.IOException;
 
-import org.apache.hadoop.fs.Path;
 import org.apache.parquet.hadoop.metadata.ColumnChunkMetaData;
 import org.apache.parquet.io.SeekableInputStream;
 
 import com.dremio.common.exceptions.ExecutionSetupException;
+import com.dremio.io.file.Path;
 
 /**
  * Single stream page reader that saves position in input stream between each read call

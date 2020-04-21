@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@ package com.dremio.sabot.op.scan;
 import static com.google.common.base.Preconditions.checkNotNull;
 
 import java.io.FileNotFoundException;
-import java.security.PrivilegedExceptionAction;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
@@ -26,11 +25,10 @@ import java.util.Map;
 
 import org.apache.arrow.memory.OutOfMemoryException;
 import org.apache.arrow.vector.AllocationHelper;
-import org.apache.arrow.vector.SchemaChangeCallBack;
 import org.apache.arrow.vector.ValueVector;
+import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.util.CallBack;
-import org.apache.hadoop.security.UserGroupInformation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,7 +50,6 @@ import com.dremio.exec.store.RecordReader;
 import com.dremio.exec.store.parquet.GlobalDictionaries;
 import com.dremio.exec.testing.ControlsInjector;
 import com.dremio.exec.testing.ControlsInjectorFactory;
-import com.dremio.exec.util.ImpersonationUtil;
 import com.dremio.exec.util.VectorUtil;
 import com.dremio.sabot.exec.context.MetricDef;
 import com.dremio.sabot.exec.context.OperatorContext;
@@ -96,7 +93,23 @@ public class ScanOperator implements ProducerOperator {
     NUM_ASYNC_READS,    // Total number of async read requests made
     NUM_ASYNC_BYTES_READ, // Total number of bytes read
     NUM_EXTENDING_READS, // Total number of extending chunks
-    EXTENDING_READ_BYTES // Size of the extending chunks.
+    EXTENDING_READ_BYTES, // Size of the extending chunks.
+    TOTAL_BYTES_READ,     // Total bytes read
+    LOCAL_BYTES_READ,     // Total number of local bytes read using local I/O
+    SHORT_CIRCUIT_BYTES_READ, // Total number of bytes read using short circuit reads
+    PRELOADED_BYTES,           // Number of bytes pre-loaded
+    NUM_CACHE_HITS,       // Number of C3 hits
+    NUM_CACHE_MISSES,     // Number of C3 misses
+    AVG_PROCESSING_TIME,   // Average processing time of request by C3
+    JAVA_BUILD_TIME,   // time taken by Java (setup+evaluation) for type conversions in CoercionReader
+    JAVA_EXECUTE_TIME,
+    GANDIVA_BUILD_TIME, // time taken by Gandiva (setup+evaluation) for type conversions in CoercionReader,
+    GANDIVA_EXECUTE_TIME,
+    NUM_FILTERS_MODIFIED,   // Number of parquet filters modified
+    NUM_HIVE_PARQUET_TRUNCATE_VARCHAR, // Number of fixed-len varchar fields in hive_parquet
+    TOTAL_HIVE_PARQUET_TRUNCATE_VARCHAR, // Total number of fixed-len varchar truncation in haveParquetCoercion
+    TOTAL_HIVE_PARQUET_TRANSFER_VARCHAR, //  Total number of fixed-len varchar transfers in haveParquetCoercion
+    HIVE_PARQUET_CHECK_VARCHAR_CAST_TIME // Time spent checking if truncation is required for a varchar field
     ;
 
     @Override
@@ -112,25 +125,20 @@ public class ScanOperator implements ProducerOperator {
   private Iterator<RecordReader> readers;
   private RecordReader currentReader;
   private final ScanMutator mutator;
-  private SchemaChangeCallBack callBack = new SchemaChangeCallBack();
+  private MutatorSchemaChangeCallBack callBack = new MutatorSchemaChangeCallBack();
   private final BatchSchema schema;
   private final ImmutableList<SchemaPath> selectedColumns;
-  private final UserGroupInformation readerUGI;
   private final List<String> tableSchemaPath;
   private final SubScan config;
   private final GlobalDictionaries globalDictionaries;
   private final Stopwatch readTime = Stopwatch.createUnstarted();
 
   public ScanOperator(SubScan config, OperatorContext context, Iterator<RecordReader> readers) {
-    this(config, context, readers, null, ImpersonationUtil.getProcessUserUGI());
-  }
-
-  public ScanOperator(SubScan config, OperatorContext context, Iterator<RecordReader> readers, UserGroupInformation readerUGI) {
-    this(config, context, readers, null, readerUGI);
+    this(config, context, readers, null);
   }
 
   public ScanOperator(SubScan config, OperatorContext context,
-                      Iterator<RecordReader> readers, GlobalDictionaries globalDictionaries, UserGroupInformation readerUGI) {
+                      Iterator<RecordReader> readers, GlobalDictionaries globalDictionaries) {
     if (!readers.hasNext()) {
       this.readers = ImmutableList.<RecordReader>of(new EmptyRecordReader(context)).iterator();
     } else {
@@ -145,8 +153,6 @@ public class ScanOperator implements ProducerOperator {
     // change happens there, it gets corrected in the Foreman (when an InvalidMetadataError is thrown).
     this.tableSchemaPath = Iterables.getFirst(config.getReferencedTables(), null);
     this.selectedColumns = config.getColumns() == null ? null : ImmutableList.copyOf(config.getColumns());
-
-    this.readerUGI = Preconditions.checkNotNull(readerUGI, "The reader UserGroupInformation is missing.");
 
     final OperatorStats stats = context.getStats();
     try {
@@ -213,14 +219,7 @@ public class ScanOperator implements ProducerOperator {
   }
 
   private void setupReaderAsCorrectUser(final RecordReader reader) throws Exception {
-    readerUGI.doAs(new PrivilegedExceptionAction<Void>() {
-      @Override
-      public Void run()
-          throws Exception {
-        checkNotNull(reader).setup(mutator);
-        return null;
-      }
-    });
+    checkNotNull(reader).setup(mutator);
   }
 
   @Override
@@ -276,7 +275,7 @@ public class ScanOperator implements ProducerOperator {
   }
 
   private void checkAndLearnSchema(){
-    if (mutator.isSchemaChanged()) {
+    if (mutator.getSchemaChanged()) {
       outgoing.buildSchema(SelectionVectorMode.NONE);
       final BatchSchema newSchema = mutator.transformFunction.apply(outgoing.getSchema());
       if (config.mayLearnSchema() && tableSchemaPath != null) {
@@ -300,11 +299,11 @@ public class ScanOperator implements ProducerOperator {
     private final VectorContainer outgoing;
     private final Map<String, ValueVector> fieldVectorMap;
     private final OperatorContext context;
-    private final SchemaChangeCallBack callBack;
+    private final MutatorSchemaChangeCallBack callBack;
     private Function<BatchSchema, BatchSchema> transformFunction = Functions.identity();
 
     public ScanMutator(VectorContainer outgoing, Map<String, ValueVector> fieldVectorMap, OperatorContext context,
-                       SchemaChangeCallBack callBack) {
+                       MutatorSchemaChangeCallBack callBack) {
       this.outgoing = outgoing;
       this.fieldVectorMap = fieldVectorMap;
       this.context = context;
@@ -316,7 +315,7 @@ public class ScanOperator implements ProducerOperator {
                                               Class<T> clazz) throws SchemaChangeException {
       // Check if the field exists.
       final ValueVector v = fieldVectorMap.get(field.getName().toLowerCase());
-      if (v == null || !clazz.isAssignableFrom(v.getClass())) {
+      if (v == null || !clazz.isAssignableFrom(v.getClass()) || checkIfDecimalsTypesAreDifferent(v, field)) {
         // Field does not exist--add it to the map and the output container.
         ValueVector newVector = TypeHelper.getNewVector(field, context.getAllocator(), callBack);
         if (!clazz.isAssignableFrom(newVector.getClass())) {
@@ -338,6 +337,17 @@ public class ScanOperator implements ProducerOperator {
       }
 
       return clazz.cast(v);
+    }
+
+    public VectorContainer getContainer() {
+      return outgoing;
+    }
+
+    private <T extends ValueVector> boolean checkIfDecimalsTypesAreDifferent(ValueVector v, Field field) {
+      if (field.getType().getTypeID() != ArrowType.ArrowTypeID.Decimal) {
+        return false;
+      }
+      return !v.getField().getType().equals(field.getType());
     }
 
     @Override
@@ -368,14 +378,21 @@ public class ScanOperator implements ProducerOperator {
     }
 
     @Override
-    public boolean isSchemaChanged() {
-      return outgoing.isNewSchema() || callBack.getSchemaChangedAndReset();
+    public boolean getAndResetSchemaChanged() {
+      boolean schemaChanged =  callBack.getSchemaChangedAndReset() || outgoing.isNewSchema();
+      Preconditions.checkState(!callBack.getSchemaChanged(), "Unexpected state");
+      return schemaChanged;
+    }
+
+    @Override
+    public boolean getSchemaChanged() {
+      return outgoing.isNewSchema() || callBack.getSchemaChanged();
     }
   }
 
   @Override
   public void close() throws Exception {
-    AutoCloseables.close(outgoing, currentReader, globalDictionaries);
+    AutoCloseables.close(outgoing, currentReader, globalDictionaries, readers instanceof AutoCloseable ? (AutoCloseable) readers : null);
   }
 
 }

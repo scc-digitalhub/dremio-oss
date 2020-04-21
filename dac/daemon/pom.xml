@@ -1,6 +1,6 @@
 <!--
 
-    Copyright (C) 2017-2018 Dremio Corporation
+    Copyright (C) 2017-2019 Dremio Corporation
 
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@
   <parent>
     <groupId>com.dremio</groupId>
     <artifactId>dremio-dac-parent</artifactId>
-    <version>3.2.2-201905231753430810-ccf9a4e</version>
+    <version>4.2.1-202004111451200819-0c3ecaea</version>
   </parent>
 
   <artifactId>dremio-dac-daemon</artifactId>
@@ -52,16 +52,23 @@
     </dependency>
     <dependency>
       <groupId>com.dremio.plugins</groupId>
+      <artifactId>dremio-hdfs-plugin</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.dremio.plugins</groupId>
       <artifactId>dremio-mongo-plugin</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>com.dremio.plugins</groupId>
-      <artifactId>dremio-hive-plugin</artifactId>
+      <artifactId>dremio-nas-plugin</artifactId>
+      <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>com.dremio.plugins</groupId>
-      <artifactId>dremio-hbase-plugin</artifactId>
+      <artifactId>dremio-hive-function-registry</artifactId>
+      <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>com.dremio.plugins</groupId>
@@ -161,10 +168,38 @@
       <artifactId>dremio-yarn</artifactId>
       <version>${project.version}</version>
     </dependency>
+    
+    <dependency>
+      <groupId>com.dremio.tools</groupId>
+      <artifactId>dremio-attach-tool</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.dremio.services</groupId>
+      <artifactId>dremio-services-jobs</artifactId>
+      <version>${project.version}</version>
+      <classifier>tests</classifier>
+      <type>test-jar</type>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>
     <plugins>
+      <plugin>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <classpathDependencyExcludes>
+            <!--
+                 Exclude Hive uber-jars and their corresponding shaded modules, as these
+                 can introduce dependencies that conflict with the rest of Dremio (eg Jetty).
+                 In production these won't be in Dremio's classpath anyway and will be loaded through PF4J.
+            -->
+            <classpathDependencyExclude>com.dremio.*:*-shaded-*</classpathDependencyExclude>
+            <classpathDependencyExclude>com.dremio.*:*hive-plugin-shim*:jar</classpathDependencyExclude>
+          </classpathDependencyExcludes>
+        </configuration>
+      </plugin>
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>exec-maven-plugin</artifactId>
@@ -209,6 +244,11 @@
       </activation>
       <dependencies>
         <dependency>
+          <groupId>com.dremio.community.sabot.joust</groupId>
+          <artifactId>dremio-ce-sabot-joust-java</artifactId>
+          <version>${project.version}</version>
+        </dependency>
+        <dependency>
           <groupId>com.dremio.community.sabot</groupId>
           <artifactId>dremio-ce-sabot-kernel</artifactId>
         </dependency>
@@ -238,19 +278,19 @@
           <version>${project.version}</version>
         </dependency>
         <dependency>
-          <groupId>com.dremio.community.plugins</groupId>
-          <artifactId>dremio-ce-hive-plugin</artifactId>
+          <groupId>com.dremio.community.services</groupId>
+          <artifactId>dremio-ce-services-cachemanager</artifactId>
           <version>${project.version}</version>
         </dependency>
         <dependency>
-          <groupId>com.dremio.jdbc</groupId>
-          <artifactId>redshift-jdbc-42-no-awssdk</artifactId>
-          <version>1.2.16.1027</version>
+          <groupId>com.amazon.redshift</groupId>
+          <artifactId>redshift-jdbc42-no-awssdk</artifactId>
+          <version>1.2.36.1060</version>
         </dependency>
         <dependency>
-          <groupId>com.dremio.jdbc</groupId>
-          <artifactId>oracle-ojdbc8</artifactId>
-          <version>12.2.0.1</version>
+          <groupId>com.oracle.ojdbc</groupId>
+          <artifactId>ojdbc8</artifactId>
+          <version>19.3.0.0</version>
         </dependency>
       </dependencies>
     </profile>
@@ -277,6 +317,13 @@
           </plugin>
         </plugins>
       </build>
+      <dependencies>
+        <dependency>
+          <groupId>com.dremio.plugins</groupId>
+          <artifactId>dremio-maprfs-plugin</artifactId>
+          <version>${project.version}</version>
+        </dependency>
+      </dependencies>
     </profile>
     <profile>
       <id>notmapr</id>

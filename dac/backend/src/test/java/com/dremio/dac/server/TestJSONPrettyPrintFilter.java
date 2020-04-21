@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -51,7 +51,7 @@ public class TestJSONPrettyPrintFilter {
   @Test
   public void testJSONGeneratorConfigured() throws IOException {
     JSONPrettyPrintFilter filter = new JSONPrettyPrintFilter();
-    ContainerRequest request = ContainerRequestBuilder.from("http://localhost/foo/bar?pretty", "GET").accept("random/media").build();
+    ContainerRequest request = ContainerRequestBuilder.from("http://localhost/foo/bar?pretty", "GET", null).accept("random/media").build();
     ContainerResponse response = new ContainerResponse(request, Response.ok().build());
     filter.filter(request, response);
 
@@ -66,7 +66,7 @@ public class TestJSONPrettyPrintFilter {
   @Test
   public void testJSONGeneratorUntouched() throws IOException {
     JSONPrettyPrintFilter filter = new JSONPrettyPrintFilter();
-    ContainerRequest request = ContainerRequestBuilder.from("http://localhost/foo/bar", "GET").accept("random/media").build();
+    ContainerRequest request = ContainerRequestBuilder.from("http://localhost/foo/bar", "GET", null).accept("random/media").build();
     ContainerResponse response = new ContainerResponse(request, Response.ok().build());
     filter.filter(request, response);
 

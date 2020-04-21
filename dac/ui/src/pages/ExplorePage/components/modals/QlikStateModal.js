@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -185,7 +185,7 @@ export class QlikStateModal extends Component {
 
   retry = () => {
     this.props.openQlikSense(this.props.qlikShowDialogDataset);
-  }
+  };
 
   hide = () => {
     this.props.hideQlikModal();
@@ -193,7 +193,7 @@ export class QlikStateModal extends Component {
     if (this.props.hide) {
       this.props.hide();
     }
-  }
+  };
 
   render() {
     const { qlikDialogVisible, intl } = this.props;
@@ -212,7 +212,7 @@ export class QlikStateModal extends Component {
   }
 }
 
-function mapStateToProps(state, props) {
+function mapStateToProps(state) {
   const data = getExploreState(state);
   const ui = data ? data.ui : new Immutable.Map(); //todo explore page state should not be here
   return {

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,9 +27,8 @@ import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import com.dremio.datastore.KVStoreProvider;
 import com.dremio.datastore.LocalKVStoreProvider;
-import com.dremio.exec.server.SabotContext;
+import com.dremio.datastore.api.LegacyKVStoreProvider;
 import com.dremio.exec.server.options.SystemOptionManager;
 import com.dremio.options.OptionValue;
 import com.dremio.service.scheduler.SchedulerService;
@@ -41,25 +40,26 @@ import com.dremio.test.DremioTest;
 public class TestTokenManager {
 
   private static TokenManagerImpl manager;
-  private static KVStoreProvider provider;
+  private static LegacyKVStoreProvider provider;
 
   private static final String username = "testuser";
   private static final String clientAddress = "localhost";
 
   @BeforeClass
   public static void startServices() throws Exception {
-    final SabotContext sabotContext = mock(SabotContext.class);
     SystemOptionManager systemOptionManager = mock(SystemOptionManager.class);
-    when(sabotContext.getOptionManager()).thenReturn(systemOptionManager);
+    when(systemOptionManager.getOption("token.expiration.min")).thenReturn(OptionValue.createOption
+      (OptionValue.Kind.LONG, OptionValue.OptionType.SYSTEM, "token.expiration.min","30"));
     when(systemOptionManager.getOption("token.release.leadership.ms")).thenReturn(OptionValue.createOption
       (OptionValue.Kind.LONG, OptionValue.OptionType.SYSTEM, "token.release.leadership.ms","144000000"));
 
-    provider = new LocalKVStoreProvider(DremioTest.CLASSPATH_SCAN_RESULT, null, true, false);
+    provider =
+      new LocalKVStoreProvider(DremioTest.CLASSPATH_SCAN_RESULT, null, true, false).asLegacy();
     provider.start();
     manager = new TokenManagerImpl(
-      new Provider<KVStoreProvider>() {
+      new Provider<LegacyKVStoreProvider>() {
         @Override
-        public KVStoreProvider get() {
+        public LegacyKVStoreProvider get() {
           return provider;
         }
       },
@@ -69,10 +69,10 @@ public class TestTokenManager {
           return mock(SchedulerService.class);
         }
       },
-      new Provider<SabotContext>() {
+      new Provider<SystemOptionManager>() {
         @Override
-        public SabotContext get() {
-          return sabotContext;
+        public SystemOptionManager get() {
+          return systemOptionManager;
         }
       },
     false, 10, 10);

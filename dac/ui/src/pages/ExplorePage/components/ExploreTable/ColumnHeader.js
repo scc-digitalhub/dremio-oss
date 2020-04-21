@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,8 +29,8 @@ import { overlay } from '@app/uiTheme/radium/overlay';
 
 import { EXPLORE_HOVER_COLOR } from 'uiTheme/radium/colors';
 
-import { typeToIconType, BINARY, MIXED } from 'constants/DataTypes';
-import Keys from 'constants/Keys.json';
+import { typeToIconType, BINARY, MIXED } from '@app/constants/DataTypes';
+import Keys from '@app/constants/Keys.json';
 
 const MAX_COLUMN_NAME_LENTH = 62;
 const ACTION_MENU_WIDTH = 24;
@@ -76,7 +76,7 @@ export default class ColumnHeader extends Component {
     };
   }
 
-  doTypeAction(type, e) {
+  doTypeAction(type) {
     if (this.isActionsPrevented()) {
       return false;
     }
@@ -129,7 +129,7 @@ export default class ColumnHeader extends Component {
         });
       }, 0);
     }
-  }
+  };
 
   handleUpdateColumnName(name, e) {
     if (e.target.value) {
@@ -152,7 +152,7 @@ export default class ColumnHeader extends Component {
     if (this.input) {
       this.input.focus();
     }
-  }
+  };
 
   renderEditableColumnName(column, label, cellWidth) {
     const style = {
@@ -194,6 +194,7 @@ export default class ColumnHeader extends Component {
 
     const iconProps = {
       type: typeToIconType[type],
+      tooltip: (canClick) ? la('Change type') : la('Data type'),
       theme: styles.typeColumn,
       id: `${label} + type`,
       'class': 'type'

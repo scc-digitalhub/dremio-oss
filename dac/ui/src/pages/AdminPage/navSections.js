@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,10 +17,10 @@
 export default function(config) {
   return Promise.resolve([
     {
-      title: la('Cluster'),
+      title: la('Engines'),
       items: [
         { name: la('Node Activity'), url: '/admin/nodeActivity' },
-        { name: la('Provisioning'), url: '/admin/provisioning' },
+        {name: la('Elastic Engines'), url: '/admin/provisioning'},
         { name: la('Support'), url: '/admin/support' },
         { name: la('Queue Control'), url: '/admin/advanced' }
       ]

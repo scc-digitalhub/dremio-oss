@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import javax.annotation.concurrent.NotThreadSafe;
 
 import org.apache.arrow.memory.BufferAllocator;
 
+import com.dremio.common.util.concurrent.DremioFutures;
 import com.dremio.exec.dfs.proto.DFS.RpcType;
 import com.dremio.exec.dfs.proto.DFS.WriteDataRequest;
 import com.dremio.exec.dfs.proto.DFS.WriteDataResponse;
@@ -57,7 +58,7 @@ class LocalStatefulOutputStream extends OutputStream {
   private long lastUpdate;
 
   public LocalStatefulOutputStream(String path, FabricCommandRunner runner, BufferAllocator alloc, int size) {
-    this.buf = alloc.buffer(size);
+    this.buf = alloc.buffer(size).asNettyBuffer();
     this.runner = runner;
     this.path = path;
   }
@@ -81,7 +82,13 @@ class LocalStatefulOutputStream extends OutputStream {
     WriteDataCommand command = new WriteDataCommand(req, buf);
     runner.runCommand(command);
     try{
-      WriteDataResponse response = command.getFuture().checkedGet(WRITE_RESPONSE_IN_SECONDS, TimeUnit.SECONDS);
+      WriteDataResponse response = DremioFutures.getChecked(
+        command.getFuture(),
+        RpcException.class,
+        WRITE_RESPONSE_IN_SECONDS,
+        TimeUnit.SECONDS,
+        RpcException::mapException
+      );
       remoteOffset += buf.readableBytes();
       lastUpdate = response.getUpdateTime();
       buf.clear();

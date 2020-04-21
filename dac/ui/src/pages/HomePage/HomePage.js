@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,18 +18,17 @@ import PropTypes from 'prop-types';
 import Immutable from 'immutable';
 import { connect } from 'react-redux';
 
-import { getSortedSources } from 'selectors/resources';
-import ApiUtils from 'utils/apiUtils/apiUtils';
-import { sourceTypesIncludeS3 } from 'utils/sourceUtils';
+import {getSortedSources} from '@app/selectors/home';
+import ApiUtils from '@app/utils/apiUtils/apiUtils';
+import {sourceTypesIncludeS3} from '@app/utils/sourceUtils';
+import {loadSourceListData} from '@app/actions/resources/sources';
 
-import { loadSourceListData } from 'actions/resources/sources';
-import { getViewState } from 'selectors/resources';
-import { page } from 'uiTheme/radium/general';
+import {getViewState} from '@app/selectors/resources';
+import {page} from '@app/uiTheme/radium/general';
 
 import QlikStateModal from '../ExplorePage/components/modals/QlikStateModal';
 import MainHeader from './../../components/MainHeader';
-import RecentDatasets from './subpages/RecentDatasets/RecentDatasets';
-import LeftTree   from './components/LeftTree';
+import LeftTree from './components/LeftTree';
 import './HomePage.less';
 
 class HomePage extends Component {
@@ -37,7 +36,7 @@ class HomePage extends Component {
   static contextTypes = {
     location: PropTypes.object.isRequired,
     routeParams: PropTypes.object.isRequired
-  }
+  };
 
   static propTypes = {
     userInfo: PropTypes.object,
@@ -46,10 +45,9 @@ class HomePage extends Component {
     routeParams: PropTypes.object,
     location: PropTypes.object.isRequired,
     loadSourceListData: PropTypes.func,
-    push: PropTypes.func,
     children: PropTypes.node,
     style: PropTypes.object
-  }
+  };
 
   state = {
     sourceTypes: []
@@ -70,32 +68,13 @@ class HomePage extends Component {
   }
 
   setStateWithSourceTypesFromServer() {
-    ApiUtils.fetch('source/type').then(response => {
-      response.json().then((result) => {
-        this.setState({sourceTypes: result.data});
-      });
+    ApiUtils.fetchJson('source/type', (json) => {
+      this.setState({sourceTypes: json.data});
     }, () => {
-      console.error('Failed to load source types.');
+      console.error(
+        la('Failed to load source types. Can not check if S3 is supported. Will not show "Add Sample Source".')
+      );
     });
-  }
-
-  getCenterContent() {
-    return this.context.location.pathname.match('/spaces/recent')
-      ? this.getRecentDatasetsContent()
-      : '';
-  }
-
-  getRecentDatasetsContent() {
-    return (
-      <div className='page-content'>
-        <LeftTree
-          sources={this.props.sources}
-          pageType='recent'
-          className='col-lg-2 col-md-3'
-        />
-        <RecentDatasets/>
-      </div>
-    );
   }
 
   getUser() {
@@ -117,7 +96,6 @@ class HomePage extends Component {
             className='col-lg-2 col-md-3'/>
           {this.props.children}
         </div>
-        {this.getCenterContent()}
         <QlikStateModal />
       </div>
     );

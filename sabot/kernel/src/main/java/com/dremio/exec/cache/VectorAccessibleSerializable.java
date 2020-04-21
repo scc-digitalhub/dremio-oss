@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +21,9 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.vector.ValueVector;
@@ -30,8 +32,6 @@ import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.parquet.io.SeekableInputStream;
 import org.xerial.snappy.Snappy;
 
-import com.codahale.metrics.MetricRegistry;
-import com.codahale.metrics.Timer;
 import com.dremio.common.AutoCloseables.RollbackCloseable;
 import com.dremio.exec.expr.TypeHelper;
 import com.dremio.exec.proto.UserBitShared;
@@ -40,7 +40,10 @@ import com.dremio.exec.record.BatchSchema;
 import com.dremio.exec.record.VectorContainer;
 import com.dremio.exec.record.WritableBatch;
 import com.dremio.exec.record.selection.SelectionVector2;
-import com.dremio.metrics.Metrics;
+import com.dremio.telemetry.api.metrics.Metrics;
+import com.dremio.telemetry.api.metrics.Metrics.ResetType;
+import com.dremio.telemetry.api.metrics.Timer;
+import com.dremio.telemetry.api.metrics.Timer.TimerContext;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 
@@ -53,8 +56,7 @@ import io.netty.util.internal.PlatformDependent;
  */
 public class VectorAccessibleSerializable extends AbstractStreamSerializable {
 //  private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(VectorAccessibleSerializable.class);
-  static final MetricRegistry metrics = Metrics.getInstance();
-  static final String WRITER_TIMER = MetricRegistry.name(VectorAccessibleSerializable.class, "writerTime");
+  private static final Timer WRITER_TIMER = Metrics.newTimer(Metrics.join(VectorAccessibleSerializable.class.getName(), "writerTime"), ResetType.NEVER);
 
   static final int COMPRESSED_LENGTH_BYTES = 4;
   public static final int RAW_CHUNK_SIZE_TO_COMPRESS = 32*1024;
@@ -137,11 +139,11 @@ public class VectorAccessibleSerializable extends AbstractStreamSerializable {
    */
 
   private void writeBuf(ArrowBuf buf, OutputStream output) throws IOException {
-    int bufLength = buf.readableBytes();
+    long bufLength = buf.readableBytes();
     /* Use current thread buffer (safe to do since I/O operation is blocking) */
     final byte[] tmpBuffer = REUSABLE_LARGE_BUFFER.get();
-    for (int posn = 0; posn < bufLength; posn += tmpBuffer.length) {
-      int len = Math.min(tmpBuffer.length, bufLength - posn);
+    for (long posn = 0; posn < bufLength; posn += tmpBuffer.length) {
+      int len = (int) Math.min(tmpBuffer.length, bufLength - posn);
       buf.getBytes(posn, tmpBuffer, 0, len);
       output.write(tmpBuffer, 0, len);
     }
@@ -155,10 +157,10 @@ public class VectorAccessibleSerializable extends AbstractStreamSerializable {
    * subsequent bytes represent the actual compressed data.
    */
   private void writeCompressedBuf(ArrowBuf buf, OutputStream output) throws IOException {
-    int rawLength = buf.readableBytes();
-    for (int posn = 0; posn < rawLength; posn += RAW_CHUNK_SIZE_TO_COMPRESS) {
+    long rawLength = buf.readableBytes();
+    for (long posn = 0; posn < rawLength; posn += RAW_CHUNK_SIZE_TO_COMPRESS) {
       /* we compress 32KB chunks at a time; the last chunk might be smaller than 32KB */
-      int lengthToCompress = Math.min(RAW_CHUNK_SIZE_TO_COMPRESS, rawLength - posn);
+      int lengthToCompress = (int) Math.min(RAW_CHUNK_SIZE_TO_COMPRESS, rawLength - posn);
 
       /* allocate direct buffers to hold raw and compressed data */
       ByteBuffer rawDirectBuffer = buf.nioBuffer(posn, lengthToCompress);
@@ -283,21 +285,25 @@ public class VectorAccessibleSerializable extends AbstractStreamSerializable {
   @Override
   public void writeToStream(OutputStream output) throws IOException {
     Preconditions.checkNotNull(output);
-    final Timer.Context timerContext = metrics.timer(WRITER_TIMER).time();
 
-    final ArrowBuf[] incomingBuffers = batch.getBuffers();
-    final UserBitShared.RecordBatchDef batchDef = batch.getDef();
+    try (final TimerContext timerContext = WRITER_TIMER.start()) {
+      ArrowBuf[] buffers = new ArrowBuf[batch.getBuffers().length];
+      final ArrowBuf[] incomingBuffers = Arrays.stream(batch.getBuffers())
+                                               .map(buf -> buf.arrowBuf())
+                                               .collect(Collectors.toList())
+                                               .toArray(buffers);
+      final UserBitShared.RecordBatchDef batchDef = batch.getDef();
 
-    /* ArrowBuf associated with the selection vector */
-    ArrowBuf svBuf = null;
-    Integer svCount =  null;
+      /* ArrowBuf associated with the selection vector */
+      ArrowBuf svBuf = null;
+      Integer svCount =  null;
 
-    if (svMode == BatchSchema.SelectionVectorMode.TWO_BYTE) {
-      svCount = sv2.getCount();
-      svBuf = sv2.getBuffer(); //this calls retain() internally
-    }
+      if (svMode == BatchSchema.SelectionVectorMode.TWO_BYTE) {
+        svCount = sv2.getCount();
+        svBuf = sv2.getBuffer(); //this calls retain() internally
+      }
 
-    try {
+
       /* Write the metadata to the file */
       batchDef.writeDelimitedTo(output);
 
@@ -323,7 +329,6 @@ public class VectorAccessibleSerializable extends AbstractStreamSerializable {
 
       output.flush();
 
-      timerContext.stop();
     } catch (IOException e) {
       throw new RuntimeException(e);
     } finally {
@@ -357,7 +362,7 @@ public class VectorAccessibleSerializable extends AbstractStreamSerializable {
    * @param numBytesToRead
    * @throws IOException
    */
-  public static void readIntoArrowBuf(InputStream inputStream, ArrowBuf outputBuffer, int numBytesToRead)
+  public static void readIntoArrowBuf(InputStream inputStream, ArrowBuf outputBuffer, long numBytesToRead)
       throws IOException {
 //  Disabling direct reads for this since we have to be careful to avoid issues with compatibilityutil where it caches failure or success in direct reading. Direct reading will fail for LocalFIleSystem. As such, if we enable this path, we will non-direct reading for all sources (including HDFS)
 //    if(inputStream instanceof FSDataInputStream){
@@ -368,7 +373,7 @@ public class VectorAccessibleSerializable extends AbstractStreamSerializable {
     /* Use current thread buffer (safe to do since I/O operation is blocking) */
     final byte[] buffer = REUSABLE_LARGE_BUFFER.get();
     while(numBytesToRead > 0) {
-      int len = Math.min(buffer.length, numBytesToRead);
+      int len = (int) Math.min(buffer.length, numBytesToRead);
 
       final int numBytesRead = inputStream.read(buffer, 0, len);
       if (numBytesRead == -1 && numBytesToRead > 0) {

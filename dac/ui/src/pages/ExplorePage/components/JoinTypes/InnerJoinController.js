@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -101,8 +101,8 @@ export class InnerJoinController extends Component {
     const columnNameInArea = this.state.type === 'custom' ? 'custom' : 'default';
     const columnName = dropData.id;
     const columnIndexThatWillBeAdded = !this.state.columnsInDragArea
-                                                   .find(col => col.getIn([columnNameInArea, 'name']) === columnName)
-                                        && this.state[name].findIndex(column => column.get('name') === columnName);
+      .find(col => col.getIn([columnNameInArea, 'name']) === columnName)
+      && this.state[name].findIndex(column => column.get('name') === columnName);
     const column = this.state[name].get(columnIndexThatWillBeAdded);
 
     if (dropData.id && columnIndexThatWillBeAdded || columnIndexThatWillBeAdded === 0) {
@@ -198,7 +198,7 @@ export class InnerJoinController extends Component {
   }
 }
 
-function mapStateToProps(state, ownProps) {
+function mapStateToProps(state) {
   return {
     recommendation: getExploreState(state).join.getIn(['custom', 'recommendation'])
   };

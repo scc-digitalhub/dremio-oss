@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,11 +24,13 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.arrow.memory.BufferAllocator;
+
 import com.dremio.dac.explore.Recommender.TransformRuleWrapper;
 import com.dremio.dac.explore.model.DatasetPath;
 import com.dremio.dac.explore.model.extract.Card;
+import com.dremio.dac.model.job.JobData;
 import com.dremio.dac.model.job.JobDataFragment;
-import com.dremio.dac.model.job.JobUI;
 import com.dremio.dac.proto.model.dataset.CardExample;
 import com.dremio.dac.proto.model.dataset.CardExamplePosition;
 import com.dremio.dac.util.DatasetsUtil;
@@ -69,44 +71,44 @@ public class CardGenerator {
    * @return
    */
   public <T> List<Card<T>> generateCards(SqlQuery datasetSql, String colName,
-      List<TransformRuleWrapper<T>> transformRuleWrappers, Comparator<Card<T>> comparator) {
+      List<TransformRuleWrapper<T>> transformRuleWrappers, Comparator<Card<T>> comparator, BufferAllocator allocator) {
 
-    JobUI datasetPreviewJob = DatasetsUtil.getDatasetPreviewJob(executor, datasetSql, datasetPath, version);
-    String previewDataTable = datasetPreviewJob.getData().getJobResultsTable();
+    final String previewDataTable = DatasetsUtil
+      .getDatasetPreviewJob(executor, datasetSql, datasetPath, version)
+      .getJobResultsTable();
 
     // Generate a query to count the number of matches for each rule and total number of rows. Input here is from
     // preview data of the dataset with version.
     String countQuery = generateMatchCountQuery(colName, previewDataTable, transformRuleWrappers);
 
-    JobUI countJob = executor.runQuery(datasetSql.cloneWithNewSql(countQuery), QueryType.UI_INTERNAL_RUN, datasetPath, version);
-    JobDataFragment countJobData = countJob.getData().truncate(1);
+    try (final JobDataFragment countJobData = executor
+      .runQueryAndWaitForCompletion(datasetSql.cloneWithNewSql(countQuery), QueryType.UI_INTERNAL_RUN, datasetPath, version)
+      .truncate(allocator, 1)) {
 
-    // Get the total number of records
-    final int totalCount = toIntOrZero(countJobData.extractValue("total", 0));
+      // Get the total number of records
+      final int totalCount = toIntOrZero(countJobData.extractValue("total", 0));
+      final String exGenQuery = generateCardGenQuery(colName, previewDataTable, transformRuleWrappers);
+      final JobData exGenQueryData = executor.runQueryAndWaitForCompletion(datasetSql.cloneWithNewSql(exGenQuery), QueryType.UI_INTERNAL_RUN, datasetPath, version);
+      List<List<CardExample>> cardsExamples = getExamples(exGenQueryData, transformRuleWrappers, allocator);
 
-    String exGenQuery = generateCardGenQuery(colName, previewDataTable, transformRuleWrappers);
+      List<Card<T>> cards = Lists.newArrayList();
+      for (int i = 0; i < transformRuleWrappers.size(); i++) {
+        // Get match count for current rule
+        final int matchedCount = toIntOrZero(countJobData.extractValue("matched_count_" + i, 0));
 
-    JobUI exGenQueryJob = executor.runQuery(datasetSql.cloneWithNewSql(exGenQuery), QueryType.UI_INTERNAL_RUN, datasetPath, version);
-    List<List<CardExample>> cardsExamples = getExamples(exGenQueryJob, transformRuleWrappers);
+        Recommender.TransformRuleWrapper<T> evaluator = transformRuleWrappers.get(i);
 
-    List<Card<T>> cards = Lists.newArrayList();
-    for(int i = 0; i < transformRuleWrappers.size() ; i++) {
-      // Get match count for current rule
-      final int matchedCount = toIntOrZero(countJobData.extractValue("matched_count_" + i, 0));
-
-      Recommender.TransformRuleWrapper<T> evaluator = transformRuleWrappers.get(i);
-
-      Card<T> card = new Card<>(evaluator.getRule(), cardsExamples.get(i),
+        Card<T> card = new Card<>(evaluator.getRule(), cardsExamples.get(i),
           matchedCount, totalCount - matchedCount, evaluator.describe());
 
-      cards.add(card);
-    }
+        cards.add(card);
+      }
 
-    if (comparator != null) {
-      Collections.sort(cards, comparator);
+      if (comparator != null) {
+        Collections.sort(cards, comparator);
+      }
+      return cards;
     }
-
-    return cards;
   }
 
   static int toIntOrZero(Object o) {
@@ -117,48 +119,47 @@ public class CardGenerator {
     return 0;
   }
 
-  <T> List<List<CardExample>> getExamples(JobUI exGenQueryJob, List<TransformRuleWrapper<T>> transformRuleWrappers) {
+  private <T> List<List<CardExample>> getExamples(JobData exGenQueryData, List<TransformRuleWrapper<T>> transformRuleWrappers, BufferAllocator allocator) {
 
-    JobDataFragment data = exGenQueryJob.getData().truncate(Card.EXAMPLES_TO_SHOW);
+    try (final JobDataFragment data = exGenQueryData.truncate(allocator, Card.EXAMPLES_TO_SHOW)) {
 
-    final List<List<CardExample>> examples = Lists.newArrayList();
-    for(int ruleIndex = 0; ruleIndex < transformRuleWrappers.size(); ruleIndex++) {
-      examples.add(Lists.<CardExample>newArrayList());
-    }
-
-    for (int row = 0; row < data.getReturnedRowCount(); row++) {
-      final String input = data.extractString("inputCol", row);
+      final List<List<CardExample>> examples = Lists.newArrayList();
       for (int ruleIndex = 0; ruleIndex < transformRuleWrappers.size(); ruleIndex++) {
-        if (!transformRuleWrappers.get(ruleIndex).canGenerateExamples()) {
-          continue;
-        }
-        final String outputColAlias = "example_" + ruleIndex;
-        final Object value = data.extractValue(outputColAlias, row);
-
-        CardExample example = new CardExample(input);
-        example.setPositionList(new ArrayList<CardExamplePosition>());
-        if (value != null && value instanceof List<?>) {
-          List<Map<?,?>> positions = (List<Map<?,?>>) value;
-
-          if (positions.size() == 0) {
-            example.getPositionList().add(new CardExamplePosition(0, 0));
-          } else {
-            for (Map<?, ?> position : positions) {
-              final Integer offset = (Integer) position.get("offset");
-              final Integer length = (Integer) position.get("length");
-
-              example.getPositionList().add(new CardExamplePosition(offset, length));
-            }
-          }
-        } else {
-          example.getPositionList().add(new CardExamplePosition(0, 0));
-        }
-
-        examples.get(ruleIndex).add(example);
+        examples.add(Lists.<CardExample>newArrayList());
       }
-    }
 
-    return examples;
+      for (int row = 0; row < data.getReturnedRowCount(); row++) {
+        final String input = data.extractString("inputCol", row);
+        for (int ruleIndex = 0; ruleIndex < transformRuleWrappers.size(); ruleIndex++) {
+          if (!transformRuleWrappers.get(ruleIndex).canGenerateExamples()) {
+            continue;
+          }
+          final String outputColAlias = "example_" + ruleIndex;
+          final Object value = data.extractValue(outputColAlias, row);
+
+          CardExample example = new CardExample(input);
+          example.setPositionList(new ArrayList<CardExamplePosition>());
+          if (value != null && value instanceof List<?>) {
+            List<Map<?, ?>> positions = (List<Map<?, ?>>) value;
+
+            if (positions.size() == 0) {
+              example.getPositionList().add(new CardExamplePosition(0, 0));
+            } else {
+              for (Map<?, ?> position : positions) {
+                final Integer offset = (Integer) position.get("offset");
+                final Integer length = (Integer) position.get("length");
+
+                example.getPositionList().add(new CardExamplePosition(offset, length));
+              }
+            }
+          } else {
+            example.getPositionList().add(new CardExamplePosition(0, 0));
+          }
+          examples.get(ruleIndex).add(example);
+        }
+      }
+      return examples;
+    }
   }
 
   <T> String generateCardGenQuery(String inputColName, String datasetPreviewTable, List<TransformRuleWrapper<T>> evaluators) {

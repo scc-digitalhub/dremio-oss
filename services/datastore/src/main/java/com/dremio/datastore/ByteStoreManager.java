@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@
  */
 package com.dremio.datastore;
 
-import static com.dremio.datastore.MetricUtils.COLLECT_METRICS;
 import static com.dremio.datastore.RocksDBStore.FILTER_SIZE_IN_BYTES;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -26,7 +25,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
@@ -49,10 +47,10 @@ import org.rocksdb.TransactionLogIterator;
 
 import com.dremio.common.DeferredException;
 import com.dremio.datastore.CoreStoreProviderImpl.ForcedMemoryMode;
-import com.dremio.datastore.MetricUtils.MetricSetBuilder;
 import com.dremio.datastore.RocksDBStore.BlobNotFoundException;
-import com.dremio.datastore.RocksDBStore.RocksBlobManager;
-import com.dremio.metrics.Metrics;
+import com.dremio.datastore.RocksDBStore.RocksMetaManager;
+import com.dremio.datastore.api.Document;
+import com.dremio.telemetry.api.metrics.Metrics;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Function;
 import com.google.common.base.Preconditions;
@@ -70,6 +68,8 @@ import com.google.common.collect.Maps;
  */
 class ByteStoreManager implements AutoCloseable {
   private static final org.slf4j.Logger LOGGER = org.slf4j.LoggerFactory.getLogger(ByteStoreManager.class);
+
+  private static final boolean COLLECT_METRICS = System.getProperty("dremio.kvstore.metrics", null) != null;
 
   private static final long WAL_TTL_SECONDS = Long.getLong("dremio.catalog.wal_ttl_seconds", 5 * 60L);
   private static final String METRICS_PREFIX = "kvstore.db";
@@ -135,11 +135,13 @@ class ByteStoreManager implements AutoCloseable {
 
   private RocksDBStore newRocksDBStore(String name, ColumnFamilyDescriptor columnFamilyDescriptor,
                                        ColumnFamilyHandle handle) {
+    final RocksMetaManager rocksManager;
     if (BLOB_WHITELIST.contains(name)) {
-      final RocksBlobManager rocksBlobManager = new RocksBlobManager(baseDirectory, name, FILTER_SIZE_IN_BYTES);
-      return new RocksDBStore(name, columnFamilyDescriptor, handle, db, stripeCount, rocksBlobManager);
+      rocksManager = new RocksMetaManager(baseDirectory, name, FILTER_SIZE_IN_BYTES);
+    } else {
+      rocksManager = new RocksMetaManager(baseDirectory, name, Long.MAX_VALUE);
     }
-    return new RocksDBStore(name, columnFamilyDescriptor, handle, db, stripeCount);
+    return new RocksDBStore(name, columnFamilyDescriptor, handle, db, stripeCount, rocksManager);
   }
 
   // Validates that the first file found in the DB directory is owned by the currently running user.
@@ -222,9 +224,8 @@ class ByteStoreManager implements AutoCloseable {
       LOGGER.debug("WAL settings: size: '{} MB', TTL: '{}' seconds",
           dboptions.walSizeLimitMB(), dboptions.walTtlSeconds());
 
-      if (COLLECT_METRICS) {
-        registerMetrics(dboptions);
-      }
+
+      registerMetrics(dboptions);
       db = openDB(dboptions, path, Lists.transform(families, func), familyHandles);
     }
     // create an output list to be populated when we open the db.
@@ -253,19 +254,21 @@ class ByteStoreManager implements AutoCloseable {
   private void registerMetrics(DBOptions dbOptions) {
     // calling DBOptions.statisticsPtr() will create a Statistics object that will collect various stats from RocksDB and
     // will introduce a 5-10% overhead
+    if(!COLLECT_METRICS) {
+      return;
+    }
+
     final Statistics statistics = new Statistics();
     statistics.setStatsLevel(StatsLevel.ALL);
     dbOptions.setStatistics(statistics);
-    final MetricSetBuilder builder = new MetricSetBuilder(METRICS_PREFIX);
     // for now, let's add all ticker stats as gauge metrics
     for (TickerType tickerType : TickerType.values()) {
       if (tickerType == TickerType.TICKER_ENUM_MAX) {
         continue;
       }
 
-      builder.gauge(tickerType.name(), () -> statistics.getTickerCount(tickerType));
+      Metrics.newGauge(Metrics.join(METRICS_PREFIX, tickerType.name()), () -> statistics.getTickerCount(tickerType));
     }
-    Metrics.getInstance().registerAll(builder.build());
     // Note that Statistics also contains various histogram metrics, but those cannot be easily tracked through our metrics
   }
 
@@ -361,7 +364,7 @@ class ByteStoreManager implements AutoCloseable {
       ByteStore store = getStore(tableName);
       Preconditions.checkState(store instanceof RocksDBStore);
       try {
-        final byte[] value = ((RocksDBStore) store).resolvePtrOrValue(ptrOrValue);
+        final byte[] value = (((RocksDBStore) store).resolvePtrOrValue(ptrOrValue).getData());
         replayHandler.put(tableName, key, value);
       } catch (BlobNotFoundException e) {
         // Could not find the blob file when resolving a ptr.  This could be because the replayed event's pointer is no
@@ -424,11 +427,8 @@ class ByteStoreManager implements AutoCloseable {
 
   @Override
   public void close() throws Exception {
-    if (COLLECT_METRICS) {
-      MetricUtils.removeAllMetricsThatStartWith(METRICS_PREFIX);
-    }
-
     maps.invalidateAll();
+    getMetadataManager().close();
     closeException.suppressingClose(defaultHandle);
     closeException.suppressingClose(db);
     closeException.close();
@@ -438,7 +438,7 @@ class ByteStoreManager implements AutoCloseable {
    * Implementation that manages metadata with {@link RocksDB}.
    */
   final class StoreMetadataManagerImpl implements StoreMetadataManager {
-    private final Serializer<StoreMetadata> valueSerializer = Serializer.of(StoreMetadata.getSchema());
+    private final Serializer<StoreMetadata, byte[]> valueSerializer = Serializer.of(StoreMetadata.getSchema());
 
     // in-memory holder of the latest transaction numbers. The second-to-last transaction number is persisted
     private final ConcurrentMap<String, Long> latestTransactionNumbers = Maps.newConcurrentMap();
@@ -522,6 +522,11 @@ class ByteStoreManager implements AutoCloseable {
       setLatestTransactionNumber(storeName, transactionNumber, penultimateNumber);
     }
 
+    @Override
+    public void close() throws Exception{
+      metadataStore.close();
+    }
+
     private void setLatestTransactionNumber(String storeName, long transactionNumber, long penultimateNumber) {
       final StoreMetadata storeMetadata = new StoreMetadata()
           .setTableName(storeName)
@@ -540,8 +545,8 @@ class ByteStoreManager implements AutoCloseable {
      */
     long getLowestTransactionNumber(Predicate<String> predicate) {
       final long[] lowest = {Long.MAX_VALUE};
-      for (Map.Entry<byte[], byte[]> tuple : metadataStore.find()) {
-        final Optional<StoreMetadata> value = getValue(tuple.getValue());
+      for (Document<byte[], byte[]> tuple : metadataStore.find()) {
+        final Optional<StoreMetadata> value = getValue(tuple);
         value.filter(storeMetadata -> predicate.test(storeMetadata.getTableName()))
             .ifPresent(storeMetadata -> {
               final long transactionNumber = storeMetadata.getLatestTransactionNumber();
@@ -570,8 +575,8 @@ class ByteStoreManager implements AutoCloseable {
       return valueSerializer.convert(info);
     }
 
-    private Optional<StoreMetadata> getValue(byte[] info) {
-      return Optional.ofNullable(info).map(valueSerializer::revert);
+    private Optional<StoreMetadata> getValue(Document<byte[], byte[]> info) {
+      return Optional.ofNullable(info).map(doc -> valueSerializer.revert(doc.getValue()));
     }
   }
 }

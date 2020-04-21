@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
  */
 import Immutable from 'immutable';
 
-import { MAP, LIST, BOOLEAN, TEXT } from 'constants/DataTypes';
+import { MAP, LIST, BOOLEAN, TEXT } from '@app/constants/DataTypes';
 import { UNMATCHED_CELL_VALUE, EMPTY_NULL_VALUE, EMPTY_STRING_VALUE } from './dataFormatUtils';
 import DataFormatUtils from './dataFormatUtils';
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,9 +20,12 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.UnknownHostException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map.Entry;
+import java.util.Optional;
 
 import org.reflections.util.ClasspathHelper;
 
@@ -42,7 +45,6 @@ import com.typesafe.config.ConfigValueFactory;
  * A configuration object that is merged with and validated against the dremio-reference.conf configuration.
  */
 public class DremioConfig extends NestedConfig {
-
   private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(DremioConfig.class);
 
   private static final String REFERENCE_CONFIG = "dremio-reference.conf";
@@ -51,6 +53,7 @@ public class DremioConfig extends NestedConfig {
   public static final String LOCAL_WRITE_PATH_STRING = "paths.local";
   public static final String DIST_WRITE_PATH_STRING = "paths.dist";
 
+  public static final String NODE_TAG = "services.node-tag";
   public static final String ENABLE_COORDINATOR_BOOL = "services.coordinator.enabled";
   public static final String ENABLE_MASTER_BOOL = "services.coordinator.master.enabled";
   public static final String ENABLE_EXECUTOR_BOOL = "services.executor.enabled";
@@ -58,8 +61,7 @@ public class DremioConfig extends NestedConfig {
   public static final String EMBEDDED_MASTER_ZK_ENABLED_PORT_INT = "services.coordinator.master.embedded-zookeeper.port";
   public static final String EMBEDDED_MASTER_ZK_ENABLED_PATH_STRING = "services.coordinator.master.embedded-zookeeper.path";
   public static final String WEB_ENABLED_BOOL = "services.coordinator.web.enabled";
-  public static final String WEB_AUTH_TYPE = "services.coordinator.web.auth.type"; // Possible values are "internal", "ldap"
-  public static final String WEB_AUTH_LDAP_CONFIG_FILE = "services.coordinator.web.auth.ldap_config";
+  public static final String WEB_AUTH_TYPE = "services.coordinator.web.auth.type";
   public static final String WEB_PORT_INT = "services.coordinator.web.port";
   public static final String WEB_TOKEN_CACHE_SIZE = "services.coordinator.web.tokens.cache.size";
   public static final String SCHEDULER_SERVICE_THREAD_COUNT = "services.coordinator.scheduler.threads";
@@ -69,10 +71,18 @@ public class DremioConfig extends NestedConfig {
   public static final String KERBEROS_PRINCIPAL = "services.kerberos.principal";
   public static final String KERBEROS_KEYTAB_PATH = "services.kerberos.keytab.file.path";
 
+  public static final String JOBS_ENABLED_BOOL = "services.jobs.enabled";
+
   /**
    * Path where ui config is located
    */
   public static final String WEB_UI_SERVICE_CONFIG = "services.coordinator.web.ui";
+
+  /**
+   * Config values related to plugins
+   */
+  public static final String PLUGINS_ROOT_PATH_PROPERTY = "dremio.plugins.path";
+  public static final String LEGACY_STORE_VIEWS_ENABLED = "legacy.dremio.store.views.enabled";
 
   public static final String CLIENT_PORT_INT = "services.coordinator.client-endpoint.port";
   public static final String SERVER_PORT_INT = "services.fabric.port";
@@ -90,12 +100,17 @@ public class DremioConfig extends NestedConfig {
 
   public static final String ZOOKEEPER_QUORUM = "zookeeper";
   public static final String ZK_CLIENT_SESSION_TIMEOUT = "zk.client.session.timeout";
+  public static final String ZK_CLIENT_RETRY_UNLIMITED = "zk.client.retry.unlimited";
+  public static final String ZK_CLIENT_RETRY_LIMIT = "zk.client.retry.limit";
+  public static final String ZK_CLIENT_INITIAL_TIMEOUT_MS = "zk.client.retry.initial_timeout_ms";
 
   // Provisioning options
+  public static final String YARN_ENABLED_BOOL = "provisioning.yarn.enabled";
   public static final String YARN_JVM_OPTIONS = "provisioning.yarn.jvmoptions";
   public static final String YARN_CLASSPATH = "provisioning.yarn.classpath";
   public static final String YARN_APP_CLASSPATH = "provisioning.yarn.app.classpath";
   public static final String YARN_APP_CLASSPATH_PREFIX = "provisioning.yarn.app.classpath-prefix";
+  public static final String EC2_EFS_FSID = "provisioning.ec2.efs.fsid";
 
   /**
    * Path where debug options are located
@@ -116,6 +131,8 @@ public class DremioConfig extends NestedConfig {
   public static final String DEBUG_DISABLE_MASTER_ELECTION_SERVICE_BOOL = "debug.master.election.disabled";
 
   public static final String DEBUG_DIST_ASYNC_ENABLED = "debug.dist.async.enabled";
+  public static final String DEBUG_DIST_CACHING_ENABLED = "debug.dist.caching.enabled";
+  public static final String DEBUG_DIST_MAX_CACHE_SPACE_PERCENT = "debug.dist.max.cache.space.percent";
   public static final String DEBUG_UPLOADS_ASYNC_ENABLED = "debug.uploads.async.enabled";
   public static final String DEBUG_SUPPORT_ASYNC_ENABLED = "debug.support.async.enabled";
   public static final String DEBUG_JOBS_ASYNC_ENABLED = "debug.results.async.enabled";
@@ -379,5 +396,20 @@ public class DremioConfig extends NestedConfig {
       }
     }
     return config;
+  }
+
+  public static Path getPluginsRootPath() {
+    final String pluginsDir = System.getProperty(PLUGINS_ROOT_PATH_PROPERTY);
+    if (pluginsDir != null) {
+      return Paths.get(pluginsDir);
+    }
+
+    logger.debug("The system property {} is not set", PLUGINS_ROOT_PATH_PROPERTY);
+    return Optional.ofNullable(System.getenv("DREMIO_HOME"))
+      .map(v -> Paths.get(v, "plugins"))
+      .orElseGet(() -> {
+        logger.debug("The environment variable DREMIO_HOME is not set.");
+        return Paths.get(".");
+      });
   }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ import com.dremio.exec.rpc.RpcConnectionHandler.FailureType;
 public class ConnectionFailedException extends RpcException {
 
   public ConnectionFailedException(RpcException ex) {
-    super(ex);
+    super(ex.getLocalizedMessage(), ex.getStatus(), ex.getErrorId(), ex);
   }
 
   public static RpcException mapException(RpcException ex, FailureType failureType) {

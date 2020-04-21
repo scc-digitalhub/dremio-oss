@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ import javax.servlet.http.HttpServletResponse;
 /**
  * Filter that adds several security related HTTP headers
  */
-public class SecurityHeadersFilter implements Filter {
+public class      SecurityHeadersFilter implements Filter {
   private static final long STS_MAX_AGE = TimeUnit.SECONDS.toDays(356);
 
   @Override

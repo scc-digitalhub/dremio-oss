@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2017-2018 Dremio Corporation
+# Copyright (C) 2017-2019 Dremio Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -79,6 +79,9 @@ fi
 
 # get log directory
 DREMIO_LOG_DIR="${DREMIO_LOG_DIR:-${DREMIO_HOME}/log}"
+
+# get plugins root directory
+DREMIO_PLUGINS_DIR="${DREMIO_PLUGINS_DIR:-${DREMIO_HOME}/plugins}"
 
 touch "$DREMIO_LOG_DIR/server.out" &> /dev/null
 TOUCH_EXIT_CODE=$?
@@ -169,6 +172,12 @@ EOF
     exit 1
   fi
 fi
+
+#Add tools.jar to support local-attach mode
+if [ -f "$JAVA_HOME/lib/tools.jar" ]; then
+  DREMIO_CLASSPATH="$DREMIO_CLASSPATH:$JAVA_HOME/lib/tools.jar"
+fi
+
 # Now, verify that 'java' binary exists and is suitable for Dremio.
 if $is_cygwin; then
   JAVA_BIN="java.exe"
@@ -219,17 +228,29 @@ export DREMIO_HOME # needed for the HOCON commands below
 # Set proper memory values based on user configured values
 if [[ -n $DREMIO_MAX_MEMORY_SIZE_MB ]]
 then
-  DEFAULT_MAX_HEAP_MEMORY_EXECUTOR_MB=4096
-  if [ 32768 -le $DREMIO_MAX_MEMORY_SIZE_MB ]; then
-    DEFAULT_MAX_HEAP_MEMORY_EXECUTOR_MB=8192
+  if [ 4096 -gt $DREMIO_MAX_MEMORY_SIZE_MB ]; then
+    echo "Dremio requires at least 4 GB memory to run. ${DREMIO_MAX_MEMORY_SIZE_MB} MB is too low."
+    exit 1
   fi
   ROLES=`$JAVA -cp "$DREMIO_CLASSPATH" -Ddremio.log.path=${DREMIO_LOG_DIR} com.dremio.dac.daemon.GetRolesCommand`
   if ( echo $ROLES | grep -q "executor" ); then
+    DEFAULT_MAX_HEAP_MEMORY_EXECUTOR_MB=2048
+    if [ 6144 -le $DREMIO_MAX_MEMORY_SIZE_MB ]; then
+      DEFAULT_MAX_HEAP_MEMORY_EXECUTOR_MB=4096
+    fi
+    if [ 32768 -le $DREMIO_MAX_MEMORY_SIZE_MB ]; then
+      DEFAULT_MAX_HEAP_MEMORY_EXECUTOR_MB=8192
+    fi
     DREMIO_MAX_HEAP_MEMORY_SIZE_MB=${DREMIO_MAX_HEAP_MEMORY_SIZE_MB:-$DEFAULT_MAX_HEAP_MEMORY_EXECUTOR_MB}
     DREMIO_MAX_DIRECT_MEMORY_SIZE_MB=${DREMIO_MAX_DIRECT_MEMORY_SIZE_MB:-$((DREMIO_MAX_MEMORY_SIZE_MB-DREMIO_MAX_HEAP_MEMORY_SIZE_MB))}
   else
-    DREMIO_MAX_DIRECT_MEMORY_SIZE_MB=${DREMIO_MAX_DIRECT_MEMORY_SIZE_MB:-2048}
-    DREMIO_MAX_HEAP_MEMORY_SIZE_MB=${DREMIO_MAX_HEAP_MEMORY_SIZE_MB:-$((DREMIO_MAX_MEMORY_SIZE_MB-DREMIO_MAX_DIRECT_MEMORY_SIZE_MB))}
+    if [ 18432 -le $DREMIO_MAX_MEMORY_SIZE_MB ]; then
+      DREMIO_MAX_HEAP_MEMORY_SIZE_MB=${DREMIO_MAX_HEAP_MEMORY_SIZE_MB:-16384}
+      DREMIO_MAX_DIRECT_MEMORY_SIZE_MB=${DREMIO_MAX_DIRECT_MEMORY_SIZE_MB:-$((DREMIO_MAX_MEMORY_SIZE_MB-DREMIO_MAX_HEAP_MEMORY_SIZE_MB))}
+    else
+      DREMIO_MAX_DIRECT_MEMORY_SIZE_MB=${DREMIO_MAX_DIRECT_MEMORY_SIZE_MB:-2048}
+      DREMIO_MAX_HEAP_MEMORY_SIZE_MB=${DREMIO_MAX_HEAP_MEMORY_SIZE_MB:-$((DREMIO_MAX_MEMORY_SIZE_MB-DREMIO_MAX_DIRECT_MEMORY_SIZE_MB))}
+    fi
   fi
 else
   DREMIO_MAX_HEAP_MEMORY_SIZE_MB=${DREMIO_MAX_HEAP_MEMORY_SIZE_MB:-4096}
@@ -258,6 +279,7 @@ export is_cygwin
 export DREMIO_JAVA_OPTS
 export DREMIO_CONF_DIR
 export DREMIO_LOG_DIR
+export DREMIO_PLUGINS_DIR
 export DREMIO_CLASSPATH
 export DREMIO_MAX_HEAP_MEMORY_SIZE_MB
 export DREMIO_MAX_DIRECT_MEMORY_SIZE_MB

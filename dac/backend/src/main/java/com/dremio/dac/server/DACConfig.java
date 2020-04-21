@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -113,6 +113,10 @@ public final class DACConfig {
 
   public DACConfig debug(boolean debug) {
     return with(DremioConfig.DEBUG_ENABLED_BOOL, debug);
+  }
+
+  public DACConfig jobServerEnabled(boolean enabled) {
+    return with(DremioConfig.JOBS_ENABLED_BOOL, enabled);
   }
 
   public DACConfig autoPort(boolean autoPort) {

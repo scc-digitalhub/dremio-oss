@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,8 +33,8 @@ export default class HostListWrapper extends Component {
     return (
       <FieldWithError {...field}>
         <HostList fields={fields}
-                  elementConfig={elementConfigJson}
-                  defaultPort={defaultPort}
+          elementConfig={elementConfigJson}
+          defaultPort={defaultPort}
         />
       </FieldWithError>
     );

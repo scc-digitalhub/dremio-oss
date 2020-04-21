@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ package com.dremio.exec.planner.sql;
 
 import java.util.List;
 
+import org.apache.arrow.util.VisibleForTesting;
 import org.apache.calcite.adapter.java.JavaTypeFactory;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptCostFactory;
@@ -32,13 +33,13 @@ import org.apache.calcite.sql.SqlExplainLevel;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlLiteral;
 import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.SqlOperatorTable;
 import org.apache.calcite.sql.parser.SqlParseException;
 import org.apache.calcite.sql.parser.SqlParser;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.util.ChainedSqlOperatorTable;
 import org.apache.calcite.sql.util.SqlShuttle;
-import org.apache.calcite.sql2rel.RelDecorrelator;
 import org.apache.calcite.sql2rel.SqlToRelConverter;
 import org.apache.calcite.util.ImmutableIntList;
 import org.apache.calcite.util.Pair;
@@ -58,6 +59,8 @@ import com.dremio.exec.planner.acceleration.substitution.AccelerationAwareSubsti
 import com.dremio.exec.planner.acceleration.substitution.SubstitutionProviderFactory;
 import com.dremio.exec.planner.cost.DefaultRelMetadataProvider;
 import com.dremio.exec.planner.cost.DremioCost;
+import com.dremio.exec.planner.logical.DremioRelDecorrelator;
+import com.dremio.exec.planner.logical.DremioRelFactories;
 import com.dremio.exec.planner.observer.AttemptObserver;
 import com.dremio.exec.planner.physical.PlannerSettings;
 import com.dremio.exec.planner.serialization.RelSerializerFactory;
@@ -70,6 +73,9 @@ import com.dremio.sabot.exec.context.FunctionContext;
 import com.dremio.sabot.rpc.user.UserSession;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
+
+//import org.apache.calcite.sql.SqlNodeList;
+//import org.apache.calcite.sql.dialect.CalciteSqlDialect;
 
 
 /**
@@ -133,7 +139,7 @@ public class SqlConverter {
     this.planner = DremioVolcanoPlanner.of(this);
     this.cluster = RelOptCluster.create(planner, new DremioRexBuilder(typeFactory));
     this.cluster.setMetadataProvider(DefaultRelMetadataProvider.INSTANCE);
-    this.viewExpansionContext = new ViewExpansionContext(catalog.getUser());
+    this.viewExpansionContext = new ViewExpansionContext(session.getCredentials().getUserName());
     this.config = config;
     this.scanResult = scanResult;
   }
@@ -174,10 +180,10 @@ public class SqlConverter {
     }
   };
 
-  public SqlNode parse(String sql) {
+  private static SqlNodeList parseMultipleStatementsImpl(String sql, ParserConfig parserConfig, boolean isInnerQuery) {
     try {
       SqlParser parser = SqlParser.create(sql, parserConfig);
-      return parser.parseStmt().accept(STRING_LITERAL_CONVERTER);
+      return parser.parseStmtList();
     } catch (SqlParseException e) {
       UserException.Builder builder = SqlExceptionHelper.parseError(sql, e);
 
@@ -186,6 +192,30 @@ public class SqlConverter {
     }
   }
 
+  public SqlNodeList parseMultipleStatements(String sql) {
+    return parseMultipleStatementsImpl(sql, parserConfig, isInnerQuery);
+  }
+
+  @VisibleForTesting
+  static SqlNode parseSingleStatementImpl(String sql, ParserConfig parserConfig, boolean isInnerQuery) {
+    SqlNodeList list = parseMultipleStatementsImpl(sql, parserConfig, isInnerQuery);
+    if (list.size() > 1) {
+      SqlParserPos pos = list.get(1).getParserPosition();
+      int col = pos.getColumnNum();
+      String first = sql.substring(0, col);
+      String second = sql.substring(col-1);
+
+      UserException.Builder builder = UserException.parseError();
+      builder.message("Unable to parse multiple queries. First query is %s. Rest of submission is %s", first, second);
+      throw builder.buildSilently();
+    }
+    SqlNode newNode = list.get(0).accept(STRING_LITERAL_CONVERTER);
+    return newNode;
+  }
+
+  public SqlNode parse(String sql) {
+    return parseSingleStatementImpl(sql, parserConfig, isInnerQuery);
+  }
 
   public ViewExpansionContext getViewExpansionContext() {
     return viewExpansionContext;
@@ -197,6 +227,12 @@ public class SqlConverter {
 
   public SqlNode validate(final SqlNode parsedNode) {
     return validator.validate(parsedNode);
+  }
+
+  public RelDataType getValidatedRowType(String sql) {
+    SqlNode sqlNode = parse(sql);
+    SqlNode validatedNode = validate(sqlNode);
+    return validator.getValidatedNodeType(validatedNode);
   }
 
   public FunctionImplementationRegistry getFunctionImplementationRegistry() {
@@ -256,7 +292,7 @@ public class SqlConverter {
   }
 
   public RelSerializerFactory getSerializerFactory() {
-    return RelSerializerFactory.getFactory(config, scanResult);
+    return RelSerializerFactory.getPlanningFactory(config, scanResult);
   }
 
   public SabotConfig getConfig() {
@@ -271,7 +307,6 @@ public class SqlConverter {
   public RelRootPlus toConvertibleRelRoot(final SqlNode validatedNode, boolean expand) {
 
     final OptionManager o = settings.getOptions();
-    final boolean useLegacyDecorrelator = o.getOption(PlannerSettings.USE_LEGACY_DECORRELATOR);
     final long inSubQueryThreshold =  o.getOption(ExecConstants.FAST_OR_ENABLE) ? o.getOption(ExecConstants.FAST_OR_MAX_THRESHOLD) : settings.getOptions().getOption(ExecConstants.PLANNER_IN_SUBQUERY_THRESHOLD);
     final SqlToRelConverter.Config config = SqlToRelConverter.configBuilder()
       .withInSubQueryThreshold((int) inSubQueryThreshold)
@@ -284,14 +319,18 @@ public class SqlConverter {
     // Previously we had "top" = !innerQuery, but calcite only adds project if it is not a top query.
     final RelRoot rel = sqlToRelConverter.convertQuery(validatedNode, false /* needs validate */, false /* top */);
     final RelNode rel2 = sqlToRelConverter.flattenTypes(rel.rel, true);
-    final RelNode rel3;
-    rel3 = expand ? rel2 : rel2.accept(new RelsWithRexSubQueryFlattener(sqlToRelConverter));
-    final RelNode rel4 = RelDecorrelator.decorrelateQuery(rel3, useLegacyDecorrelator);
+    RelNode converted;
+    final RelNode rel3 = expand ? rel2 : rel2.accept(new RelsWithRexSubQueryFlattener(sqlToRelConverter));
+    if (settings.isRelPlanningEnabled()) {
+      converted = rel3;
+    } else {
+      converted = DremioRelDecorrelator.decorrelateQuery(rel3, DremioRelFactories.CALCITE_LOGICAL_BUILDER.create(rel3.getCluster(), null), false, false);
+    }
 
     if (logger.isDebugEnabled()) {
-      logger.debug("ConvertQuery with expand = {}:\n{}", expand, RelOptUtil.toString(rel4, SqlExplainLevel.ALL_ATTRIBUTES));
+      logger.debug("ConvertQuery with expand = {}:\n{}", expand, RelOptUtil.toString(converted, SqlExplainLevel.ALL_ATTRIBUTES));
     }
-    return RelRootPlus.of(rel4, rel.kind, convertletTable.isReflectionDisallowed());
+    return RelRootPlus.of(converted, rel.validatedRowType, rel.kind, convertletTable.isReflectionDisallowed());
   }
 
   /**
@@ -307,11 +346,10 @@ public class SqlConverter {
       this.contextSensitive = contextSensitive;
     }
 
-    public static RelRootPlus of(RelNode rel, SqlKind kind, boolean contextSensitive) {
-      RelDataType rowType = rel.getRowType();
-      final ImmutableIntList refs = ImmutableIntList.identity(rowType.getFieldCount());
-      final List<String> names = rowType.getFieldNames();
-      return new RelRootPlus(rel, rowType, kind, Pair.zip(refs, names), RelCollations.EMPTY, contextSensitive);
+    public static RelRootPlus of(RelNode rel, RelDataType validatedRowType, SqlKind kind, boolean contextSensitive) {
+      final ImmutableIntList refs = ImmutableIntList.identity(validatedRowType.getFieldCount());
+      final List<String> names = validatedRowType.getFieldNames();
+      return new RelRootPlus(rel, validatedRowType, kind, Pair.zip(refs, names), RelCollations.EMPTY, contextSensitive);
     }
 
     public boolean isContextSensitive() {

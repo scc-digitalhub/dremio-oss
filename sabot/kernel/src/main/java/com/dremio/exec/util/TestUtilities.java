@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,8 +23,8 @@ import java.util.List;
 import java.util.Set;
 
 import com.dremio.common.exceptions.ExecutionSetupException;
-import com.dremio.datastore.KVStoreProvider;
 import com.dremio.datastore.LocalKVStoreProvider;
+import com.dremio.datastore.api.LegacyKVStoreProvider;
 import com.dremio.exec.catalog.CatalogServiceImpl;
 import com.dremio.exec.catalog.ManagedStoragePlugin;
 import com.dremio.exec.store.CatalogService;
@@ -160,7 +160,7 @@ public class TestUtilities {
    * @throws NamespaceException
    * @throws IOException
    */
-  public static void clear(CatalogService catalogService, KVStoreProvider kvstore, List<String> savedStores, List<String> savedPaths) throws NamespaceException, IOException {
+  public static void clear(CatalogService catalogService, LegacyKVStoreProvider kvstore, List<String> savedStores, List<String> savedPaths) throws NamespaceException, IOException {
     {
       List<String> list = new ArrayList<>();
       list.add(NamespaceServiceImpl.DAC_NAMESPACE);
@@ -170,11 +170,12 @@ public class TestUtilities {
       list.add("rulesmanager");
       list.add("wlmqueuecontainerversion");
       list.add("configuration");
+      list.add("node_collections");
       list.add("sys.options");
       if(savedStores != null) {
         list.addAll(savedStores);
       }
-      ((LocalKVStoreProvider) kvstore).deleteEverything(list.toArray(new String[0]));
+      kvstore.unwrap(LocalKVStoreProvider.class).deleteEverything(list.toArray(new String[0]));
     }
 
     final NamespaceService namespace = new NamespaceServiceImpl(kvstore);

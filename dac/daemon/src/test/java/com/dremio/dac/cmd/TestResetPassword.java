@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -49,30 +49,27 @@ public class TestResetPassword extends BaseTestServer {
   @BeforeClass
   public static void init() throws Exception {
     enableDefaultUser(false);
+    inMemoryStorage(false);
+    addDefaultUser(true);
     Assume.assumeFalse(BaseTestServer.isMultinode());
     try (Timer.TimedBlock b = Timer.time("BaseTestServer.@BeforeClass")) {
       dacConfig = dacConfig.writePath(folder1.newFolder().getAbsolutePath());
-      startDaemon();
+      BaseTestServer.init(false);
     }
   }
 
   @AfterClass
   public static void shutdown() {
     enableDefaultUser(true);
-  }
-
-  private static void startDaemon() throws Exception {
-    setCurrentDremioDaemon(DACDaemon.newDremioDaemon(dacConfig, DremioTest.CLASSPATH_SCAN_RESULT));
-    setMasterDremioDaemon(null);
-    getCurrentDremioDaemon().init();
-    initClient();
+    inMemoryStorage(true);
+    addDefaultUser(false);
   }
 
   @Test
   public void testResetPassword() throws Exception {
     getCurrentDremioDaemon().close();
     SetPassword.resetPassword(getCurrentDremioDaemon().getDACConfig(), DEFAULT_USERNAME, "tshiran123456");
-    startDaemon();
+    BaseTestServer.init(false);
 
     UserLogin userLogin = new UserLogin(DEFAULT_USERNAME, DEFAULT_PASSWORD);
     expectStatus(Status.UNAUTHORIZED, getAPIv2().path("/login").request(JSON).buildPost(Entity.json(userLogin)), GenericErrorMessage.class);

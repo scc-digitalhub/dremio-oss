@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -47,11 +47,11 @@ public class ITTestEmptyIndexType extends ElasticBaseTestQuery {
     testBuilder()
       .sqlQuery("describe elasticsearch." + schema + "." + table)
       .unOrdered()
-      .baselineColumns("COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE")
-      .baselineValues("city", "CHARACTER VARYING", "YES")
-      .baselineValues("full_address", "CHARACTER VARYING", "YES")
-      .baselineValues("review_count", "INTEGER", "YES")
-      .baselineValues("stars", "FLOAT", "YES")
+      .baselineColumns("COLUMN_NAME", "DATA_TYPE", "IS_NULLABLE", "NUMERIC_PRECISION", "NUMERIC_SCALE")
+      .baselineValues("city", "CHARACTER VARYING", "YES", null, null)
+      .baselineValues("full_address", "CHARACTER VARYING", "YES", null, null)
+      .baselineValues("review_count", "INTEGER", "YES", 32, 0)
+      .baselineValues("stars", "FLOAT", "YES", 24, null)
       .go();
     testBuilder()
       .sqlQuery(query)

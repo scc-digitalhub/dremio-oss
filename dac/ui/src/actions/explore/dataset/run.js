@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,14 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { CALL_API } from 'redux-api-middleware';
+import { RSAA } from 'redux-api-middleware';
 import invariant from 'invariant';
 import { debounce } from 'lodash/function';
 
-import { API_URL_V2 } from 'constants/Api';
 import schemaUtils from 'utils/apiUtils/schemaUtils';
 import { datasetWithoutData } from 'schemas/v2/fullDataset';
 import exploreUtils from 'utils/explore/exploreUtils';
+import { APIV2Call } from '@app/core/APICall';
 
 export const RUN_DATASET_START = 'RUN_DATASET_START';
 export const RUN_DATASET_SUCCESS = 'RUN_DATASET_SUCCESS';
@@ -28,11 +28,17 @@ export const RUN_DATASET_FAILURE = 'RUN_DATASET_FAILURE';
 
 function fetchRunDataset(dataset, viewId) {
   const tipVersion = dataset.get('tipVersion');
-  const href = `${dataset.getIn(['apiLinks', 'self'])}/run` + (tipVersion ? `?tipVersion=${tipVersion}` : '');
+
+  const apiCall = new APIV2Call()
+    .paths(`${dataset.getIn(['apiLinks', 'self'])}/run`);
+
+  if (tipVersion) {
+    apiCall.params({tipVersion});
+  }
 
   const meta = { dataset, viewId };
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         { type: RUN_DATASET_START, meta },
         schemaUtils.getSuccessActionTypeWithSchema(RUN_DATASET_SUCCESS, datasetWithoutData, meta),
@@ -42,7 +48,7 @@ function fetchRunDataset(dataset, viewId) {
       headers: {
         'Content-Type': 'application/json'
       },
-      endpoint: `${API_URL_V2}${href}`
+      endpoint: apiCall
     }
   };
 }
@@ -61,11 +67,14 @@ export const transformAndRunActionTypes = [
 function fetchTransformAndRun(dataset, transformData, viewId) {
   invariant(dataset.get('datasetVersion'), 'Can\'t run new dataset. Create dataset with newUntitled first');
   const newVersion = exploreUtils.getNewDatasetVersion();
-  const href = `${dataset.getIn(['apiLinks', 'self'])}/transformAndRun?newVersion=${newVersion}`;
+
+  const apiCall = new APIV2Call()
+    .paths(`${dataset.getIn(['apiLinks', 'self'])}/transformAndRun`)
+    .params({newVersion});
 
   const meta = { viewId, entity: dataset};
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         { type: TRANSFORM_AND_RUN_DATASET_START, meta },
         schemaUtils.getSuccessActionTypeWithSchema(TRANSFORM_AND_RUN_DATASET_SUCCESS, datasetWithoutData, meta),
@@ -76,7 +85,7 @@ function fetchTransformAndRun(dataset, transformData, viewId) {
       headers: {
         'Content-Type': 'application/json'
       },
-      endpoint: `${API_URL_V2}${href}`
+      endpoint: apiCall
     }
   };
 }

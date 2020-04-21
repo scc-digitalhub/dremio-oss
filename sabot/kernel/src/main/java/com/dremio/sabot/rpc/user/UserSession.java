@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,12 +17,12 @@ package com.dremio.sabot.rpc.user;
 
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.calcite.avatica.util.Quoting;
 
 import com.dremio.common.utils.SqlUtils;
 import com.dremio.exec.ExecConstants;
+import com.dremio.exec.proto.UserBitShared.QueryId;
 import com.dremio.exec.proto.UserBitShared.RpcEndpointInfos;
 import com.dremio.exec.proto.UserBitShared.UserCredentials;
 import com.dremio.exec.proto.UserProtos.Property;
@@ -32,10 +32,13 @@ import com.dremio.exec.server.options.SessionOptionManager;
 import com.dremio.exec.store.ischema.InfoSchemaConstants;
 import com.dremio.exec.work.user.SubstitutionSettings;
 import com.dremio.options.OptionManager;
+import com.dremio.options.Options;
+import com.dremio.options.TypeValidators.RangeLongValidator;
 import com.dremio.service.namespace.NamespaceKey;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 
+@Options
 public class UserSession {
   private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(UserSession.class);
 
@@ -45,9 +48,23 @@ public class UserSession {
   public static final String IMPERSONATION_TARGET = PropertySetter.IMPERSONATION_TARGET.toPropertyName();
   public static final String QUOTING = PropertySetter.QUOTING.toPropertyName();
   public static final String SUPPORTFULLYQUALIFIEDPROJECTS = PropertySetter.SUPPORTFULLYQUALIFIEDPROJECTS.toPropertyName();
+  public static final String ROUTING_TAG = PropertySetter.ROUTING_TAG.toPropertyName();
+  public static final String ROUTING_QUEUE = PropertySetter.ROUTING_QUEUE.toPropertyName();
+
+  public static final RangeLongValidator MAX_METADATA_COUNT =
+      new RangeLongValidator("client.max_metadata_count", 0, Integer.MAX_VALUE, 0);
 
   private enum PropertySetter {
     USER, PASSWORD,
+
+    MAXMETADATACOUNT {
+      @Override
+      public void setValue(UserSession session, String value) {
+        final int maxMetadataCount = Integer.parseInt(value);
+        Preconditions.checkArgument(maxMetadataCount >= 0, "MaxMetadataCount must be non-negative");
+        session.maxMetadataCount = maxMetadataCount;
+      }
+    },
 
     QUOTING {
       @Override
@@ -96,6 +113,27 @@ public class UserSession {
       public void setValue(UserSession session, String value) {
         session.supportFullyQualifiedProjections = "true".equalsIgnoreCase(value);
       }
+    },
+
+    ROUTING_TAG {
+      @Override
+      public void setValue(UserSession session, String value) {
+        session.routingTag = value;
+      }
+    },
+
+    ROUTING_QUEUE {
+      @Override
+      public void setValue(UserSession session, String value) {
+        session.routingQueue = value;
+      }
+    },
+
+    TRACING_ENABLED {
+      @Override
+      public void setValue(UserSession session, String value) {
+        session.tracingEnabled = "true".equalsIgnoreCase(value);
+      }
     };
 
     /**
@@ -112,19 +150,24 @@ public class UserSession {
     }
   }
 
-  private final AtomicInteger queryCount = new AtomicInteger(0);
+  private volatile QueryId lastQueryId = null;
   private boolean supportComplexTypes = false;
   private UserCredentials credentials;
   private NamespaceKey defaultSchemaPath;
-  private OptionManager sessionOptions;
+  private SessionOptionManager sessionOptionManager;
+
   private RpcEndpointInfos clientInfos;
   private boolean useLegacyCatalogName = false;
   private String impersonationTarget = null;
   private Quoting initialQuoting;
   private boolean supportFullyQualifiedProjections;
+  private String routingTag;
+  private String routingQueue;
   private RecordBatchFormat recordBatchFormat = RecordBatchFormat.DREMIO_1_4;
   private boolean exposeInternalSources = false;
+  private boolean tracingEnabled = false;
   private SubstitutionSettings substitutionSettings = SubstitutionSettings.of();
+  private int maxMetadataCount = 0;
 
   public static class Builder {
     UserSession userSession;
@@ -133,13 +176,14 @@ public class UserSession {
       return new Builder();
     }
 
-    public Builder withCredentials(UserCredentials credentials) {
-      userSession.credentials = credentials;
+    public Builder withSessionOptionManager(SessionOptionManager sessionOptionManager) {
+      userSession.sessionOptionManager = sessionOptionManager;
+      userSession.maxMetadataCount = (int) sessionOptionManager.getOption(MAX_METADATA_COUNT);
       return this;
     }
 
-    public Builder withOptionManager(OptionManager systemOptions) {
-      userSession.sessionOptions = new SessionOptionManager(systemOptions, userSession);
+    public Builder withCredentials(UserCredentials credentials) {
+      userSession.credentials = credentials;
       return this;
     }
 
@@ -232,7 +276,15 @@ public class UserSession {
   }
 
   public OptionManager getOptions() {
-    return sessionOptions;
+    return sessionOptionManager;
+  }
+
+  public String getRoutingTag() {
+    return routingTag;
+  }
+
+  public String getRoutingQueue() {
+    return routingQueue;
   }
 
   public UserCredentials getCredentials() {
@@ -251,6 +303,10 @@ public class UserSession {
     return exposeInternalSources;
   }
 
+  public boolean isTracingEnabled() {
+    return tracingEnabled;
+  }
+
   public SubstitutionSettings getSubstitutionSettings() {
     return substitutionSettings;
   }
@@ -261,6 +317,10 @@ public class UserSession {
 
   public boolean useLegacyCatalogName() {
     return useLegacyCatalogName;
+  }
+
+  public int getMaxMetadataCount() {
+    return maxMetadataCount;
   }
 
   /**
@@ -281,7 +341,7 @@ public class UserSession {
     return supportFullyQualifiedProjections;
   }
 
-  public static String getCatalogName(OptionManager options){
+  public static String getCatalogName(OptionManager options) {
     return options.getOption(ExecConstants.USE_LEGACY_CATALOG_NAME) ? InfoSchemaConstants.IS_LEGACY_CATALOG_NAME : InfoSchemaConstants.IS_CATALOG_NAME;
   }
 
@@ -308,11 +368,7 @@ public class UserSession {
   }
 
   public void incrementQueryCount() {
-    queryCount.incrementAndGet();
-  }
-
-  public int getQueryCount() {
-    return queryCount.get();
+    sessionOptionManager.incrementQueryCount();
   }
 
   public Quoting getInitialQuoting() {
@@ -333,4 +389,8 @@ public class UserSession {
   public NamespaceKey getDefaultSchemaPath() {
     return defaultSchemaPath;
   }
+
+  public QueryId getLastQueryId() { return lastQueryId; }
+
+  public void setLastQueryId(QueryId id) { lastQueryId = id; }
 }

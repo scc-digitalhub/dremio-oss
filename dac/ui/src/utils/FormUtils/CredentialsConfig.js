@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
  */
 import FormUtils from 'utils/FormUtils/FormUtils';
 import FormElementConfig from 'utils/FormUtils/FormElementConfig';
-import Credentials from 'components/Forms/Credentials';
+import Credentials, { AUTHENTICATION_TYPE_FIELD } from 'components/Forms/Credentials';
 import CredentialsWrapper from 'components/Forms/Wrappers/CredentialsWrapper';
 
 export default class CredentialsConfig extends FormElementConfig {
@@ -34,7 +34,7 @@ export default class CredentialsConfig extends FormElementConfig {
   }
 
   addInitValues(initValues) {
-    return FormUtils.addInitValue(initValues, 'config.authenticationType', 'MASTER');
+    return FormUtils.addInitValue(initValues, AUTHENTICATION_TYPE_FIELD, 'MASTER');
   }
 
   addValidators(validations) {

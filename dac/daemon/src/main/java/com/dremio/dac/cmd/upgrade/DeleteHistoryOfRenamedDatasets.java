@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ import com.dremio.dac.proto.model.dataset.NameDatasetRef;
 import com.dremio.dac.proto.model.dataset.VirtualDatasetVersion;
 import com.dremio.dac.service.datasets.DatasetVersionMutator.VersionDatasetKey;
 import com.dremio.dac.service.datasets.DatasetVersionMutator.VersionStoreCreator;
-import com.dremio.datastore.KVStore;
+import com.dremio.datastore.api.LegacyKVStore;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Maps;
 
@@ -38,7 +38,7 @@ public class DeleteHistoryOfRenamedDatasets extends UpgradeTask implements  Lega
   static final String taskUUID = "149b8d09-9099-4eba-8902-0edf103a441c";
 
   public DeleteHistoryOfRenamedDatasets() {
-    super("Delete history of renamed datasets", ImmutableList.of(CompressHiveTableAttrs.taskUUID));
+    super("Delete history of renamed datasets", ImmutableList.of(UpdateDatasetSplitIdTask.taskUUID));
   }
 
   @Override
@@ -53,7 +53,7 @@ public class DeleteHistoryOfRenamedDatasets extends UpgradeTask implements  Lega
 
   @Override
   public void upgrade(UpgradeContext context) throws Exception {
-    final KVStore<VersionDatasetKey, VirtualDatasetVersion> datasetVersions =
+    final LegacyKVStore<VersionDatasetKey, VirtualDatasetVersion> datasetVersions =
         context.getKVStoreProvider().getStore(VersionStoreCreator.class);
 
     final Map<VersionDatasetKey, VirtualDatasetVersion> renamedDatasets = Maps.newHashMap();

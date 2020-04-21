@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,6 +32,11 @@ public class RexCopierWithOver extends RexCopier {
   public RexNode visitOver(RexOver over) {
     // this is safe currently since we use a static type factory (JavaTypeFactoryImpl.INSTANCE).
     return over;
+  }
+
+  @Override
+  public RexNode visitCorrelVariable(RexCorrelVariable variable) {
+    return new RexCorrelVariable(variable.id, variable.getType());
   }
 
 }

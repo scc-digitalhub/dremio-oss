@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,8 +18,8 @@ package com.dremio.plugins.azure;
 import java.util.List;
 
 import javax.inject.Provider;
-
-import org.apache.hadoop.fs.Path;
+import javax.validation.constraints.Max;
+import javax.validation.constraints.Min;
 
 import com.dremio.exec.catalog.StoragePluginId;
 import com.dremio.exec.catalog.conf.DisplayMetadata;
@@ -30,6 +30,8 @@ import com.dremio.exec.catalog.conf.SourceType;
 import com.dremio.exec.server.SabotContext;
 import com.dremio.exec.store.dfs.FileSystemConf;
 import com.dremio.exec.store.dfs.SchemaMutability;
+import com.dremio.io.file.Path;
+import com.dremio.options.OptionManager;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
@@ -39,16 +41,25 @@ import io.protostuff.Tag;
 /**
  * Azure Storage (including datalake v2)
  */
-@SourceType(value = "AZURE_STORAGE", label = "Azure Storage")
+@CheckAzureConf
+@SourceType(value = "AZURE_STORAGE", label = "Azure Storage", uiConfig = "azure-storage-layout.json")
 public class AzureStorageConf extends FileSystemConf<AzureStorageConf, AzureStoragePlugin> {
 
-  private static final List<String> UNIQUE_CONN_PROPS = ImmutableList.of(
-      AzureStorageFileSystem.ACCOUNT,
-      AzureStorageFileSystem.SECURE,
-      AzureStorageFileSystem.KEY,
-      AzureStorageFileSystem.CONTAINER_LIST
+  public static final List<String> KEY_AUTH_PROPS = ImmutableList.of(
+    AzureStorageFileSystem.ACCOUNT,
+    AzureStorageFileSystem.SECURE,
+    AzureStorageFileSystem.CONTAINER_LIST,
+    AzureStorageFileSystem.KEY
   );
 
+  public static final List<String> AZURE_AD_PROPS = ImmutableList.of(
+    AzureStorageFileSystem.ACCOUNT,
+    AzureStorageFileSystem.SECURE,
+    AzureStorageFileSystem.CONTAINER_LIST,
+    AzureStorageFileSystem.CLIENT_ID,
+    AzureStorageFileSystem.CLIENT_SECRET,
+    AzureStorageFileSystem.TOKEN_ENDPOINT
+  );
 
   /**
    * Type of Storage
@@ -113,6 +124,34 @@ public class AzureStorageConf extends FileSystemConf<AzureStorageConf, AzureStor
   @DisplayMetadata(label = "Enable asynchronous access when possible")
   public boolean enableAsync = true;
 
+  @Tag(10)
+  @DisplayMetadata(label = "Application ID")
+  public String clientId;
+
+  @Tag(11)
+  @DisplayMetadata(label = "OAuth 2.0 Token Endpoint")
+  public String tokenEndpoint;
+
+  @Tag(12)
+  @Secret
+  @DisplayMetadata(label = "Client Secret")
+  public String clientSecret;
+
+  @Tag(13)
+  public AzureAuthenticationType credentialsType = AzureAuthenticationType.ACCESS_KEY;
+
+  @Tag(14)
+  @NotMetadataImpacting
+  @DisplayMetadata(label = "Enable local caching when possible")
+  public boolean isCachingEnabled = true;
+
+  @Tag(15)
+  @NotMetadataImpacting
+  @Min(value = 1, message = "Max percent of total available cache space must be between 1 and 100")
+  @Max(value = 100, message = "Max percent of total available cache space must be between 1 and 100")
+  @DisplayMetadata(label = "Max percent of total available cache space to use when possible")
+  public int maxCacheSpacePct = 100;
+
   @Override
   public AzureStoragePlugin newPlugin(SabotContext context, String name, Provider<StoragePluginId> pluginIdProvider) {
     Preconditions.checkNotNull(accountName, "Account name must be provided.");
@@ -121,7 +160,7 @@ public class AzureStorageConf extends FileSystemConf<AzureStorageConf, AzureStor
 
   @Override
   public Path getPath() {
-    return new Path(rootPath);
+    return Path.of(rootPath);
   }
 
   @Override
@@ -136,7 +175,7 @@ public class AzureStorageConf extends FileSystemConf<AzureStorageConf, AzureStor
 
   @Override
   public String getConnection() {
-    return String.format("%s:///", AzureStorageFileSystem.SCHEME);
+    return String.format("%s:///", CloudFileSystemScheme.AZURE_STORAGE_FILE_SYSTEM_SCHEME.getScheme());
   }
 
   @Override
@@ -145,12 +184,22 @@ public class AzureStorageConf extends FileSystemConf<AzureStorageConf, AzureStor
   }
 
   @Override
-  public List<String> getConnectionUniqueProperties() {
-    return UNIQUE_CONN_PROPS;
+  public boolean isAsyncEnabled() {
+    return enableAsync;
   }
 
   @Override
-  public boolean isAsyncEnabled() {
-    return enableAsync;
+  public CacheProperties getCacheProperties() {
+    return new CacheProperties() {
+      @Override
+      public boolean isCachingEnabled(final OptionManager optionManager) {
+        return isCachingEnabled;
+      }
+
+      @Override
+      public int cacheMaxSpaceLimitPct() {
+        return maxCacheSpacePct;
+      }
+    };
   }
 }

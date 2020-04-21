@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,14 +17,23 @@ package com.dremio.dac.model.job;
 
 import static com.dremio.service.accelerator.AccelerationDetailsUtils.deserialize;
 
-import com.dremio.exec.proto.beans.RequestType;
+import java.util.Optional;
+
+import com.dremio.dac.util.TruncateString200Converter;
+import com.dremio.proto.model.attempts.RequestType;
 import com.dremio.service.accelerator.proto.AccelerationDetails;
+import com.dremio.service.job.JobSummary;
 import com.dremio.service.job.proto.JobAttempt;
 import com.dremio.service.job.proto.JobState;
+import com.dremio.service.job.proto.JobStats;
 import com.dremio.service.jobs.Job;
+import com.dremio.service.jobs.JobsProtoUtil;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.google.common.base.Preconditions;
+import com.google.common.base.Strings;
 
 /**
  * Represents a socket update to one job in jobs list
@@ -45,6 +54,8 @@ public class PartialJobListItem {
   private final String datasetVersion;
   private final boolean isComplete;
   private final boolean spilled;
+  private final Long outputRecords;
+  private final Boolean outputLimited;
 
   @JsonCreator
   public PartialJobListItem(
@@ -60,7 +71,9 @@ public class PartialJobListItem {
       @JsonProperty("accelerated") boolean accelerated,
       @JsonProperty("datasetVersion") String datasetVersion,
       @JsonProperty("snowflakeAccelerated") boolean snowflakeAccelerated,
-      @JsonProperty("spilled") boolean spilled) {
+      @JsonProperty("spilled") boolean spilled,
+      @JsonProperty("outputRecords") long outputRecords,
+      @JsonProperty("outputLimited") boolean outputLimited) {
     super();
     this.id = id;
     this.state = state;
@@ -73,9 +86,11 @@ public class PartialJobListItem {
     this.accelerated = accelerated;
     this.requestType = requestType;
     this.datasetVersion = datasetVersion;
-    this.isComplete = isComplete(state);
+    this.isComplete = isComplete(this.state);
     this.snowflakeAccelerated = snowflakeAccelerated;
     this.spilled = spilled;
+    this.outputRecords = outputRecords;
+    this.outputLimited = outputLimited;
   }
 
   public PartialJobListItem(Job input) {
@@ -84,8 +99,8 @@ public class PartialJobListItem {
 
     this.id = input.getJobId().getId();
     this.state = lastAttempt.getState();
-    this.failureInfo = JobDetailsUI.toJobFailureInfo(input.getJobAttempt().getInfo());
-    this.cancellationInfo = JobDetailsUI.toJobCancellationInfo(input.getJobAttempt());
+    this.failureInfo = JobDetailsUI.toJobFailureInfo(lastAttempt.getInfo().getFailureInfo(), lastAttempt.getInfo().getDetailedFailureInfo());
+    this.cancellationInfo = JobDetailsUI.toJobCancellationInfo(lastAttempt.getState(), lastAttempt.getInfo().getCancellationInfo());
     this.user = firstAttempt.getInfo().getUser();
     this.startTime = firstAttempt.getInfo().getStartTime();
     this.endTime = lastAttempt.getInfo().getFinishTime();
@@ -94,18 +109,46 @@ public class PartialJobListItem {
     this.requestType =  firstAttempt.getInfo().getRequestType();
     this.datasetVersion = firstAttempt.getInfo().getDatasetVersion();
     this.isComplete = isComplete(state);
-    AccelerationDetails accelerationDetails = deserialize(lastAttempt.getAccelerationDetails());
+    final AccelerationDetails accelerationDetails = deserialize(lastAttempt.getAccelerationDetails());
     this.snowflakeAccelerated = this.accelerated && JobDetailsUI.wasSnowflakeAccelerated(accelerationDetails);
     this.spilled = lastAttempt.getInfo().getSpillJobDetails() != null;
+
+    final JobStats stats = lastAttempt.getStats();
+    this.outputRecords = Optional.ofNullable(stats).map(JobStats::getOutputRecords).orElse(null);
+    this.outputLimited = Optional.ofNullable(stats).map(JobStats::getIsOutputLimited).orElse(false);
   }
 
-  private boolean isComplete(JobState state){
+  public PartialJobListItem(JobSummary input) {
+    this.id = input.getJobId().getId();
+    this.state = JobsProtoUtil.toStuff(input.getJobState());
+    this.failureInfo = JobDetailsUI.toJobFailureInfo(Strings.isNullOrEmpty(input.getFailureInfo()) ? null : input.getFailureInfo(),
+      JobsProtoUtil.toStuff(input.getDetailedJobFailureInfo()));
+    this.cancellationInfo = JobDetailsUI.toJobCancellationInfo(JobsProtoUtil.toStuff(input.getJobState()),
+      JobsProtoUtil.toStuff(input.getCancellationInfo()));
+    this.user = input.getUser();
+    this.startTime = input.getStartTime() == 0 ? null : input.getStartTime();
+    this.endTime = input.getEndTime() == 0 ? null : input.getEndTime();
+    this.description = Strings.isNullOrEmpty(input.getDescription()) ? null : input.getDescription();
+    this.accelerated = input.getAccelerated();
+    this.requestType = JobsProtoUtil.toStuff(input.getRequestType());
+    this.datasetVersion = input.getDatasetVersion();
+    this.isComplete = isComplete(state);
+    this.snowflakeAccelerated = input.getSnowflakeAccelerated();
+    this.spilled = input.getSpilled();
+    this.outputRecords = input.getOutputRecords();
+    this.outputLimited = input.getOutputLimited();
+  }
+
+  private boolean isComplete(JobState state) {
+    Preconditions.checkNotNull(state, "JobState must be set");
+
     switch(state){
       case CANCELLATION_REQUESTED:
       case ENQUEUED:
       case NOT_SUBMITTED:
       case RUNNING:
       case STARTING:
+      case PLANNING:
         return false;
       case CANCELED:
       case COMPLETED:
@@ -145,6 +188,7 @@ public class PartialJobListItem {
     return endTime;
   }
 
+  @JsonSerialize(converter = TruncateString200Converter.class)
   public String getDescription() {
     return description;
   }
@@ -172,5 +216,13 @@ public class PartialJobListItem {
 
   public boolean isSpilled() {
     return spilled;
+  }
+
+  public Long getOutputRecords() {
+    return outputRecords;
+  }
+
+  public Boolean isOutputLimited() {
+    return outputLimited;
   }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -160,8 +160,8 @@ public class RoundRobinOperator extends BaseSender {
         @Nullable
         @Override
         public ArrowBuf apply(@Nullable ArrowBuf buf) {
-          int writerIndex = buf.writerIndex();
-          ArrowBuf newBuf = buf.transferOwnership(allocator).buffer;
+          long writerIndex = buf.writerIndex();
+          ArrowBuf newBuf = buf.getReferenceManager().transferOwnership(buf, allocator).getTransferredBuffer();
           newBuf.writerIndex(writerIndex);
           buf.release();
           return newBuf;

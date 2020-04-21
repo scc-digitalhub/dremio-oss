@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -94,7 +94,7 @@ public class DictionaryLookupPrel extends SinglePrel {
     BatchSchema schema = b.build();
     return new DictionaryLookupPOP(
         creator.getContext().getCatalogService(),
-        creator.props(this, null, schema, RESERVE, LIMIT),
+        creator.props(this, creator.getContext().getQueryUserName(), schema, RESERVE, LIMIT),
         child,
         dictionaryEncodedFields);
   }

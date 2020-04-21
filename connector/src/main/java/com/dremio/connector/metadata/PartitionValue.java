@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 package com.dremio.connector.metadata;
+
+import java.nio.ByteBuffer;
 
 /**
  * Interface for a connector to provide a value for a partition column. The caller is responsible for determining the
@@ -149,7 +151,7 @@ public interface PartitionValue {
      *
      * @return value
      */
-    BytesOutput getValue();
+    ByteBuffer getValue();
 
   }
 
@@ -333,7 +335,7 @@ public interface PartitionValue {
    * @param value partition column value
    * @return partition value
    */
-  static PartitionValue of(String name, BytesOutput value) {
+  static PartitionValue of(String name, ByteBuffer value) {
     return of(name, value, PartitionValueType.VISIBLE);
   }
 
@@ -345,7 +347,7 @@ public interface PartitionValue {
    * @param type  partition value type
    * @return partition value
    */
-  static PartitionValue of(String name, BytesOutput value, PartitionValueType type) {
+  static PartitionValue of(String name, ByteBuffer value, PartitionValueType type) {
     return new PartitionValues.BinaryImpl(name, type, value);
   }
 }

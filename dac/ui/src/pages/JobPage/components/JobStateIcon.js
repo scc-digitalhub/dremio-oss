@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -45,6 +45,7 @@ export default class JobStateIcon extends PureComponent {
     return <Art
       src={`${src}.svg`}
       alt={this.props.intl.formatMessage({id: 'Job.State.' + state})}
+      title
       style={{height: 24, ...this.props.style}}
       className={className}
     />;
@@ -59,5 +60,6 @@ const icons = {
   'CANCELED': 'Canceled',
   'FAILED': 'ErrorSolid',
   'CANCELLATION_REQUESTED': 'CanceledGray',
-  'ENQUEUED': 'Ellipsis'
+  'ENQUEUED': 'Ellipsis',
+  'PLANNING': 'Ellipsis'
 };

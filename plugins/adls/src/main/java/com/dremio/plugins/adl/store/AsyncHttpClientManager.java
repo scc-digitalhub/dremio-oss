@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,12 +20,16 @@ import static org.asynchttpclient.Dsl.config;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import org.asynchttpclient.AsyncHttpClient;
 import org.asynchttpclient.AsyncHttpClientConfig;
 import org.asynchttpclient.DefaultAsyncHttpClientConfig;
 import org.asynchttpclient.netty.channel.DefaultChannelPool;
 
+import com.dremio.common.AutoCloseables;
+import com.dremio.common.concurrent.NamedThreadFactory;
 import com.microsoft.azure.datalake.store.ADLStoreClient;
 import com.microsoft.azure.datalake.store.ADLStoreOptions;
 import com.microsoft.azure.datalake.store.oauth2.AccessTokenProvider;
@@ -46,6 +50,8 @@ public class AsyncHttpClientManager implements Closeable {
 
   private AsyncHttpClient asyncHttpClient;
   private ADLStoreClient client;
+  private ExecutorService utilityThreadPool;
+  private final HashedWheelTimer poolTimer = new HashedWheelTimer();
 
   public AsyncHttpClientManager(String name, AzureDataLakeConf conf) throws IOException {
     final AccessTokenProvider tokenProvider;
@@ -61,7 +67,6 @@ public class AsyncHttpClientManager implements Closeable {
         throw new RuntimeException("Failure creating ADLSg1 connection. Invalid credentials type.");
     }
 
-    final HashedWheelTimer poolTimer = new HashedWheelTimer();
     final SslContext sslContext = SslContextBuilder
       .forClient()
       .build();
@@ -84,6 +89,7 @@ public class AsyncHttpClientManager implements Closeable {
 
     client.setOptions(new ADLStoreOptions().enableThrowingRemoteExceptions());
     asyncHttpClient = asyncHttpClient(configBuilder.build());
+    utilityThreadPool = Executors.newCachedThreadPool(new NamedThreadFactory("adls-utility"));
   }
 
   public AsyncHttpClient getAsyncHttpClient() {
@@ -94,9 +100,12 @@ public class AsyncHttpClientManager implements Closeable {
     return client;
   }
 
-  @Override
-  public void close() throws IOException {
-    asyncHttpClient.close();
+  public ExecutorService getUtilityThreadPool() {
+    return utilityThreadPool;
   }
 
+  @Override
+  public void close() throws IOException {
+    AutoCloseables.close(IOException.class, asyncHttpClient, poolTimer::stop, utilityThreadPool::shutdown);
+  }
 }

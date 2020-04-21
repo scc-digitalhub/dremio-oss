@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,6 +31,7 @@ import org.slf4j.LoggerFactory;
 
 import com.dremio.common.exceptions.UserException;
 import com.dremio.common.expression.SchemaPath;
+import com.dremio.exec.store.parquet.ParquetColumnResolver;
 import com.dremio.exec.store.parquet.SchemaDerivationHelper;
 import com.dremio.exec.store.parquet2.WriterProvider.ListWriterProvider;
 import com.dremio.options.OptionManager;
@@ -39,7 +40,7 @@ import com.dremio.sabot.op.scan.OutputMutator;
 /**
  * First level of LOGICAL LIST conversion. Handles 'list'
  */
-class LogicalListL1Converter extends GroupConverter {
+public class LogicalListL1Converter extends GroupConverter {
   private static final Logger logger = LoggerFactory.getLogger(LogicalListL1Converter.class);
 
   private final ListWriter listWriter;
@@ -48,7 +49,8 @@ class LogicalListL1Converter extends GroupConverter {
   // This function assumes that the fields in the schema parameter are in the same order as the fields in the columns parameter. The
   // columns parameter may have fields that are not present in the schema, though.
   LogicalListL1Converter(
-      final String listName,
+      ParquetColumnResolver columnResolver,
+      String fieldName,
       OutputMutator mutator,
       final WriterProvider writerProvider,
       GroupType schema,
@@ -57,7 +59,8 @@ class LogicalListL1Converter extends GroupConverter {
       List<Field> arrowSchema,
       SchemaDerivationHelper schemaHelper) {
 
-    listWriter = writerProvider.list(listName);
+    String listFieldName = columnResolver.getBatchSchemaColumnName(fieldName);
+    listWriter = writerProvider.list(ParquetGroupConverter.getNameForChild(listFieldName));
 
     if (!isSupportedSchema(schema)) {
       throw UserException.dataReadError()
@@ -68,6 +71,8 @@ class LogicalListL1Converter extends GroupConverter {
 
     final GroupType groupType = schema.getFields().get(0).asGroupType();
     converter = new LogicalListL2Converter(
+      columnResolver,
+      fieldName,
       new ListWriterProvider(listWriter),
       mutator,
       groupType,
@@ -90,7 +95,7 @@ class LogicalListL1Converter extends GroupConverter {
    * @param schema parquet group type
    * @return true is supported
    */
-  static boolean isSupportedSchema(GroupType schema) {
+  public static boolean isSupportedSchema(GroupType schema) {
     if (schema.getFieldCount() == 1) {
       Type type = schema.getType(0);
       // check: repeated group

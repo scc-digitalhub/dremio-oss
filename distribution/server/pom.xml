@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
 
-    Copyright (C) 2017-2018 Dremio Corporation
+    Copyright (C) 2017-2019 Dremio Corporation
 
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@
   <parent>
     <groupId>com.dremio.distribution</groupId>
     <artifactId>dremio-distribution-parent</artifactId>
-    <version>3.2.2-201905231753430810-ccf9a4e</version>
+    <version>4.2.1-202004111451200819-0c3ecaea</version>
   </parent>
 
   <artifactId>dremio-distribution</artifactId>
@@ -33,9 +33,24 @@
     <dremio.distribution.name>dremio-oss</dremio.distribution.name>
     <dremio.distribution.directory>${project.build.directory}/${dremio.distribution.name}-${project.version}/${dremio.distribution.name}-${project.version}</dremio.distribution.directory>
     <dremio.distribution.resources.directory>${project.build.directory}/distribution-resources</dremio.distribution.resources.directory>
+    <dremio.hive.plugin-group-id>com.dremio.plugins</dremio.hive.plugin-group-id>
+    <dremio.hive.plugin-artifact-id-prefix>dremio</dremio.hive.plugin-artifact-id-prefix>
   </properties>
 
   <dependencies>
+
+    <!-- Necessary to pick up the class path for the telemetry config   -->
+    <dependency>
+      <groupId>com.dremio.services</groupId>
+      <artifactId>dremio-services-telemetry-impl</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>com.dremio</groupId>
+      <artifactId>dremio-dac-daemon</artifactId>
+      <version>${project.version}</version>
+    </dependency>
     <dependency>
       <groupId>com.dremio.distribution</groupId>
       <artifactId>dremio-distribution-resources</artifactId>
@@ -60,11 +75,6 @@
     <dependency>
       <groupId>com.dremio</groupId>
       <artifactId>dremio-dac-backend</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>com.dremio</groupId>
-      <artifactId>dremio-dac-daemon</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>
@@ -123,20 +133,24 @@
     <dependency>
       <groupId>de.huxhorn.lilith</groupId>
       <artifactId>de.huxhorn.lilith.logback.appender.multiplex-classic</artifactId>
-      <version>0.9.44</version>
     </dependency>
     <dependency>
       <groupId>net.logstash.logback</groupId>
       <artifactId>logstash-logback-encoder</artifactId>
-      <version>4.7</version>
     </dependency>    
     <dependency>
-      <groupId>org.apache.hadoop</groupId>
-      <artifactId>hadoop-common</artifactId>
+      <groupId>org.apache.avro</groupId>
+      <artifactId>avro</artifactId>
     </dependency>
     <dependency>
       <groupId>org.apache.hadoop</groupId>
-      <artifactId>hadoop-aws</artifactId>
+      <artifactId>hadoop-common</artifactId>
+      <exclusions>
+        <exclusion>
+          <groupId>org.apache.avro</groupId>
+          <artifactId>avro</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
     <dependency>
       <groupId>org.apache.hadoop</groupId>
@@ -147,16 +161,6 @@
       <artifactId>hadoop-hdfs</artifactId>
       <version>${hadoop.version}</version>
     </dependency>
-    <dependency>
-      <groupId>org.apache.hbase</groupId>
-      <artifactId>hbase-client</artifactId>
-      <exclusions>
-        <exclusion>
-          <groupId>io.netty</groupId>
-          <artifactId>netty-all</artifactId>
-        </exclusion>
-      </exclusions>
-    </dependency>
 
     <dependency>
       <groupId>com.dremio.distribution</groupId>
@@ -166,17 +170,34 @@
 
     <dependency>
       <groupId>com.dremio.plugins</groupId>
-      <artifactId>dremio-hive-plugin</artifactId>
+      <artifactId>dremio-hive-plugin-common</artifactId>
+      <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>com.dremio.plugins</groupId>
-      <artifactId>dremio-hbase-plugin</artifactId>
+      <artifactId>dremio-hive2-plugin-launcher</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>${dremio.hive.plugin-group-id}</groupId>
+      <artifactId>${dremio.hive.plugin-artifact-id-prefix}-hive2-plugin-launcher</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>${dremio.hive.plugin-group-id}</groupId>
+      <artifactId>${dremio.hive.plugin-artifact-id-prefix}-hive2-plugin</artifactId>
+      <version>${project.version}</version>
       <exclusions>
         <exclusion>
-          <groupId>org.apache.hadoop</groupId>
-          <artifactId>hadoop-core</artifactId>
+          <groupId>*</groupId>
+          <artifactId>*</artifactId>
         </exclusion>
       </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>com.dremio.plugins</groupId>
+      <artifactId>dremio-hive-function-registry</artifactId>
+      <version>${project.version}</version>
     </dependency>
 
     <dependency>
@@ -188,7 +209,7 @@
     <dependency>
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-winutils</artifactId>
-      <version>2.7.1</version>
+      <version>3.2.0</version>
       <type>zip</type>
     </dependency>
 
@@ -331,7 +352,6 @@
                     </mapping>
                     <mapping>
                       <directory>/opt/dremio/jars</directory>
-                      <directoryIncluded>false</directoryIncluded>
                       <sources>
                         <source>
                           <location>${dremio.distribution.directory}/jars</location>
@@ -340,7 +360,6 @@
                     </mapping>
                     <mapping>
                       <directory>/opt/dremio/lib</directory>
-                      <directoryIncluded>false</directoryIncluded>
                       <sources>
                         <source>
                           <location>${dremio.distribution.directory}/lib</location>
@@ -349,7 +368,6 @@
                     </mapping>
                     <mapping>
                       <directory>/opt/dremio/licenses/dremio-${dremio.rpm.version}</directory>
-                      <directoryIncluded>false</directoryIncluded>
                       <sources>
                         <source>
                           <location>${dremio.distribution.directory}/licenses</location>
@@ -357,8 +375,15 @@
                       </sources>
                     </mapping>
                     <mapping>
+                      <directory>/opt/dremio/plugins</directory>
+                      <sources>
+                        <source>
+                          <location>${dremio.distribution.directory}/plugins</location>
+                        </source>
+                      </sources>
+                    </mapping>
+                    <mapping>
                       <directory>/opt/dremio/share/dremio</directory>
-                      <directoryIncluded>false</directoryIncluded>
                       <sources>
                         <source>
                           <location>${dremio.distribution.directory}/share</location>
@@ -367,7 +392,6 @@
                     </mapping>
                     <mapping>
                       <directory>/etc/dremio</directory>
-                      <directoryIncluded>false</directoryIncluded>
                       <sources>
                         <source>
                           <location>${dremio.distribution.directory}/conf/logback.xml</location>
@@ -402,41 +426,52 @@
                       <directory>/var/lib/dremio</directory>
                       <username>dremio</username>
                       <groupname>dremio</groupname>
-                      <filemode>755</filemode>
+                      <dirmode>755</dirmode>
                     </mapping>
                     <mapping>
                       <directory>/var/run/dremio</directory>
                       <username>dremio</username>
                       <groupname>dremio</groupname>
-                      <filemode>755</filemode>
+                      <dirmode>755</dirmode>
                     </mapping>
                     <mapping>
                       <directory>/var/log/dremio</directory>
                       <username>dremio</username>
                       <groupname>dremio</groupname>
-                      <filemode>755</filemode>
+                      <dirmode>755</dirmode>
                     </mapping>
                     <mapping>
                       <directory>/etc/init.d</directory>
-                      <filemode>555</filemode>
+                      <directoryIncluded>false</directoryIncluded>
+                      <filemode>755</filemode>
                       <sources>
                         <source>
                           <location>${dremio.distribution.resources.directory}/share/dremio.rc</location>
                           <destination>dremio</destination>
                         </source>
                       </sources>
+                    </mapping>
+                    <mapping>
+                      <directory>/usr/lib/systemd/system</directory>
                       <directoryIncluded>false</directoryIncluded>
+                      <filemode>644</filemode>
+                      <sources>
+                        <source>
+                          <location>${dremio.distribution.resources.directory}/share/dremio.service</location>
+                          <destination>dremio.service</destination>
+                        </source>
+                      </sources>
                     </mapping>
                     <mapping>
                       <directory>%{_tmpfilesdir}</directory>
-                      <filemode>555</filemode>
+                      <directoryIncluded>false</directoryIncluded>
+                      <filemode>644</filemode>
                       <sources>
                         <source>
                           <location>${dremio.distribution.resources.directory}/rpm/misc/dremio.tmpfiles.conf</location>
                           <destination>dremio.conf</destination>
                         </source>
                       </sources>
-                      <directoryIncluded>false</directoryIncluded>
                     </mapping>
                   </mappings>
                   <preinstallScriptlet>
@@ -493,18 +528,24 @@ exit 0
       </activation>
       <dependencies>
         <dependency>
-          <groupId>com.dremio.plugins</groupId>
-          <artifactId>dremio-adls-plugin</artifactId>
+          <groupId>${dremio.hive.plugin-group-id}</groupId>
+          <artifactId>${dremio.hive.plugin-artifact-id-prefix}-hive3-plugin</artifactId>
           <version>${project.version}</version>
+          <exclusions>
+            <exclusion>
+              <groupId>*</groupId>
+              <artifactId>*</artifactId>
+            </exclusion>
+          </exclusions>
         </dependency>
         <dependency>
           <groupId>com.dremio.plugins</groupId>
-          <artifactId>dremio-azure-storage-plugin</artifactId>
+          <artifactId>dremio-hive3-plugin-launcher</artifactId>
           <version>${project.version}</version>
-        </dependency>  
+        </dependency>
         <dependency>
-          <groupId>com.dremio.plugins</groupId>
-          <artifactId>dremio-s3-plugin</artifactId>
+          <groupId>${dremio.hive.plugin-group-id}</groupId>
+          <artifactId>${dremio.hive.plugin-artifact-id-prefix}-hive3-plugin-launcher</artifactId>
           <version>${project.version}</version>
         </dependency>
       </dependencies>
@@ -519,6 +560,8 @@ exit 0
       </activation>
       <properties>
         <dremio.distribution.name>dremio-community</dremio.distribution.name>
+        <dremio.hive.plugin-artifact-id-prefix>dremio-ce</dremio.hive.plugin-artifact-id-prefix>
+        <dremio.hive.plugin-group-id>com.dremio.community.plugins</dremio.hive.plugin-group-id>
       </properties>
     </profile>
   </profiles>

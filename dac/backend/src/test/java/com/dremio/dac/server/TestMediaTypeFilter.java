@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -48,7 +48,7 @@ public class TestMediaTypeFilter {
   @Test
   public void testHeaderChange() throws IOException {
     MediaTypeFilter filter = new MediaTypeFilter();
-    ContainerRequest request = ContainerRequestBuilder.from("http://localhost/foo/bar?format=unit/test", "GET").accept("random/media").build();
+    ContainerRequest request = ContainerRequestBuilder.from("http://localhost/foo/bar?format=unit/test", "GET", null).accept("random/media").build();
     filter.filter(request);
 
     assertEquals(1, request.getAcceptableMediaTypes().size());
@@ -58,7 +58,7 @@ public class TestMediaTypeFilter {
   @Test
   public void testHeaderIsUntouched() throws IOException {
     MediaTypeFilter filter = new MediaTypeFilter();
-    ContainerRequest request = ContainerRequestBuilder.from("http://localhost/foo/bar", "GET").accept("random/media").build();
+    ContainerRequest request = ContainerRequestBuilder.from("http://localhost/foo/bar", "GET", null).accept("random/media").build();
     filter.filter(request);
 
     assertEquals(1, request.getAcceptableMediaTypes().size());

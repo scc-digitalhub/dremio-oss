@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,9 +33,23 @@ public final class OptionValue implements Comparable<OptionValue> {
 
   /**
    * Option Type
+   * Check order: QUERY > SESSION > SYSTEM > BOOT
    */
   public enum OptionType {
     BOOT, SYSTEM, SESSION, QUERY
+  }
+
+  @Override
+  public int compareTo(OptionValue o) {
+    final int typeComp = type.compareTo(o.getType());
+    if (typeComp != 0) {
+      return typeComp;
+    }
+    final int nameComp = name.compareTo(o.getName());
+    if (nameComp != 0) {
+      return nameComp;
+    }
+    return 0;
   }
 
   /**
@@ -226,11 +240,6 @@ public final class OptionValue implements Comparable<OptionValue> {
     }
     final OptionValue other = (OptionValue) obj;
     return type == other.type;
-  }
-
-  @Override
-  public int compareTo(OptionValue o) {
-    return this.name.compareTo(o.name);
   }
 
   @Override

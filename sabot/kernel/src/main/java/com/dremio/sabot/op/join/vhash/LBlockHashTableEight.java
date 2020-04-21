@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ import com.dremio.sabot.op.common.ht2.HashComputation;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Stopwatch;
 import com.google.common.base.Throwables;
-import com.google.common.collect.FluentIterable;
+import com.google.common.collect.ImmutableList;
 import com.koloboke.collect.hash.HashConfig;
 import com.koloboke.collect.impl.hash.HashConfigWrapper;
 import com.koloboke.collect.impl.hash.LHash.SeparateKVLongKeyMixing;
@@ -365,7 +365,7 @@ public final class LBlockHashTableEight implements AutoCloseable {
 
   @Override
   public void close() throws Exception {
-    AutoCloseables.close(FluentIterable.of((AutoCloseable[]) fixedBlocks).toList());
+    AutoCloseables.close(ImmutableList.copyOf(fixedBlocks));
   }
 
   private boolean tryRehashForExpansion() {

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,6 +34,15 @@ class SourcesMapper {
     }
     if (info.config.subpartitionSize) {
       info.config.subpartitionSize = Number(info.config.subpartitionSize);
+    }
+
+    // Temp hack to support SECRET auth option in the UI:
+    // If user chose MASTER option, wipe out secret field, otherwise next time it will cause the UI to assume SECRET type
+    // If user chose SECRET option, switch it to MASTER, since BE does not support SECRET and just uses secretResourceUrl
+    if (info.config.authenticationType === 'MASTER' && info.config.secretResourceUrl) {
+      info.config.secretResourceUrl = '';
+    } else if (info.config.authenticationType === 'SECRET') {
+      info.config.authenticationType = 'MASTER';
     }
     return {...info, type: sourceType};
   }

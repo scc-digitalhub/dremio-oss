@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,10 +17,7 @@ import enableFatalPropTypes from 'enableFatalPropTypes';
 enableFatalPropTypes();
 
 // make expect and sinon global
-import 'polyfills';
-import 'babel-polyfill';
-import 'regeneratorRuntimeDefault';
-import 'isomorphic-fetch';
+import 'polyfills/polyfills.base';
 
 import chai, { assert, expect } from 'chai';
 import chaiAsPromised from 'chai-as-promised';

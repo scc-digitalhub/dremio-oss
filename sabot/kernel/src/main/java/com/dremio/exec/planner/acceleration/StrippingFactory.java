@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -45,13 +45,13 @@ public class StrippingFactory {
   }
 
   public StripResult strip(RelNode query, ReflectionType type, boolean isIncremental) {
-    NodeStripper stripper = config.getInstance(NODE_STRIPPER, NodeStripper.class, NO_OP_STRIPPER);
+    NodeStripper stripper = type == ReflectionType.EXTERNAL ? new PassThruNodeStripper() : config.getInstance(NODE_STRIPPER, NodeStripper.class, NO_OP_STRIPPER);
     return stripper.apply(options, type, query, isIncremental);
   }
 
   /**
    * Return a strip result with no stripping applied.
-   * @param query
+   * @param node
    * @return
    */
   public static StripResult noStrip(RelNode node) {

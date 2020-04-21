@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,9 @@
  */
 package com.dremio.service.accelerator;
 
+import static com.dremio.dac.server.JobsServiceTestUtils.submitJobAndGetData;
 import static com.dremio.options.OptionValue.OptionType.SYSTEM;
+import static com.dremio.service.accelerator.proto.SubstitutionState.CHOSEN;
 import static com.dremio.service.reflection.ReflectionOptions.MATERIALIZATION_CACHE_ENABLED;
 import static com.dremio.service.reflection.ReflectionOptions.REFLECTION_DELETION_GRACE_PERIOD;
 import static com.dremio.service.reflection.ReflectionOptions.REFLECTION_MANAGER_REFRESH_DELAY_MILLIS;
@@ -26,41 +28,49 @@ import static java.util.concurrent.TimeUnit.HOURS;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
-import org.apache.calcite.plan.RelOptUtil;
-import org.apache.calcite.rel.RelNode;
-import org.apache.calcite.sql.SqlExplainFormat;
-import org.apache.calcite.sql.SqlExplainLevel;
+import javax.ws.rs.client.Entity;
+
+import org.apache.arrow.memory.BufferAllocator;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.ClassRule;
 import org.junit.rules.TemporaryFolder;
 
 import com.dremio.dac.explore.model.DatasetPath;
+import com.dremio.dac.explore.model.DatasetUI;
+import com.dremio.dac.model.job.JobDataFragment;
+import com.dremio.dac.model.spaces.Space;
 import com.dremio.dac.model.spaces.SpacePath;
 import com.dremio.dac.server.BaseTestServer;
-import com.dremio.datastore.KVStoreProvider;
+import com.dremio.dac.server.JobsServiceTestUtils;
+import com.dremio.datastore.api.LegacyKVStoreProvider;
 import com.dremio.exec.ExecConstants;
 import com.dremio.exec.catalog.Catalog;
-import com.dremio.exec.planner.PlannerPhase;
-import com.dremio.exec.planner.acceleration.MaterializationDescriptor;
+import com.dremio.exec.catalog.MetadataRequestOptions;
 import com.dremio.exec.server.ContextService;
 import com.dremio.exec.server.MaterializationDescriptorProvider;
 import com.dremio.exec.store.CatalogService;
 import com.dremio.exec.store.SchemaConfig;
 import com.dremio.options.OptionValue;
+import com.dremio.service.accelerator.proto.AccelerationDetails;
+import com.dremio.service.accelerator.proto.ReflectionRelationship;
+import com.dremio.service.job.JobDetailsRequest;
+import com.dremio.service.job.proto.JobDetails;
+import com.dremio.service.job.proto.JobId;
+import com.dremio.service.job.proto.JobProtobuf;
 import com.dremio.service.job.proto.QueryType;
+import com.dremio.service.jobs.JobNotFoundException;
 import com.dremio.service.jobs.JobRequest;
-import com.dremio.service.jobs.JobStatusListener;
+import com.dremio.service.jobs.JobsProtoUtil;
 import com.dremio.service.jobs.JobsService;
-import com.dremio.service.jobs.JobsServiceUtil;
-import com.dremio.service.jobs.NoOpJobStatusListener;
+import com.dremio.service.jobs.LocalJobsService;
+import com.dremio.service.jobs.LogicalPlanCaptureListener;
 import com.dremio.service.jobs.SqlQuery;
 import com.dremio.service.namespace.NamespaceException;
 import com.dremio.service.namespace.NamespaceKey;
@@ -77,6 +87,7 @@ import com.dremio.service.namespace.space.proto.SpaceConfig;
 import com.dremio.service.reflection.DependencyEntry;
 import com.dremio.service.reflection.DependencyEntry.DatasetDependency;
 import com.dremio.service.reflection.DependencyEntry.ReflectionDependency;
+import com.dremio.service.reflection.ReflectionMonitor;
 import com.dremio.service.reflection.ReflectionOptions;
 import com.dremio.service.reflection.ReflectionService;
 import com.dremio.service.reflection.ReflectionServiceImpl;
@@ -84,17 +95,17 @@ import com.dremio.service.reflection.ReflectionStatusService;
 import com.dremio.service.reflection.proto.Materialization;
 import com.dremio.service.reflection.proto.MaterializationId;
 import com.dremio.service.reflection.proto.ReflectionDetails;
+import com.dremio.service.reflection.proto.ReflectionDimensionField;
 import com.dremio.service.reflection.proto.ReflectionField;
 import com.dremio.service.reflection.proto.ReflectionGoal;
 import com.dremio.service.reflection.proto.ReflectionId;
+import com.dremio.service.reflection.proto.ReflectionMeasureField;
 import com.dremio.service.reflection.proto.ReflectionType;
 import com.dremio.service.reflection.store.MaterializationStore;
 import com.dremio.service.reflection.store.ReflectionEntriesStore;
-import com.google.common.base.Function;
+import com.dremio.service.users.SystemUser;
 import com.google.common.base.Optional;
-import com.google.common.base.Predicate;
-import com.google.common.base.Strings;
-import com.google.common.collect.FluentIterable;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
 
 /**
@@ -121,8 +132,8 @@ public class BaseTestReflection extends BaseTestServer {
     final SpaceConfig config = new SpaceConfig().setName(TEST_SPACE);
     nsService.addOrUpdateSpace(new SpacePath(config.getName()).toNamespaceKey(), config);
 
-    materializationStore = new MaterializationStore(p(KVStoreProvider.class));
-    entriesStore = new ReflectionEntriesStore(p(KVStoreProvider.class));
+    materializationStore = new MaterializationStore(p(LegacyKVStoreProvider.class));
+    entriesStore = new ReflectionEntriesStore(p(LegacyKVStoreProvider.class));
   }
 
   @AfterClass
@@ -141,7 +152,8 @@ public class BaseTestReflection extends BaseTestServer {
   }
 
   protected Catalog cat() {
-    return l(CatalogService.class).getCatalog(SchemaConfig.newBuilder(SYSTEM_USERNAME).build());
+    return l(CatalogService.class).getCatalog(MetadataRequestOptions.of(
+        SchemaConfig.newBuilder(SYSTEM_USERNAME).build()));
   }
 
   protected static NamespaceService getNamespaceService() {
@@ -168,9 +180,9 @@ public class BaseTestReflection extends BaseTestServer {
   }
 
   protected static ReflectionMonitor newReflectionMonitor(long delay, long maxWait) {
-    final MaterializationStore materializationStore = new MaterializationStore(p(KVStoreProvider.class));
+    final MaterializationStore materializationStore = new MaterializationStore(p(LegacyKVStoreProvider.class));
     return new ReflectionMonitor(getReflectionService(), getReflectionStatusService(), getMaterializationDescriptorProvider(),
-      materializationStore, delay, maxWait);
+      getJobsService(), materializationStore, delay, maxWait);
   }
 
   protected static JobsService getJobsService() {
@@ -194,59 +206,60 @@ public class BaseTestReflection extends BaseTestServer {
     return nsService.getDataset(path.toNamespaceKey());
   }
 
-  protected void setSystemOption(String optionName, String optionValue) {
-    final String query = String.format("ALTER SYSTEM SET \"%s\"=%s", optionName, optionValue);
-    JobsServiceUtil.waitForJobCompletion(
-      getJobsService().submitJob(
-        JobRequest.newBuilder()
-          .setSqlQuery(new SqlQuery(query, DEFAULT_USERNAME))
-          .setQueryType(QueryType.UI_INTERNAL_RUN)
-          .setDatasetPath(DatasetPath.NONE.toNamespaceKey())
-          .build(), NoOpJobStatusListener.INSTANCE)
-    );
+  protected String getQueryPlan(final String query) {
+    return getQueryPlan(query, false);
   }
 
-  protected String getQueryPlan(final String query) {
-    final AtomicReference<String> plan = new AtomicReference<>("");
-    final JobStatusListener capturePlanListener = new NoOpJobStatusListener() {
-      @Override
-      public void planRelTransform(final PlannerPhase phase, final RelNode before, final RelNode after, final long millisTaken) {
-        if (!Strings.isNullOrEmpty(plan.get())) {
-          return;
-        }
+  protected String getQueryPlan(final String query, boolean asSystemUser) {
+    final LogicalPlanCaptureListener capturePlanListener = new LogicalPlanCaptureListener();
+    JobRequest jobRequest =  JobRequest.newBuilder()
+      .setSqlQuery(new SqlQuery(query, asSystemUser ? SystemUser.SYSTEM_USERNAME : DEFAULT_USERNAME))
+      .setQueryType(QueryType.UI_RUN)
+      .setDatasetPath(DatasetPath.NONE.toNamespaceKey())
+      .build();
+    JobsServiceTestUtils.submitJobAndWaitUntilCompletion(l(LocalJobsService.class), jobRequest, capturePlanListener);
+    return capturePlanListener.getPlan();
+  }
 
-        if (phase == PlannerPhase.LOGICAL) {
-          plan.set(RelOptUtil.dumpPlan("", after, SqlExplainFormat.TEXT, SqlExplainLevel.ALL_ATTRIBUTES));
-        }
-      }
-    };
+  protected static List<ReflectionField> reflectionFields(String ... fields) {
+    ImmutableList.Builder<ReflectionField> builder = new ImmutableList.Builder<>();
+    for (String field : fields) {
+      builder.add(new ReflectionField(field));
+    }
+    return builder.build();
+  }
 
-    JobsServiceUtil.waitForJobCompletion(
-      getJobsService().submitJob(
-        JobRequest.newBuilder()
-          .setSqlQuery(new SqlQuery(query, DEFAULT_USERNAME))
-          .setQueryType(QueryType.UI_INTERNAL_RUN)
-          .setDatasetPath(DatasetPath.NONE.toNamespaceKey())
-          .build(), capturePlanListener)
-    );
+  protected static List<ReflectionDimensionField> reflectionDimensionFields(String ... fields) {
+    ImmutableList.Builder<ReflectionDimensionField> builder = new ImmutableList.Builder<>();
+    for (String field : fields) {
+      builder.add(new ReflectionDimensionField(field));
+    }
+    return builder.build();
+  }
 
-    return plan.get();
+  protected static List<ReflectionMeasureField> reflectionMeasureFields(String ... fields) {
+    ImmutableList.Builder<ReflectionMeasureField> builder = new ImmutableList.Builder<>();
+    for (String field : fields) {
+      builder.add(new ReflectionMeasureField(field));
+    }
+    return builder.build();
+  }
+
+  protected static List<ReflectionRelationship> getChosen(List<ReflectionRelationship> relationships) {
+    if (relationships == null) {
+      return Collections.emptyList();
+    }
+
+    return relationships.stream()
+      .filter((r) -> r.getState() == CHOSEN)
+      .collect(Collectors.toList());
   }
 
   protected Materialization getMaterializationFor(final ReflectionId rId) {
-    final Iterable<MaterializationId> mIds = FluentIterable.from(getMaterializationDescriptorProvider().get())
-      .filter(new Predicate<MaterializationDescriptor>() {
-        @Override
-        public boolean apply(MaterializationDescriptor input) {
-          return input.getLayoutId().equals(rId.getId());
-        }
-      })
-      .transform(new Function<MaterializationDescriptor, MaterializationId>() {
-        @Override
-        public MaterializationId apply(MaterializationDescriptor descriptor) {
-          return new MaterializationId(descriptor.getMaterializationId());
-        }
-      });
+    final Iterable<MaterializationId> mIds = getMaterializationDescriptorProvider().get().stream()
+      .filter(input -> input.getLayoutId().equals(rId.getId()))
+      .map(descriptor -> new MaterializationId(descriptor.getMaterializationId()))
+      .collect(Collectors.toList());
     assertEquals("only one materialization expected, but got " + mIds.toString(), 1, Iterables.size(mIds));
 
     final MaterializationId mId = mIds.iterator().next();
@@ -254,31 +267,23 @@ public class BaseTestReflection extends BaseTestServer {
     assertTrue("materialization not found", m.isPresent());
     return m.get();
   }
-
-  protected DatasetPath createVdsFromQuery(String query, String testSpace) {
-    final String datasetName = "query" + queryNumber.getAndIncrement();
-    final List<String> path = Arrays.asList(testSpace, datasetName);
-    final DatasetPath datasetPath = new DatasetPath(path);
-    createDatasetFromSQLAndSave(datasetPath, query, Collections.<String>emptyList());
-    return datasetPath;
+  protected DatasetUI createVdsFromQuery(String query, String space, String dataset) {
+    final DatasetPath datasetPath = new DatasetPath(ImmutableList.of(space, dataset));
+    return createDatasetFromSQLAndSave(datasetPath, query, Collections.emptyList());
   }
 
-  protected ReflectionId createRawOnVds(DatasetPath datasetPath, String reflectionName, List<String> rawFields) throws Exception {
-    final DatasetConfig dataset = getNamespaceService().getDataset(datasetPath.toNamespaceKey());
+  protected DatasetUI createVdsFromQuery(String query, String testSpace) {
+    final String datasetName = "query" + queryNumber.getAndIncrement();
+    return createVdsFromQuery(query, testSpace, datasetName);
+  }
+
+  protected ReflectionId createRawOnVds(String datasetId, String reflectionName, List<String> rawFields) throws Exception {
     return getReflectionService().create(new ReflectionGoal()
       .setType(ReflectionType.RAW)
-      .setDatasetId(dataset.getId().getId())
+      .setDatasetId(datasetId)
       .setName(reflectionName)
       .setDetails(new ReflectionDetails()
-        .setDisplayFieldList(
-          FluentIterable.from(rawFields)
-            .transform(new Function<String, ReflectionField>() {
-              @Override
-              public ReflectionField apply(String field) {
-                return new ReflectionField(field);
-              }
-            }).toList()
-        )
+        .setDisplayFieldList(rawFields.stream().map(ReflectionField::new).collect(Collectors.toList()))
       )
     );
   }
@@ -289,8 +294,8 @@ public class BaseTestReflection extends BaseTestServer {
   }
 
   protected ReflectionId createRawFromQuery(String query, String testSpace, List<String> rawFields, String reflectionName) throws Exception {
-    final DatasetPath datasetPath = createVdsFromQuery(query, testSpace);
-    return createRawOnVds(datasetPath, reflectionName, rawFields);
+    final DatasetUI datasetUI = createVdsFromQuery(query, testSpace);
+    return createRawOnVds(datasetUI.getId(), reflectionName, rawFields);
   }
 
   protected static void setMaterializationCacheSettings(boolean enabled, long refreshDelayInSeconds) {
@@ -370,6 +375,113 @@ public class BaseTestReflection extends BaseTestServer {
     return true;
   }
 
+  protected void createSpace(String name) {
+    expectSuccess(getBuilder(getAPIv2().path("space/" + name)).buildPut(Entity.json(new Space(null, name, null, null, null, 0, null))), Space.class);
+  }
 
+  /**
+   * Get data record of a reflection
+   * @param reflectionId    id of a reflection
+   * @return  data record of the reflection
+   */
+  protected JobDataFragment getReflectionsData(JobsService jobsService, ReflectionId reflectionId, BufferAllocator allocator) throws Exception {
+    return submitJobAndGetData(jobsService,
+      JobRequest.newBuilder()
+        .setSqlQuery(getQueryFromSQL("select * from sys.reflections where reflection_id = '" + reflectionId.getId() + "'"))
+        .build(), 0, 1, allocator);
+  }
 
+  /**
+   * Get materialization data of a reflection
+   * @param reflectionId    id of a reflection
+   * @return  materialization data of the reflection
+   */
+  protected JobDataFragment getMaterializationsData(JobsService jobsService, ReflectionId reflectionId, BufferAllocator allocator) throws Exception {
+    return submitJobAndGetData(jobsService,
+      JobRequest.newBuilder()
+        .setSqlQuery(getQueryFromSQL("select * from sys.materializations where reflection_id = '" + reflectionId.getId() + "'"))
+        .build(), 0, 1, allocator);
+  }
+
+  /**
+   * Get refresh data of a reflection
+   * @param reflectionId    id of a reflection
+   * @return  refresh data of the reflection
+   */
+  protected JobDataFragment getRefreshesData(JobsService jobsService, ReflectionId reflectionId, BufferAllocator allocator) throws Exception {
+    return submitJobAndGetData(jobsService,
+      JobRequest.newBuilder()
+        .setSqlQuery(getQueryFromSQL("select * from sys.materializations where reflection_id = '" + reflectionId.getId() + "'"))
+        .build(), 0, 100, allocator);
+  }
+
+  /**
+   * Get the number of written records of a materialization, which is output records shown in its refresh job details
+   * @param m   materialization of a reflection
+   * @return    the number of written records
+   */
+  protected static long getNumWrittenRecords(Materialization m) throws JobNotFoundException {
+    final JobId refreshJobId = new JobId(m.getInitRefreshJobId());
+    JobDetailsRequest request = JobDetailsRequest.newBuilder()
+      .setJobId(JobsProtoUtil.toBuf(refreshJobId))
+      .build();
+    final com.dremio.service.job.JobDetails refreshJob = getJobsService().getJobDetails(request);
+    final JobDetails jobDetails = JobsProtoUtil.getLastAttempt(refreshJob).getDetails();
+    return jobDetails.getOutputRecords();
+  }
+
+  /**
+   * Ensures child materialization depends properly on parent materialization:
+   * <ol>
+   *     <li>child materialization started after parent materialization was done</li>
+   *     <li>child reflection depends on parent materialization</li>
+   * </ol>
+   *
+   */
+  protected void checkReflectionDependency(Materialization parent, Materialization child) throws Exception {
+    // child reflection should depend on its parent
+    assertTrue("child reflection doesn't depend on its parent", dependsOn(child.getReflectionId(), dependency(parent.getReflectionId())));
+
+    JobDetailsRequest parentRefreshReflectionRequest = JobDetailsRequest.newBuilder()
+      .setJobId(JobProtobuf.JobId.newBuilder().setId(parent.getInitRefreshJobId()).build())
+      .build();
+    JobDetailsRequest childRefreshReflectionRequest = JobDetailsRequest.newBuilder()
+      .setJobId(JobProtobuf.JobId.newBuilder().setId(child.getInitRefreshJobId()).build())
+      .build();
+
+    final com.dremio.service.job.JobDetails parentRefreshReflectionJobDetails = getJobsService().getJobDetails(parentRefreshReflectionRequest);
+    final com.dremio.service.job.JobDetails childRefreshReflectionJobDetails = getJobsService().getJobDetails(childRefreshReflectionRequest);
+
+    // make sure child has been accelerated with parent's latest materialization
+    AccelerationDetails details = AccelerationDetailsUtils.deserialize(JobsProtoUtil.getLastAttempt(childRefreshReflectionJobDetails).getAccelerationDetails());
+    List<ReflectionRelationship> chosen = getChosen(details.getReflectionRelationshipsList());
+    assertTrue("child refresh wasn't accelerated with parent's latest materialization",
+      chosen.stream().anyMatch(r -> r.getMaterialization().getId().equals(parent.getId().getId())));
+
+    assertTrue("child refresh started before parent load materialization job finished",
+      JobsProtoUtil.getLastAttempt(childRefreshReflectionJobDetails).getInfo().getStartTime() >= JobsProtoUtil.getLastAttempt(parentRefreshReflectionJobDetails).getInfo().getFinishTime());
+  }
+
+  /**
+   * Refresh metadata of a dataset
+   * @param datasetPath   dataset path
+   */
+  protected void refreshMetadata(final String datasetPath) {
+    submitJobAndWaitUntilCompletion(
+      JobRequest.newBuilder().setSqlQuery(getQueryFromSQL("ALTER TABLE " + datasetPath + " REFRESH METADATA")).build()
+    );
+  }
+
+  /**
+   * Get query data with max rows
+   * @param query    sql query
+   * @param maxRows   max rows of the results
+   * @return  results of the query
+   */
+  protected JobDataFragment getQueryData(JobsService jobsService, String query, int maxRows, BufferAllocator allocator) throws JobNotFoundException {
+    return submitJobAndGetData(jobsService,
+      JobRequest.newBuilder()
+        .setSqlQuery(getQueryFromSQL(query))
+        .build(), 0, maxRows, allocator);
+  }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,8 +29,8 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 import org.mockito.Mockito;
 
-import com.dremio.datastore.KVStoreProvider;
 import com.dremio.datastore.LocalKVStoreProvider;
+import com.dremio.datastore.api.LegacyKVStoreProvider;
 import com.dremio.service.DirectProvider;
 import com.dremio.service.reflection.DependencyEntry.ReflectionDependency;
 import com.dremio.service.reflection.proto.DependencyType;
@@ -54,9 +54,8 @@ import com.google.common.collect.Sets;
  */
 public class TestDependencyGraph {
 
-  private static final KVStoreProvider kvstore = new LocalKVStoreProvider(DremioTest.CLASSPATH_SCAN_RESULT, null,
-    true,
-    false);
+  private static final LegacyKVStoreProvider kvstore =
+    new LocalKVStoreProvider(DremioTest.CLASSPATH_SCAN_RESULT, null, true, false).asLegacy();
 
   private static DependenciesStore dependenciesStore;
 

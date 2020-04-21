@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,10 +40,4 @@ describe('HeaderDropdown', () => {
     expect(wrapper).to.have.length(1);
   });
 
-  it('should render name, and Popover and Menu', () => {
-    const selectViewWrapper = wrapper.find('SelectView');
-
-    expect(selectViewWrapper).to.have.length(1);
-    expect(shallow(selectViewWrapper.prop('content')).text()).to.contain(commonProps.name);
-  });
 });

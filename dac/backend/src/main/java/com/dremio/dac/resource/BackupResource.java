@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,15 +25,17 @@ import javax.ws.rs.Path;
 import javax.ws.rs.core.SecurityContext;
 
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileSystem;
 
 import com.dremio.dac.annotations.RestResource;
 import com.dremio.dac.annotations.Secured;
 import com.dremio.dac.homefiles.HomeFileTool;
 import com.dremio.dac.util.BackupRestoreUtil;
+import com.dremio.dac.util.BackupRestoreUtil.BackupOptions;
 import com.dremio.dac.util.BackupRestoreUtil.BackupStats;
-import com.dremio.datastore.KVStoreProvider;
 import com.dremio.datastore.LocalKVStoreProvider;
+import com.dremio.datastore.api.LegacyKVStoreProvider;
+import com.dremio.exec.hadoop.HadoopFileSystem;
+import com.dremio.io.file.FileSystem;
 import com.dremio.service.namespace.NamespaceException;
 import com.dremio.service.namespace.NamespaceService;
 
@@ -46,11 +48,11 @@ import com.dremio.service.namespace.NamespaceService;
 @Path("/backup")
 public class BackupResource {
   private final Provider<HomeFileTool> fileStore;
-  private final Provider<KVStoreProvider> kvStoreProviderProvider;
+  private final Provider<LegacyKVStoreProvider> kvStoreProviderProvider;
 
   @Inject
   public BackupResource(
-    Provider<KVStoreProvider> kvStoreProviderProvider,
+    Provider<LegacyKVStoreProvider> kvStoreProviderProvider,
     Provider<HomeFileTool> fileStore,
     Provider<NamespaceService> namespaceService,
     SecurityContext securityContext) {
@@ -58,18 +60,19 @@ public class BackupResource {
     this.fileStore = fileStore;
   }
 
+
   @POST
-  public BackupStats createBackup(String backupDir) throws IOException, NamespaceException {
-    final KVStoreProvider kvStoreProvider = kvStoreProviderProvider.get();
-    if (!(kvStoreProvider instanceof LocalKVStoreProvider)) {
+  public BackupStats createBackup(BackupOptions options) throws IOException, NamespaceException {
+    final LocalKVStoreProvider kvStoreProvider = kvStoreProviderProvider.get().unwrap(LocalKVStoreProvider.class);
+    if (kvStoreProvider == null) {
       throw new IllegalArgumentException("backups are created only on master node.");
     }
 
-    final org.apache.hadoop.fs.Path backupDirPath = new org.apache.hadoop.fs.Path(backupDir);
-    final FileSystem fs = backupDirPath.getFileSystem(new Configuration());
+    final com.dremio.io.file.Path backupDirPath = options.getBackupDirAsPath();
+    final FileSystem fs = HadoopFileSystem.get(backupDirPath, new Configuration());
     // Checking if directory already exists and that the daemon can access it
     BackupRestoreUtil.checkOrCreateDirectory(fs, backupDirPath);
-    return BackupRestoreUtil.createBackup(fs, backupDirPath, (LocalKVStoreProvider) kvStoreProvider, fileStore.get().getConf());
+    return BackupRestoreUtil.createBackup(fs, options, kvStoreProvider, fileStore.get().getConf());
 
   }
 }

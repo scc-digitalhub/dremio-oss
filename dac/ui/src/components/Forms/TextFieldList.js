@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,18 +50,18 @@ export default class TextFieldList extends Component {
     minItems: PropTypes.number,
     addButtonText: PropTypes.string,
     fieldKey: PropTypes.string
-  }
+  };
 
   static defaultProps = {
     newItemDefaultValue: '',
     minItems: 0,
     fieldKey: ''
-  }
+  };
 
-  addItem = (e) => {
+  addItem = () => {
     const { arrayField, newItemDefaultValue } = this.props;
     arrayField.addField(newItemDefaultValue);
-  }
+  };
 
   render() {
     return (

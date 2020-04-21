@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
  */
 import { Component } from 'react';
 import PropTypes from 'prop-types';
-import Keys from 'constants/Keys.json';
+import Keys from '@app/constants/Keys.json';
 import TextField from './TextField';
 
 export default class PrevalidatedTextField extends Component {

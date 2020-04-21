@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.dremio.exec.expr.fn.hll.HyperLogLog;
+import com.dremio.exec.expr.fn.impl.GeoFunctions;
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
@@ -107,6 +108,10 @@ public class SqlOperatorSerializer<T extends SqlOperator> extends FieldSerialize
       put(HyperLogLog.HLL_DECODE);
       put(HyperLogLog.HLL_MERGE);
       put(HyperLogLog.NDV);
+      put(GeoFunctions.GEO_DISTANCE);
+      put(GeoFunctions.GEO_NEARBY);
+      put(GeoFunctions.GEO_BEYOND);
+
     }
 
     private static final void put(SqlOperator operator) {

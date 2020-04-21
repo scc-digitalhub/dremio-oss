@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -56,7 +56,7 @@ public class ClassGenerator<T>{
   public static final GeneratorMapping DEFAULT_CONSTANT_MAP = GM("doSetup", "doSetup", null, null);
 
   static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ClassGenerator.class);
-  public static enum BlockType {SETUP, EVAL, RESET, CLEANUP};
+  public static enum BlockType {SETUP, EVAL, RESET, CLEANUP}
 
   private static final int MAX_EXPRESSIONS_IN_FUNCTION = 50;
 
@@ -402,7 +402,7 @@ public class ClassGenerator<T>{
   }
 
   public HoldingContainer declare(CompleteType t, boolean includeNewInstance) {
-    JType holderType = t.getHolderType(model);
+    JType holderType = CodeModelArrowHelper.getHolderType(t, model);
     JVar var;
     if (includeNewInstance) {
       var = getEvalBlock().decl(holderType, "out" + index, JExpr._new(holderType));

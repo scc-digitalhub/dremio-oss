@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,7 +30,6 @@ import com.dremio.exec.catalog.DremioTable;
 import com.dremio.exec.planner.sql.parser.SqlForgetTable;
 import com.dremio.service.namespace.NamespaceKey;
 import com.dremio.service.namespace.NamespaceNotFoundException;
-import com.dremio.service.namespace.NamespaceService;
 
 /**
  * Handler for <code>FORGET TABLE tblname</code> command.
@@ -39,12 +38,10 @@ public class ForgetTableHandler extends SimpleDirectHandler {
   private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ForgetTableHandler.class);
 
   private final static int MAX_RETRIES = 5;
-  private final NamespaceService namespaceService;
   private final Catalog catalog;
 
-  public ForgetTableHandler(Catalog catalog, NamespaceService namespaceService) {
+  public ForgetTableHandler(Catalog catalog) {
     this.catalog = catalog;
-    this.namespaceService = namespaceService;
   }
 
   @Override
@@ -59,13 +56,13 @@ public class ForgetTableHandler extends SimpleDirectHandler {
 
     int count = 0;
     while(true) {
-      final DremioTable table = catalog.getTableNoResolve(path);
+      final DremioTable table = catalog.getTableNoColumnCount(path);
       if(table == null || table.getJdbcTableType() != TableType.TABLE) {
         throw UserException.parseError().message("Unable to find table %s.", path).build(logger);
       }
 
       try {
-        namespaceService.deleteDataset(table.getPath(), table.getVersion());
+        catalog.deleteDataset(table.getPath(), table.getVersion());
         return singletonList(successful(String.format("Successfully removed table '%s' from namespace.", table.getPath())));
       } catch (NamespaceNotFoundException ex) {
         logger.debug("Table to delete not found", ex);
@@ -77,7 +74,5 @@ public class ForgetTableHandler extends SimpleDirectHandler {
         }
       }
     }
-
-
   }
 }

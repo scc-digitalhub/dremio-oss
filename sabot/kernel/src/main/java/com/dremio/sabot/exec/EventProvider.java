@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 package com.dremio.sabot.exec;
+
+import java.util.Optional;
 
 import com.dremio.exec.proto.ExecProtos;
 
@@ -30,7 +32,7 @@ public interface EventProvider {
   ExecProtos.FragmentHandle pollFinishedReceiver();
 
   /**
-   * @return true if fragment has been cancelled
+   * @return reason for failure, if there is one.
    */
-  boolean isCancelled();
+  Optional<Throwable> getFailedReason();
 }

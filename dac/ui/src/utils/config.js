@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,25 +13,37 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { SERVER_STATUS_OK } from 'constants/serverStatus';
+import { SERVER_STATUS_OK } from '@app/constants/serverStatus';
+
+const isProductionBuild = process.env.NODE_ENV === 'production';
 
 export const isProduction = () => {
-  return window && window.dremioConfig && window.dremioConfig.environment === 'PRODUCTION';
-};
-
-export const isProductionServer = () => {
-  return window && window.dremioConfig && window.dremioConfig.serverEnvironment === 'PRODUCTION';
+  return isProductionBuild;
 };
 
 export default { // defaults, and defaults for unit tests
   serverStatus: SERVER_STATUS_OK,
-  shouldEnableBugFiling: true,
-  shouldEnableRSOD: true,
+  edition: 'OSS',
+  intercomAppId: null,
+  shouldEnableBugFiling: !isProductionBuild,
+  shouldEnableRSOD: !isProductionBuild,
   showUserAndUserProperties: true,
+  supportEmailTo: 'noreply@dremio.com',
+  supportEmailSubjectForJobs: '',
   outsideCommunicationDisabled: false,
   lowerProvisioningSettingsEnabled: false,
   allowFileUploads: true,
-  versionInfo: {},
-  isReleaseBuild: false,
+  allowSpaceManagement: false,
+  subhourAccelerationPoliciesEnabled: false,
+  versionInfo: {
+    buildTime: 0,
+    commit: {
+      time: 0
+    }
+  },
+  isReleaseBuild: process.env.DREMIO_RELEASE === 'true',
+  logErrorsToSentry: process.env.SKIP_SENTRY_STEP !== 'true',
+  ts: new Date(),
+  whiteLabelUrl: 'dremio',
   ...((window && window.dremioConfig) || {})
 };

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -152,7 +152,6 @@ export class TransformForm extends Component {
             Children.count(children) > 0 && <ViewStateWrapper
               className={content}
               viewState={viewState}
-              spinnerStyle={styles.spinner}
               hideChildrenWhenInProgress
               style={{ ...styles.formBody, ...style }}>
               <FormProgressWrapper submitting={submitting}>

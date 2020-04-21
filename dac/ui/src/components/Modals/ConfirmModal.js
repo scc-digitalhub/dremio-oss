@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ import { Checkbox, TextField } from 'components/Fields';
 
 import { confirmBodyText, modalContent } from 'uiTheme/radium/modal';
 import localStorageUtils from 'utils/storageUtils/localStorageUtils';
-import Keys from 'constants/Keys.json';
+import Keys from '@app/constants/Keys.json';
 
 export default class ConfirmModal extends Component {
 

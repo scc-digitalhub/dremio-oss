@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,14 +20,26 @@ import static org.junit.Assert.assertTrue;
 import java.sql.ResultSet;
 import java.sql.Statement;
 
+import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 
+import com.dremio.config.DremioConfig;
 import com.dremio.jdbc.JdbcWithServerTestBase;
+import com.dremio.test.TemporarySystemProperties;
 
 
 public class Drill2461IntervalsBreakInfoSchemaBugTest extends JdbcWithServerTestBase {
   private static final String VIEW_NAME =
       Drill2461IntervalsBreakInfoSchemaBugTest.class.getSimpleName() + "_View";
+
+  @Rule
+  public TemporarySystemProperties properties = new TemporarySystemProperties();
+
+  @Before
+  public void before() {
+    properties.set(DremioConfig.LEGACY_STORE_VIEWS_ENABLED, "true");
+  }
 
   @Test
   public void testIntervalInViewDoesntCrashInfoSchema() throws Exception {

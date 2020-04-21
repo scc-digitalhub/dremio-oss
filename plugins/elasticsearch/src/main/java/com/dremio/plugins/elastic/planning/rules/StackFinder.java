@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,6 +33,7 @@ public final class StackFinder {
 
   public static List<ElasticsearchPrel> getStack(RelNode rel){
     rel = rel.accept(new MoreRelOptUtil.SubsetRemover(false));
+    rel = rel.accept(new MoreRelOptUtil.VertexRemover());
     List<ElasticsearchPrel> stack = new ArrayList<>();
     outside: while(rel != null){
       if( !(rel instanceof ElasticsearchPrel) ){

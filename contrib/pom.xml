@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <!--
 
-    Copyright (C) 2017-2018 Dremio Corporation
+    Copyright (C) 2017-2019 Dremio Corporation
 
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@
   <parent>
     <groupId>com.dremio</groupId>
     <artifactId>dremio-parent</artifactId>
-    <version>3.2.2-201905231753430810-ccf9a4e</version>
+    <version>4.2.1-202004111451200819-0c3ecaea</version>
   </parent>
 
   <groupId>com.dremio.contrib</groupId>
@@ -31,8 +31,32 @@
   <packaging>pom</packaging>
 
   <modules>
-    <module>hive-exec-shade</module>
+    <module>hive2-exec-shade</module>
     <module>slim-shade</module>
-    <module>tpch-sample-data</module>
   </modules>
+
+  <profiles>
+    <profile>
+      <id>notmapr</id>
+      <activation>
+        <property>
+          <name>!mapr</name>
+        </property>
+      </activation>
+      <modules>
+        <module>hive3-exec-shade</module>
+      </modules>
+    </profile>
+    <profile>
+      <id>mapr</id>
+      <activation>
+        <property>
+          <name>mapr</name>
+        </property>
+      </activation>
+      <modules>
+        <module>maprfs-shade</module>
+      </modules>
+    </profile>
+  </profiles>
 </project>

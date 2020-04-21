@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -341,11 +341,11 @@ describe('exploreUtils', () => {
   describe('method getHrefForUntitledDatasetConfig', () => {
     it('should return link for untitled dataset', () => {
       expect(exploreUtils.getHrefForUntitledDatasetConfig('path', 'vvv')).
-        to.eql('/datasets/new_untitled?parentDataset=path&newVersion=vvv&limit=150');
+        to.eql('/datasets/new_untitled/?parentDataset=path&newVersion=vvv&limit=150');
     });
     it('should return link for untitled dataset', () => {
       expect(exploreUtils.getHrefForUntitledDatasetConfig('path', '')).
-        to.eql('/datasets/new_untitled?parentDataset=path&newVersion=&limit=150');
+        to.eql('/datasets/new_untitled/?parentDataset=path&newVersion=&limit=150');
     });
   });
 

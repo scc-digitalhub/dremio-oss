@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,7 +38,6 @@ import com.dremio.exec.proto.CoordinationProtos;
 import com.dremio.exec.proto.ExecProtos;
 import com.dremio.exec.proto.ExecProtos.FragmentHandle;
 import com.dremio.exec.proto.UserBitShared;
-import com.dremio.exec.rpc.ResponseSender;
 import com.dremio.options.OptionManager;
 import com.dremio.options.TypeValidators;
 import com.dremio.sabot.exec.fragment.FragmentExecutor;
@@ -51,6 +50,8 @@ import com.dremio.sabot.task.TaskDescriptor;
 import com.dremio.sabot.task.TaskPool;
 import com.dremio.sabot.threads.AvailabilityCallback;
 import com.dremio.sabot.threads.sharedres.SharedResourceType;
+
+import io.grpc.stub.StreamObserver;
 
 /**
  * Unit test for {@link FragmentExecutors}
@@ -184,8 +185,11 @@ public class TestFragmentExecutors {
       return null;
     }).when(mockTaskPool).execute(any());
 
+    final MaestroProxy mockMaestroProxy = mock(MaestroProxy.class);
+    when(mockMaestroProxy.tryStartQuery(any(), any())).thenReturn(true);
+
     final FragmentExecutors fe = new FragmentExecutors(
-      mock(ExecToCoordTunnelCreator.class),
+      mockMaestroProxy,
       mock(FragmentWorkManager.ExitCallback.class),
       mockTaskPool,
       mockOptionManager);
@@ -273,7 +277,12 @@ public class TestFragmentExecutors {
     return new TestState(fe, initializeFragments, runningTasks, new Runnable() {
       @Override
       public void run() {
-        fe.startQueryFragment(initializeFragments, mockFragmentExecutorBuilder, mock(ResponseSender.class), nodeEndpoint);
+        fe.startFragments(initializeFragments, mockFragmentExecutorBuilder, mock(StreamObserver.class),
+                nodeEndpoint);
+        for (int i = 0; i < initializeFragments.getFragmentSet().getMinorCount(); ++i) {
+          FragmentHandle handle = getHandleForMinorFragment(initializeFragments, i);
+          fe.activateFragment(handle);
+        }
       }
     });
   }
@@ -305,7 +314,7 @@ public class TestFragmentExecutors {
     final CoordExecRPC.InitializeFragments initializeFragments = testState.getInitializeFragments();
     FragmentHandle handle = getHandleForMinorFragment(initializeFragments, 0);
     ((FragmentHandler)fe.getEventProvider(handle)).testExpireNow();
-    fe.getEvictionAction().run();
+    fe.checkAndEvict();
     assertEquals(0, fe.size());
     assertEquals(0, fe.getNumHandlers());
 
@@ -339,7 +348,7 @@ public class TestFragmentExecutors {
       FragmentHandle handle = getHandleForMinorFragment(initializeFragments, i);
       ((FragmentHandler) fe.getEventProvider(handle)).testExpireNow();
     }
-    fe.getEvictionAction().run();
+    fe.checkAndEvict();
     assertEquals(0, fe.getNumHandlers());
 
     testState.close();
@@ -359,7 +368,7 @@ public class TestFragmentExecutors {
 
     final CoordExecRPC.InitializeFragments initializeFragments = testState.getInitializeFragments();
     final FragmentHandle fragment0Handle = getHandleForMinorFragment(initializeFragments, 0);
-    fe.cancel(fragment0Handle);
+    fe.cancelFragment(fragment0Handle);
     for (final AsyncTaskWrapper frag : testState.getRunningTasks()) {
       final TestAsyncTask underlyingTask = (TestAsyncTask)frag.getAsyncTask();
       if (underlyingTask.isCancelRequested()) {
@@ -370,7 +379,7 @@ public class TestFragmentExecutors {
 
     // Eviction should get rid of all the fragments, once the time for expiration (artificially) arrives
     ((FragmentHandler)fe.getEventProvider(fragment0Handle)).testExpireNow();
-    fe.getEvictionAction().run();
+    fe.checkAndEvict();
     assertEquals(0, fe.getNumHandlers());
 
     testState.close();
@@ -392,7 +401,7 @@ public class TestFragmentExecutors {
     final CoordExecRPC.InitializeFragments initializeFragments = testState.getInitializeFragments();
     for (int i = 0; i < numFragments; i++) {
       final ExecProtos.FragmentHandle fragmentHandle = getHandleForMinorFragment(initializeFragments, i);
-      fe.cancel(fragmentHandle);
+      fe.cancelFragment(fragmentHandle);
     }
     for (final AsyncTaskWrapper frag : testState.getRunningTasks()) {
       final TestAsyncTask underlyingTask = (TestAsyncTask)frag.getAsyncTask();
@@ -407,7 +416,7 @@ public class TestFragmentExecutors {
       FragmentHandle handle = getHandleForMinorFragment(initializeFragments, i);
       ((FragmentHandler) fe.getEventProvider(handle)).testExpireNow();
     }
-    fe.getEvictionAction().run();
+    fe.checkAndEvict();
     assertEquals(0, fe.getNumHandlers());
 
     testState.close();
@@ -432,13 +441,13 @@ public class TestFragmentExecutors {
 
     final CoordExecRPC.InitializeFragments initializeFragments = testState.getInitializeFragments();
     final FragmentHandle fragment0Handle = getHandleForMinorFragment(initializeFragments, 0);
-    fe.cancel(fragment0Handle);
+    fe.cancelFragment(fragment0Handle);
     assertEquals(0, fe.size());
     assertEquals(1, fe.getNumHandlers());
 
     // Eviction should get rid of all the fragments, once the time for expiration (artificially) arrives
     ((FragmentHandler)fe.getEventProvider(fragment0Handle)).testExpireNow();
-    fe.getEvictionAction().run();
+    fe.checkAndEvict();
     assertEquals(0, fe.getNumHandlers());
 
     testState.close();
@@ -458,7 +467,7 @@ public class TestFragmentExecutors {
     // Cancel before start
     final CoordExecRPC.InitializeFragments initializeFragments = testState.getInitializeFragments();
     final FragmentHandle fragment0Handle = getHandleForMinorFragment(initializeFragments, 0);
-    fe.cancel(fragment0Handle);
+    fe.cancelFragment(fragment0Handle);
 
     // Cancellation entered in the frag handlers
     assertEquals(0, fe.size());
@@ -466,7 +475,7 @@ public class TestFragmentExecutors {
 
     // Eviction should get rid of all the fragments, once the time for expiration (artificially) arrives
     ((FragmentHandler)fe.getEventProvider(fragment0Handle)).testExpireNow();
-    fe.getEvictionAction().run();
+    fe.checkAndEvict();
     assertEquals(0, fe.getNumHandlers());
 
     testState.close();
@@ -491,7 +500,7 @@ public class TestFragmentExecutors {
     final CoordExecRPC.InitializeFragments initializeFragments = testState.getInitializeFragments();
     final FragmentHandle fragment0Handle = getHandleForMinorFragment(initializeFragments, 0);
     ((FragmentHandler)fe.getEventProvider(fragment0Handle)).testExpireNow();
-    fe.getEvictionAction().run();
+    fe.checkAndEvict();
     assertEquals(0, fe.getNumHandlers());
     assertEquals(0, fe.size());
 

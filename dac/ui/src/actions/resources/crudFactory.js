@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,12 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { CALL_API } from 'redux-api-middleware';
+import { RSAA } from 'redux-api-middleware';
 import { CALL_MOCK_API } from 'mockApi';
-import { API_URL_V2 } from 'constants/Api';
-import { Schema, arrayOf } from 'normalizr';
+import { arrayOf, Schema } from 'normalizr';
 import schemaUtils from 'utils/apiUtils/schemaUtils';
 import Immutable from 'immutable';
+import { APIV2Call } from '@app/core/APICall';
 
 const COMMON = {headers: {'Content-Type': 'application/json'}};
 
@@ -40,7 +40,7 @@ export default (schemaOrName, {useLegacyPluralization = false} = {}) => {
         id = get(idOrObject, idAttribute);
       }
 
-      let url = `${API_URL_V2}/${path}/${id || ''}`;
+      const apiCall = new APIV2Call().paths(`${path}/${id || ''}`);
 
       let successMeta = meta;
 
@@ -52,12 +52,12 @@ export default (schemaOrName, {useLegacyPluralization = false} = {}) => {
         };
         const version = get(idOrObject, 'version');
         if (version !== undefined) {
-          url += '?version=' + version;
+          apiCall.params({version});
         }
       }
 
       const req = {
-        [call.mock ? CALL_MOCK_API : CALL_API]: {
+        [call.mock ? CALL_MOCK_API : RSAA]: {
           ...COMMON,
           types: [
             {type: `${upper}_${method}_START`, meta},
@@ -66,7 +66,7 @@ export default (schemaOrName, {useLegacyPluralization = false} = {}) => {
           ],
           method,
           body: METHODS_WITH_REQUEST_BODY.has(method) ? JSON.stringify(idOrObject) : undefined,
-          endpoint: url,
+          endpoint: apiCall,
           ...call.mock
         }
       };
@@ -87,8 +87,12 @@ export default (schemaOrName, {useLegacyPluralization = false} = {}) => {
   calls.getAll = function call(meta) { // todo: more DRY
     const method = 'GET_ALL';
     const successMeta = {...meta, entityClears: [entityName]}; // trigger a clear, since records may now be gone;
+
+    const apiCall = new APIV2Call()
+      .paths(`${path}${useLegacyPluralization ? 's' : ''}`);
+
     const req = {
-      [call.mock ? CALL_MOCK_API : CALL_API]: {
+      [call.mock ? CALL_MOCK_API : RSAA]: {
         ...COMMON,
         types: [
           {type: `${upper}_${method}_START`, meta},
@@ -100,7 +104,7 @@ export default (schemaOrName, {useLegacyPluralization = false} = {}) => {
           {type: `${upper}_${method}_FAILURE`, meta}
         ],
         method: 'GET',
-        endpoint: `${API_URL_V2}/${path}${useLegacyPluralization ? 's' : ''}/`,
+        endpoint: apiCall,
         ...call.mock
       }
     };

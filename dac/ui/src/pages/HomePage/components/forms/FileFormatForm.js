@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -169,6 +169,7 @@ export class FileFormatForm extends Component {
       {option: 'JSON', label: intl.formatMessage({ id: 'File.JSON' })},
       {option: 'Parquet',  label: intl.formatMessage({ id: 'File.Parquet' })},
       {option: 'Excel',  label: intl.formatMessage({ id: 'File.Excel' })},
+      {option: 'Iceberg',  label: intl.formatMessage({ id: 'File.Iceberg' })},
       {option: 'XLS', label: intl.formatMessage({ id: 'File.XLS' })}
     ];
 
@@ -203,7 +204,6 @@ export class FileFormatForm extends Component {
         </FormBody>
         <ViewStateWrapper
           viewState={previewViewState}
-          spinnerStyle={{height: 'calc(100% - 48px)', paddingBottom: 0}}
           spinnerDelay={0}
           style={{ display: 'flex'}}
           dataQa='file-preview-mask'
@@ -226,9 +226,7 @@ export class FileFormatForm extends Component {
 }
 
 function mapStateToProps(state, props) {
-  const {file} = props;
-
-  const fileFormat = file && file.get('fileFormat');
+  const { fileFormat } = props;
 
   let fromExisting = {};
   if (fileFormat) {

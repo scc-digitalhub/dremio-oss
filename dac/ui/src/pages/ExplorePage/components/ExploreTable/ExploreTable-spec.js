@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -64,7 +64,6 @@ describe('ExploreTable', () => {
 
     wrapper = shallow(<ExploreTable {...commonProps}/>, {context});
     instance = wrapper.instance();
-    sinon.stub(instance, 'debouncedUpdateSize');
   });
 
   it('should render .fixed-data-table', () => {
@@ -301,7 +300,6 @@ describe('ExploreTable', () => {
   describe('handleColumnResizeEnd', () => {
     beforeEach(() => {
       sinon.stub(instance, 'renderColumns');
-      sinon.stub(instance, 'hasHorizontalScroll');
       sinon.stub(instance, 'getScrollToColumn');
       sinon.stub(instance, 'updateSize');
     });

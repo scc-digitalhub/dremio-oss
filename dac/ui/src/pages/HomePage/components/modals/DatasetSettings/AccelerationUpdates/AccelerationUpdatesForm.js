@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -44,6 +44,7 @@ export class AccelerationUpdatesForm extends Component {
     accelerationSettings: PropTypes.instanceOf(Immutable.Map),
     datasetFields: PropTypes.instanceOf(Immutable.List),
     entityType: PropTypes.string,
+    fileFormatType: PropTypes.string,
     entityId: PropTypes.string
   };
 
@@ -53,6 +54,9 @@ export class AccelerationUpdatesForm extends Component {
     }
     if (this.props.entityType === 'file') {
       return la('Incremental updating is not available for file-based datasets.');
+    }
+    if (this.props.fileFormatType === 'Iceberg') {
+      return la('Incremental updating is not available for Iceberg datasets.');
     }
     return undefined;
   }

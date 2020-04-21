@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,15 +28,14 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.arrow.memory.BufferAllocator;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
 
 import com.dremio.common.exceptions.UserException;
 import com.dremio.common.perf.Timer.TimedBlock;
 import com.dremio.common.utils.PathUtils;
-import com.dremio.datastore.IndexedStore;
-import com.dremio.exec.store.dfs.FileSystemPlugin;
+import com.dremio.datastore.api.LegacyIndexedStore;
 import com.dremio.exec.store.easy.arrow.ArrowFileMetadata;
+import com.dremio.io.file.FileSystem;
+import com.dremio.io.file.Path;
 import com.dremio.service.Service;
 import com.dremio.service.job.proto.JobAttempt;
 import com.dremio.service.job.proto.JobId;
@@ -70,14 +69,18 @@ public class JobResultsStore implements Service {
   private final BufferAllocator allocator;
   private final Set<FinalizableReference> jobResultReferences = Sets.newConcurrentHashSet();
   private final LoadingCache<JobId, JobData> jobResults;
-  private final IndexedStore<JobId, JobResult> store;
+  private final LegacyIndexedStore<JobId, JobResult> store;
 
-  public JobResultsStore(final FileSystemPlugin plugin, final IndexedStore<JobId, JobResult> store,
-      final BufferAllocator allocator) throws IOException {
-    this.storageName = plugin.getName();
-    this.dfs = plugin.getSystemUserFS();
-    this.jobStoreLocation = plugin.getConfig().getPath();
-    this.dfs.mkdirs(jobStoreLocation);
+  public JobResultsStore(
+      final JobResultsStoreConfig resultsStoreConfig,
+      final LegacyIndexedStore<JobId, JobResult> store,
+      final BufferAllocator allocator
+  ) throws IOException {
+    this.storageName = resultsStoreConfig.getStorageName();
+    this.dfs = resultsStoreConfig.getFileSystem();
+    this.jobStoreLocation = resultsStoreConfig.getStoragePath();
+    dfs.mkdirs(jobStoreLocation);
+
     this.store = store;
     this.allocator = allocator;
 
@@ -99,7 +102,7 @@ public class JobResultsStore implements Service {
   /**
    * Get the output table path for the given id
    */
-  private List<String> getOutputTablePath(final JobId jobId) {
+  public List<String> getOutputTablePath(final JobId jobId) {
     // Get the information from the store or fallback to using job id as the table name
     Optional<JobResult> jobResult = Optional.ofNullable(store.get(jobId));
     return jobResult
@@ -111,7 +114,7 @@ public class JobResultsStore implements Service {
   private Path getJobOutputDir(final JobId jobId) {
     List<String> outputTablePath = getOutputTablePath(jobId);
 
-    return new Path(jobStoreLocation, Iterables.getLast(outputTablePath));
+    return jobStoreLocation.resolve(Iterables.getLast(outputTablePath));
   }
 
   public boolean cleanup(JobId jobId) {

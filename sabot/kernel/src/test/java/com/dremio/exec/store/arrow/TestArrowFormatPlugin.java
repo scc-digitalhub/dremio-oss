@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -108,6 +108,25 @@ public class TestArrowFormatPlugin extends PlanTestBase {
     }
     test("CREATE TABLE dfs_test.test STORE AS (type => 'arrow') AS SELECT * FROM dfs.\"" + tmpFile.getAbsolutePath() + "\"");
     test("SELECT * FROM TABLE(dfs_test.test(type => 'arrow'))");
+  }
+
+  @Test
+  public void arrowReaderTest() throws Exception {
+    // the arrow files used below are as generated in this::generateTestData()
+    // before arrow format change. see DX-18576
+    String query = "SELECT * FROM cp.\"/store/arrow/region/0_0_0.dremarrow1\"";
+    testBuilder()
+      .unOrdered()
+      .sqlQuery(query)
+      .sqlBaselineQuery("SELECT * FROM cp.\"region.json\"")
+      .go();
+
+    query = "SELECT * FROM cp.\"/store/arrow/orders/0_0_0.dremarrow1\"";
+    testBuilder()
+      .unOrdered()
+      .sqlQuery(query)
+      .sqlBaselineQuery("SELECT * FROM cp.\"tpch/orders.parquet\"")
+      .go();
   }
 
   @Test

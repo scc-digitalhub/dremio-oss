@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,14 +37,15 @@ export default class SelectWrapper extends Component {
     return (
       <div className={flexContainer}>
         <FieldWithError errorPlacement='top'
-                        {...hoverHelpText}
-                        label={elementConfig.getConfig().label}
-                        labelClass={selectFieldWithError} >
+          {...hoverHelpText}
+          label={elementConfig.getConfig().label}
+          labelClass={selectFieldWithError} >
           <div className={selectWrapper}>
             <Select
               {...isDisabled}
               items={elementConfig.getConfig().options}
               className={selectBody}
+              valueField='value'
               {...field} />
           </div>
         </FieldWithError>

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ import org.apache.arrow.vector.VectorSchemaRoot;
 import com.dremio.common.expression.LogicalExpression;
 import com.dremio.exec.record.VectorAccessible;
 import com.dremio.exec.record.selection.SelectionVector2;
+import com.dremio.sabot.exec.context.FunctionContext;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 
@@ -59,9 +60,9 @@ public class NativeFilter implements AutoCloseable {
    * @throws GandivaException when we fail to make the gandiva filter
    */
   static public NativeFilter build(LogicalExpression expr, VectorAccessible input,
-                                   SelectionVector2 selectionVector) throws GandivaException {
+                                   SelectionVector2 selectionVector, FunctionContext functionContext) throws GandivaException {
     Set referencedFields = Sets.newHashSet();
-    Condition condition = GandivaExpressionBuilder.serializeExprToCondition(input, expr, referencedFields);
+    Condition condition = GandivaExpressionBuilder.serializeExprToCondition(input, expr, referencedFields, functionContext);
     VectorSchemaRoot root = GandivaUtils.getSchemaRoot(input, referencedFields);
     Filter filter = Filter.make(root.getSchema(), condition);
     return new NativeFilter(filter, root, selectionVector);

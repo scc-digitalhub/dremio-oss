@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,8 @@ import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Optional;
+import java.util.function.IntFunction;
 
 import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.rel.RelNode;
@@ -58,6 +60,7 @@ import com.dremio.common.expression.FunctionCall;
 import com.dremio.common.expression.FunctionCallFactory;
 import com.dremio.common.expression.IfExpression;
 import com.dremio.common.expression.IfExpression.IfCondition;
+import com.dremio.common.expression.InputReference;
 import com.dremio.common.expression.LogicalExpression;
 import com.dremio.common.expression.NullExpression;
 import com.dremio.common.expression.SchemaPath;
@@ -92,7 +95,23 @@ public class RexToExpr {
   }
 
   public static LogicalExpression toExpr(ParseContext context, RelDataType rowType, RexBuilder rexBuilder, RexNode expr, boolean throwUserException) {
-    final Visitor visitor = new Visitor(context, rowType, rexBuilder, throwUserException);
+    return toExpr(context, rowType, rexBuilder, expr, throwUserException, (i) -> Optional.<Integer>empty());
+  }
+
+  /**
+   * Convert a Calcite RexNode expression tree into a LogicalExpression
+   *
+   * @param context            The context for converting this tree.
+   * @param rowType            The rowtype of the input the expressions points at.
+   * @param rexBuilder         A RexBuilder for building intermediate expressions
+   * @param expr               The RexNode to convert
+   * @param throwUserException Whether to throw a user exception when we fail to convert.
+   * @param inputFunction      A function which maps a field ordinal to a particular input side. If maps to a non-absent
+   *                           value, FieldReferences are replaced by InputReferences that include the provided index.
+   * @return The converted expression tree.
+   */
+  public static LogicalExpression toExpr(ParseContext context, RelDataType rowType, RexBuilder rexBuilder, RexNode expr, boolean throwUserException, IntFunction<Optional<Integer>> inputFunction) {
+    final Visitor visitor = new Visitor(context, rowType, rexBuilder, throwUserException, inputFunction);
     return expr.accept(visitor);
   }
 
@@ -169,20 +188,26 @@ public class RexToExpr {
     private final RelDataType rowType;
     private final RexBuilder rexBuilder;
     private final boolean throwUserException;
+    private final IntFunction<Optional<Integer>> inputFunction;
 
-    Visitor(ParseContext context, RelDataType rowType, RexBuilder rexBuilder, boolean throwUserException) {
+    Visitor(ParseContext context, RelDataType rowType, RexBuilder rexBuilder, boolean throwUserException, IntFunction<Optional<Integer>> inputFunction) {
       super(true);
       this.context = context;
       this.throwUserException = throwUserException;
       this.rowType = rowType;
       this.rexBuilder = rexBuilder;
+      this.inputFunction = inputFunction;
     }
 
     @Override
     public LogicalExpression visitInputRef(RexInputRef inputRef) {
       final int index = inputRef.getIndex();
+      Optional<Integer> input = inputFunction.apply(index);
+
       final RelDataTypeField field = rowType.getFieldList().get(index);
-      return FieldReference.getWithQuotedRef(field.getName());
+      FieldReference reference = FieldReference.getWithQuotedRef(field.getName());
+
+      return input.map(i -> (LogicalExpression) new InputReference(i, reference)).orElse(reference);
     }
 
     @Override
@@ -755,9 +780,11 @@ public class RexToExpr {
       case DECIMAL:
         if (context.getPlannerSettings().getOptions().getOption(PlannerSettings.ENABLE_DECIMAL_V2)) {
           if (isLiteralNull(literal)) {
-            return createNullExpr(MinorType.DECIMAL);
+            return new TypedNullConstant(CompleteType.fromDecimalPrecisionScale(literal.getType()
+              .getPrecision(), literal.getType().getScale()));
           }
-          return ValueExpressions.getDecimal((BigDecimal)literal.getValue());
+          BigDecimal literalValue = (BigDecimal)literal.getValue();
+          return ValueExpressions.getDecimal(literalValue, literal.getType().getPrecision(), literal.getType().getScale());
         } else {
           if (isLiteralNull(literal)) {
             return createNullExpr(MinorType.FLOAT8);
@@ -822,6 +849,10 @@ public class RexToExpr {
       case ANY:
         if (isLiteralNull(literal)) {
           return NullExpression.INSTANCE;
+        }
+      case VARBINARY:
+        if (isLiteralNull(literal)) {
+          return createNullExpr(MinorType.VARBINARY);
         }
       default:
         throw new UnsupportedOperationException(String.format("Unable to convert the value of %s and type %s to a Dremio constant expression.", literal, literal.getType().getSqlTypeName()));

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,11 +33,13 @@ import com.dremio.connector.metadata.DatasetSplit;
 import com.dremio.connector.metadata.PartitionChunk;
 import com.dremio.connector.metadata.PartitionChunkListing;
 import com.dremio.connector.metadata.SourceMetadata;
-import com.dremio.datastore.IndexedStore.FindByCondition;
 import com.dremio.datastore.SearchQueryUtils;
+import com.dremio.datastore.api.LegacyIndexedStore.LegacyFindByCondition;
 import com.dremio.exec.catalog.ManagedStoragePlugin.MetadataAccessType;
+import com.dremio.exec.catalog.conf.ConnectionConf;
 import com.dremio.exec.dotfile.View;
 import com.dremio.exec.planner.logical.ViewTable;
+import com.dremio.exec.planner.sql.CalciteArrowHelper;
 import com.dremio.exec.record.BatchSchema;
 import com.dremio.exec.store.DatasetRetrievalOptions;
 import com.dremio.exec.store.NamespaceTable;
@@ -99,12 +101,12 @@ class DatasetManager {
 
   /**
    * A path is ambiguous if it has two parts and the root contains a period. In this case, we don't
-   * know whether the root should be considered a single part of many parts and need to do a search
+   * know whether the root should be considered a single part or multiple parts and need to do a search
    * for an unescaped path rather than a lookup.
    *
    * This is because JDBC & ODBC tools use a two part naming scheme and thus we also present Dremio
    * datasets using this two part scheme where all parts of the path except the leaf are presented
-   * as part of the schema of the table. This relates to DX-
+   * as part of the schema of the table.
    *
    * @param key
    *          Key to test
@@ -130,13 +132,13 @@ class DatasetManager {
     }
 
     /**
-     * If we have an ambgious key, let's search for possible matches in the namespace.
+     * If we have an ambiguous key, let's search for possible matches in the namespace.
      *
      * From there we will:
      * - only consider keys that have the same leaf value (since ambiguity isn't allowed there)
      * - return the first key by ordering the keys by segment (cis then cs).
      */
-    final FindByCondition condition = new FindByCondition();
+    final LegacyFindByCondition condition = new LegacyFindByCondition();
     condition.setCondition(SearchQueryUtils.newTermQuery(NamespaceIndexKeys.UNQUOTED_LC_PATH, key.toUnescapedString().toLowerCase()));
     List<DatasetConfig> possibleMatches = FluentIterable.from(userNamespaceService.find(condition)).filter(new Predicate<Entry<NamespaceKey, NameSpaceContainer>>() {
       @Override
@@ -187,7 +189,8 @@ class DatasetManager {
 
   public DremioTable getTable(
       NamespaceKey key,
-      MetadataRequestOptions options
+      MetadataRequestOptions options,
+      boolean ignoreColumnCount
       ){
 
     final ManagedStoragePlugin plugin;
@@ -204,7 +207,7 @@ class DatasetManager {
 
       // if we have a plugin and the info isn't a vds (this happens in home, where VDS are intermingled with plugin datasets).
       if(config == null || config.getType() != DatasetType.VIRTUAL_DATASET) {
-        return getTableFromPlugin(key, config, plugin, options);
+        return getTableFromPlugin(key, config, plugin, options, ignoreColumnCount);
       }
     }
 
@@ -233,7 +236,7 @@ class DatasetManager {
 
     NamespaceKey key = new NamespaceKey(config.getFullPathList());
 
-    return getTable(key, options);
+    return getTable(key, options, false);
   }
 
   private NamespaceTable getTableFromNamespace(NamespaceKey key, DatasetConfig datasetConfig, ManagedStoragePlugin plugin,
@@ -253,7 +256,8 @@ class DatasetManager {
       NamespaceKey key,
       DatasetConfig datasetConfig,
       ManagedStoragePlugin plugin,
-      MetadataRequestOptions options
+      MetadataRequestOptions options,
+      boolean ignoreColumnCount
   ) {
 
     // Figure out the user we want to access the source with.  If the source supports impersonation we allow it to
@@ -262,7 +266,7 @@ class DatasetManager {
     final String accessUserName = getAccessUserName(plugin, schemaConfig);
 
     final Stopwatch stopwatch = Stopwatch.createStarted();
-    if (plugin.isValid(datasetConfig, options)) {
+    if (plugin.isCompleteAndValid(datasetConfig, options)) {
       plugin.checkAccess(key, datasetConfig, accessUserName, options);
       final NamespaceKey canonicalKey = new NamespaceKey(datasetConfig.getFullPathList());
       final NamespaceTable namespaceTable = getTableFromNamespace(key, datasetConfig, plugin, accessUserName, options);
@@ -296,6 +300,9 @@ class DatasetManager {
     final DatasetRetrievalOptions retrievalOptions = plugin.getDefaultRetrievalOptions()
         .toBuilder()
         .setIgnoreAuthzErrors(schemaConfig.getIgnoreAuthErrors())
+        .setMaxMetadataLeafColumns(
+          (ignoreColumnCount) ? Integer.MAX_VALUE : plugin.getDefaultRetrievalOptions().maxMetadataLeafColumns()
+        )
         .build();
 
     final Optional<DatasetHandle> handle;
@@ -319,11 +326,11 @@ class DatasetManager {
 
       try {
         datasetConfig = userNamespaceService.getDataset(canonicalKey);
-        if (datasetConfig != null && plugin.isValid(datasetConfig, options)) {
+        if (datasetConfig != null && plugin.isCompleteAndValid(datasetConfig, options)) {
           // if the dataset config is complete and unexpired, we'll recurse because we don't need the just retrieved
           // SourceTableDefinition. Since they're lazy, little harm done.
           // Otherwise, we'll fall through and use the found accessor.
-          return getTableFromPlugin(canonicalKey, datasetConfig, plugin, options);
+          return getTableFromPlugin(canonicalKey, datasetConfig, plugin, options, ignoreColumnCount);
         }
       } catch (NamespaceException e) {
         // ignore, we'll fall through.
@@ -378,12 +385,13 @@ class DatasetManager {
   private String getAccessUserName(ManagedStoragePlugin plugin, SchemaConfig schemaConfig) {
     final String accessUserName;
 
-    if (plugin.getConnectionConf() instanceof ImpersonationConf) {
+    ConnectionConf<?,?> conf = plugin.getConnectionConf();
+    if (conf instanceof ImpersonationConf) {
       String queryUser = null;
       if (schemaConfig.getViewExpansionContext() != null) {
         queryUser = schemaConfig.getViewExpansionContext().getQueryUser();
       }
-      accessUserName = ((ImpersonationConf) plugin.getConnectionConf()).getAccessUserName(schemaConfig.getUserName(), queryUser);
+      accessUserName = ((ImpersonationConf) conf).getAccessUserName(schemaConfig.getUserName(), queryUser);
     } else {
       accessUserName = schemaConfig.getUserName();
     }
@@ -401,7 +409,7 @@ class DatasetManager {
       );
 
       // 1.4.0 and earlier didn't correctly save virtual dataset schema information.
-      BatchSchema schema = DatasetHelper.getSchemaBytes(datasetConfig) != null ? BatchSchema.fromDataset(datasetConfig) : null;
+      BatchSchema schema = DatasetHelper.getSchemaBytes(datasetConfig) != null ? CalciteArrowHelper.fromDataset(datasetConfig) : null;
       return new ViewTable(new NamespaceKey(datasetConfig.getFullPathList()), view, datasetConfig, schema);
     } catch (Exception e) {
       logger.warn("Failure parsing virtual dataset, not including in available schema.", e);
@@ -542,7 +550,7 @@ class DatasetManager {
     }
 
     SplitCompression splitCompression = SplitCompression.valueOf(optionManager.getOption(CatalogOptions.SPLIT_COMPRESSION_TYPE).toUpperCase());
-    try (DatasetMetadataSaver saver = userNamespace.newDatasetMetadataSaver(key, nsConfig.getId(), splitCompression)) {
+    try (DatasetMetadataSaver saver = userNamespace.newDatasetMetadataSaver(key, nsConfig.getId(), splitCompression, optionManager.getOption(CatalogOptions.SINGLE_SPLIT_PARTITION_MAX))) {
       final PartitionChunkListing chunkListing = sourceMetadata.listPartitionChunks(handle,
           options.asListPartitionChunkOptions(nsConfig));
       final Iterator<? extends PartitionChunk> chunks = chunkListing.iterator();

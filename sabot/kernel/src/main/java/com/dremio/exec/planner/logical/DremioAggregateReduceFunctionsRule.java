@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,6 +32,10 @@ public final class DremioAggregateReduceFunctionsRule extends AggregateReduceFun
   public static final DremioAggregateReduceFunctionsRule INSTANCE =
           new DremioAggregateReduceFunctionsRule(operand(LogicalAggregate.class, any()), true,
                   RelFactories.LOGICAL_BUILDER);
+
+  public static final DremioAggregateReduceFunctionsRule NO_REDUCE_SUM =
+          new DremioAggregateReduceFunctionsRule(operand(AggregateRel.class, any()), false,
+                  DremioRelFactories.LOGICAL_BUILDER);
 
   private DremioAggregateReduceFunctionsRule(RelOptRuleOperand operand, boolean reduceSum,
                                              RelBuilderFactory relBuilderFactory) {

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,8 @@
 package com.dremio.dac.server.test;
 
 import static com.dremio.dac.server.test.SampleDataPopulator.DEFAULT_USER_NAME;
+import static com.dremio.exec.proto.UserBitShared.PlanPhaseProfile;
+import static java.lang.String.format;
 import static javax.ws.rs.core.MediaType.TEXT_HTML;
 
 import java.io.IOException;
@@ -23,11 +25,18 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 
 import javax.inject.Inject;
+import javax.servlet.http.HttpServletRequest;
+import javax.ws.rs.DefaultValue;
 import javax.ws.rs.FormParam;
 import javax.ws.rs.GET;
+import javax.ws.rs.NotFoundException;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
+import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
+import javax.ws.rs.QueryParam;
+import javax.ws.rs.core.Context;
+import javax.ws.rs.core.Response;
 import javax.ws.rs.core.SecurityContext;
 
 import org.glassfish.jersey.server.mvc.Viewable;
@@ -39,13 +48,18 @@ import com.dremio.dac.service.collaboration.CollaborationHelper;
 import com.dremio.dac.service.datasets.DatasetVersionMutator;
 import com.dremio.dac.service.reflection.ReflectionServiceHelper;
 import com.dremio.dac.service.source.SourceService;
-import com.dremio.datastore.KVStoreProvider;
+import com.dremio.datastore.api.LegacyKVStoreProvider;
+import com.dremio.exec.catalog.CatalogServiceImpl;
 import com.dremio.exec.catalog.ConnectionReader;
 import com.dremio.exec.proto.UserBitShared.QueryProfile;
 import com.dremio.exec.server.SabotContext;
 import com.dremio.exec.store.CatalogService;
 import com.dremio.exec.util.TestUtilities;
+import com.dremio.options.OptionManager;
 import com.dremio.service.InitializerRegistry;
+import com.dremio.service.job.QueryProfileRequest;
+import com.dremio.service.job.proto.JobProtobuf;
+import com.dremio.service.jobs.JobNotFoundException;
 import com.dremio.service.jobs.JobsService;
 import com.dremio.service.namespace.NamespaceException;
 import com.dremio.service.namespace.NamespaceKey;
@@ -60,7 +74,7 @@ import com.dremio.service.users.UserService;
 @Path("/test")
 public class TestResource {
 
-  private final KVStoreProvider provider;
+  private final LegacyKVStoreProvider provider;
   private final SabotContext context;
   private final UserService userService;
   private final InitializerRegistry init;
@@ -70,12 +84,14 @@ public class TestResource {
   private final JobsService jobsService;
   private final CatalogService catalogService;
   private final ReflectionServiceHelper reflectionHelper;
+  private final OptionManager optionManager;
 
   @Inject
   public TestResource(InitializerRegistry init, SabotContext context, UserService userService,
-                      KVStoreProvider provider, JobsService jobsService,
+                      LegacyKVStoreProvider provider, JobsService jobsService,
                       CatalogService catalogService, ReflectionServiceHelper reflectionHelper,
-                      SecurityContext security, ConnectionReader connectionReader, CollaborationHelper collaborationService) {
+                      SecurityContext security, ConnectionReader connectionReader, CollaborationHelper collaborationService,
+                      OptionManager optionManager) {
     this.init = init;
     this.provider = provider;
     this.context = context;
@@ -86,6 +102,7 @@ public class TestResource {
     this.security = security;
     this.connectionReader = connectionReader;
     this.collaborationService = collaborationService;
+    this.optionManager = optionManager;
   }
 
   @Bootstrap
@@ -106,7 +123,7 @@ public class TestResource {
   }
 
   private DatasetVersionMutator newDS(NamespaceService nsWithAuth) {
-    return new DatasetVersionMutator(init, provider, nsWithAuth, jobsService, catalogService);
+    return new DatasetVersionMutator(init, provider, nsWithAuth, jobsService, catalogService, optionManager);
   }
 
   private SourceService newSourceService(NamespaceService nsWithAuth, DatasetVersionMutator ds) {
@@ -115,7 +132,7 @@ public class TestResource {
 
   public void refreshNow(String...sources) throws NamespaceException {
     for(String source : sources) {
-      context.getCatalogService().refreshSource(new NamespaceKey(source), CatalogService.REFRESH_EVERYTHING_NOW, CatalogService.UpdateType.FULL);
+      ((CatalogServiceImpl) context.getCatalogService()).refreshSource(new NamespaceKey(source), CatalogService.REFRESH_EVERYTHING_NOW, CatalogServiceImpl.UpdateType.FULL);
     }
   }
 
@@ -155,5 +172,42 @@ public class TestResource {
     byte[] data = Files.readAllBytes(profilePath);
     QueryProfile profile = ProfileResource.SERIALIZER.deserialize(data);
     return ProfileResource.renderProfile(profile, true);
+  }
+
+  @GET
+  @Path("isSecure")
+  public Response isSecure(@Context HttpServletRequest request) throws Exception {
+    // this is used for testing is jersey is away that SSL is enabled
+    if (request.isSecure()) {
+      return Response.ok().build();
+    }
+
+    return Response.serverError().build();
+  }
+
+  @GET
+  @Path("/get_plan/{queryid}")
+  public String getExecutorSelectionParams(@PathParam("queryid") String queryId,
+                                           @QueryParam("attempt") @DefaultValue("0") int attempt,
+                                           @QueryParam("planphase") String planPhase) {
+    final QueryProfile profile;
+    try {
+      QueryProfileRequest request = QueryProfileRequest.newBuilder()
+        .setJobId(JobProtobuf.JobId.newBuilder()
+          .setId(queryId)
+          .build())
+        .setAttempt(attempt)
+        .build();
+      profile = jobsService.getProfile(request);
+    } catch (JobNotFoundException ignored) {
+      // TODO: should this be JobResourceNotFoundException?
+      throw new NotFoundException(format("Profile for JobId [%s] and Attempt [%d] not found.", queryId, attempt));
+    }
+    for (PlanPhaseProfile planPhaseProfile : profile.getPlanPhasesList()) {
+      if (planPhase.equals(planPhaseProfile.getPhaseName())) {
+        return planPhaseProfile.getPlan();
+      }
+    }
+    return "Not Found";
   }
 }

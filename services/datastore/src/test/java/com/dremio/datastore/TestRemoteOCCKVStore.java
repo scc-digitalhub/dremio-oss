@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,21 +16,23 @@
 package com.dremio.datastore;
 
 import org.apache.arrow.memory.BufferAllocator;
-import org.apache.arrow.memory.RootAllocator;
 import org.junit.After;
+import org.junit.Rule;
 
 import com.dremio.common.AutoCloseables;
+import com.dremio.datastore.api.KVStoreProvider;
 import com.dremio.exec.proto.CoordinationProtos.NodeEndpoint;
 import com.dremio.exec.rpc.CloseableThreadPool;
 import com.dremio.service.DirectProvider;
 import com.dremio.services.fabric.FabricServiceImpl;
 import com.dremio.services.fabric.api.FabricService;
+import com.dremio.test.AllocatorRule;
 import com.dremio.test.DremioTest;
 
 /**
  * Tests for remote occ kvstore.
  */
-public class TestRemoteOCCKVStore extends AbstractTestOCCKVStore {
+public class TestRemoteOCCKVStore<K, V> extends AbstractTestOCCKVStore<K, V> {
 
   private static final String HOSTNAME = "localhost";
   private static final int THREAD_COUNT = 2;
@@ -40,15 +42,18 @@ public class TestRemoteOCCKVStore extends AbstractTestOCCKVStore {
 
   private FabricService localFabricService;
   private FabricService remoteFabricService;
-  private LocalKVStoreProvider localKVStoreProvider;
-  private RemoteKVStoreProvider remoteKVStoreProvider;
+  private KVStoreProvider localKVStoreProvider;
+  private KVStoreProvider remoteKVStoreProvider;
   private BufferAllocator allocator;
   private CloseableThreadPool pool;
 
-  @Override
-  KVStoreProvider createKKStoreProvider() throws Exception {
+  @Rule
+  public final AllocatorRule allocatorRule = AllocatorRule.defaultAllocator();
 
-    allocator = new RootAllocator(20 * 1024 * 1024);
+  @Override
+  protected KVStoreProvider createKVStoreProvider() throws Exception {
+
+    allocator = allocatorRule.newAllocator("test-remote-occ-kvstore", 0, 20 * 1024 * 1024);
     pool = new CloseableThreadPool("test-remoteocckvstore");
     localFabricService = new FabricServiceImpl(HOSTNAME, 45678, true, THREAD_COUNT, allocator, RESERVATION,
         MAX_ALLOCATION, TIMEOUT, pool);
@@ -59,15 +64,15 @@ public class TestRemoteOCCKVStore extends AbstractTestOCCKVStore {
     remoteFabricService.start();
 
     localKVStoreProvider = new LocalKVStoreProvider(DremioTest.CLASSPATH_SCAN_RESULT,
-        DirectProvider.<FabricService>wrap(localFabricService), allocator, HOSTNAME, null, true, true, true, false);
+        DirectProvider.<FabricService>wrap(localFabricService), allocator, HOSTNAME, null, true, true);
     localKVStoreProvider.start();
     remoteKVStoreProvider = new RemoteKVStoreProvider(
-        DremioTest.CLASSPATH_SCAN_RESULT,
-        DirectProvider.wrap(NodeEndpoint.newBuilder()
-            .setAddress(HOSTNAME)
-            .setFabricPort(localFabricService.getPort())
-            .build()),
-        DirectProvider.<FabricService>wrap(remoteFabricService), allocator, HOSTNAME);
+      DremioTest.CLASSPATH_SCAN_RESULT,
+      DirectProvider.wrap(NodeEndpoint.newBuilder()
+        .setAddress(HOSTNAME)
+        .setFabricPort(localFabricService.getPort())
+        .build()),
+      DirectProvider.<FabricService>wrap(remoteFabricService), allocator, HOSTNAME);
     remoteKVStoreProvider.start();
     return remoteKVStoreProvider;
   }

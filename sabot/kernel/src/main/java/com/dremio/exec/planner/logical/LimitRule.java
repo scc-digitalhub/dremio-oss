@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -52,7 +52,7 @@ public class LimitRule extends RelOptRule {
     }
 
     RelNode convertedInput = convert(input, input.getTraitSet().plus(Rel.LOGICAL).simplify());
-    call.transformTo(new LimitRel(incomingSort.getCluster(), convertedInput.getTraitSet().plus(Rel.LOGICAL), convertedInput, incomingSort.offset, incomingSort.fetch));
+    call.transformTo(LimitRel.create(incomingSort.getCluster(), convertedInput.getTraitSet().plus(Rel.LOGICAL), convertedInput, incomingSort.offset, incomingSort.fetch));
   }
 
 }

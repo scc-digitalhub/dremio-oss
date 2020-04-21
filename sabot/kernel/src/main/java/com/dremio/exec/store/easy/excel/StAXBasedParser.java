@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -169,8 +169,8 @@ public class StAXBasedParser implements ExcelParser {
    */
   private void init(final boolean extractHeader, final boolean hasMergedCells) throws XMLStreamException, IOException {
     if (hasMergedCells) {
-      xmlStreamReader = ExcelUtil.XML_INPUT_FACTORY.createXMLStreamReader(sheetInputStream);
       sheetInputStream.mark(-1);
+      xmlStreamReader = ExcelUtil.XML_INPUT_FACTORY.createXMLStreamReader(sheetInputStream);
       parseMergedCellInfo();
       sheetInputStream.reset();
       xmlStreamReader.close();

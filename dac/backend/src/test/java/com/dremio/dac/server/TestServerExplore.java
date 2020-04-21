@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -79,6 +79,7 @@ import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 
+import com.dremio.common.util.DremioVersionInfo;
 import com.dremio.dac.explore.model.CellPOJO;
 import com.dremio.dac.explore.model.CleanDataCard;
 import com.dremio.dac.explore.model.CleanDataCard.ConvertToSingleType;
@@ -190,11 +191,9 @@ import com.dremio.dac.util.DatasetsUtil.ExtractRuleVisitor;
 import com.dremio.dac.util.JSONUtil;
 import com.dremio.exec.store.CatalogService;
 import com.dremio.exec.store.dfs.NASConf;
+import com.dremio.service.jobs.HybridJobsService;
 import com.dremio.service.jobs.JobRequest;
 import com.dremio.service.jobs.JobsService;
-import com.dremio.service.jobs.JobsServiceUtil;
-import com.dremio.service.jobs.LocalJobsService;
-import com.dremio.service.jobs.NoOpJobStatusListener;
 import com.dremio.service.jobs.SqlQuery;
 import com.dremio.service.namespace.NamespaceKey;
 import com.dremio.service.namespace.NamespaceService;
@@ -647,7 +646,7 @@ public class TestServerExplore extends BaseTestServer {
         getAPIv2().path(versionedResourcePath(dataset) + "/transformAndPreview")
       ).buildPost(entity(new TransformDrop(null), JSON)),
       ValidationErrorMessage.class);
-    assertEquals(asList("may not be empty"), result.getValidationErrorMessages().getFieldErrorMessages().get("droppedColumnName"));
+    assertEquals(asList("must not be blank"), result.getValidationErrorMessages().getFieldErrorMessages().get("droppedColumnName"));
   }
 
   @Test
@@ -658,7 +657,7 @@ public class TestServerExplore extends BaseTestServer {
             getBuilder(getAPIv2().path(versionedResourcePath(dataset) + "/split"))
                     .buildPost(entity(selection, JSON)),
             ValidationErrorMessage.class);
-    assertEquals(asList("may not be null"), err.getValidationErrorMessages().getFieldErrorMessages().get("colName"));
+    assertEquals(asList("must not be null"), err.getValidationErrorMessages().getFieldErrorMessages().get("colName"));
     assertEquals(asList("must be greater than or equal to 0"), err.getValidationErrorMessages().getFieldErrorMessages().get("offset"));
     assertEquals(asList("must be greater than or equal to 0"), err.getValidationErrorMessages().getFieldErrorMessages().get("length"));
     assertEquals(err.getValidationErrorMessages().getFieldErrorMessages().toString(), 3, err.getValidationErrorMessages().getFieldErrorMessages().size());
@@ -1378,49 +1377,41 @@ public class TestServerExplore extends BaseTestServer {
 
   @Test
   public void testVirtualDatasetWithNotNullFields() throws Exception {
-    final LocalJobsService jobsService = (LocalJobsService) l(JobsService.class);
+    final HybridJobsService jobsService = (HybridJobsService) l(JobsService.class);
     expectSuccess(getBuilder(getAPIv2().path("space/space1")).buildPut(Entity.json(new Space(null, "space1", null, null, null, 0, null))), Space.class);
     final String pathName = "space1.v1";
     final DatasetPath numbersJsonPath = new DatasetPath(pathName);
     DatasetUI numbersJsonVD = createDatasetFromSQLAndSave(numbersJsonPath,
       "select row_number() over (order by a) as rnk, a from cp.\"json/numbers.json\"", ImmutableList.of("cp"));
     final SqlQuery query = getQueryFromSQL(String.format("select t1.rnk, t1.a from %s t1 join %s t2 on t1.rnk = t2.rnk+1", pathName, pathName));
-    JobsServiceUtil.waitForJobCompletion(
-      jobsService.submitJob(JobRequest.newBuilder().setSqlQuery(query).build(), NoOpJobStatusListener.INSTANCE)
-    );
+    submitJobAndWaitUntilCompletion(JobRequest.newBuilder().setSqlQuery(query).build());
   }
 
   @Test
   public void testVirtualDatasetWithTimestampDiff() throws Exception {
-    final LocalJobsService jobsService = (LocalJobsService) l(JobsService.class);
+    final HybridJobsService jobsService = (HybridJobsService) l(JobsService.class);
     expectSuccess(getBuilder(getAPIv2().path("space/space1")).buildPut(Entity.json(new Space(null, "space1", null, null, null, 0, null))), Space.class);
     final String pathName = "space1.v1";
     final DatasetPath datetimePath = new DatasetPath(pathName);
     DatasetUI dateTimeVD = createDatasetFromSQLAndSave(datetimePath,
       "select timestampdiff(SECOND, datetime1, datetime2) as tsdiff from cp.\"json/datetime.json\"", ImmutableList.of("cp"));
     final SqlQuery query = getQueryFromSQL(String.format("select * from %s", pathName));
-    JobsServiceUtil.waitForJobCompletion(
-      jobsService.submitJob(JobRequest.newBuilder().setSqlQuery(query).build(), NoOpJobStatusListener.INSTANCE)
-    );
+    submitJobAndWaitUntilCompletion(JobRequest.newBuilder().setSqlQuery(query).build());
   }
 
   @Test
   public void testVirtualDatasetWithChar() throws Exception {
-    final LocalJobsService jobsService = (LocalJobsService) l(JobsService.class);
+    final HybridJobsService jobsService = (HybridJobsService) l(JobsService.class);
     expectSuccess(getBuilder(getAPIv2().path("space/space1")).buildPut(Entity.json(new Space(null,"space1", null, null, null, 0, null))), Space.class);
     final String pathName = "space1.v1";
     final DatasetPath numbersJsonPath = new DatasetPath(pathName);
     DatasetUI numbersJsonVD = createDatasetFromSQLAndSave(numbersJsonPath,
       "select CASE WHEN a > 2 THEN 'less than 2' ELSE 'greater than 2' END as twoInfo, a from cp.\"json/numbers.json\"", ImmutableList.of("cp"));
     final SqlQuery query = getQueryFromSQL(String.format("select * from %s", pathName));
-    JobsServiceUtil.waitForJobCompletion(
-      jobsService.submitJob(JobRequest.newBuilder().setSqlQuery(query).build(), NoOpJobStatusListener.INSTANCE)
-    );
+    submitJobAndWaitUntilCompletion(JobRequest.newBuilder().setSqlQuery(query).build());
 
     final SqlQuery query2 = getQueryFromSQL(String.format("select count(*) from %s where a > 2", pathName));
-    JobsServiceUtil.waitForJobCompletion(
-      jobsService.submitJob(JobRequest.newBuilder().setSqlQuery(query2).build(), NoOpJobStatusListener.INSTANCE)
-    );
+    submitJobAndWaitUntilCompletion(JobRequest.newBuilder().setSqlQuery(query2).build());
   }
 
   @Test
@@ -1970,6 +1961,7 @@ public class TestServerExplore extends BaseTestServer {
       assertEquals("green", nodes.get(0).getStatus());
       assertEquals(1, nodes.size());
     }
+    assertTrue(nodes.stream().allMatch(node -> node.getVersion().equals(DremioVersionInfo.getVersion())));
   }
 
   @Test

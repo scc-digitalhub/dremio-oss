@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
  */
 package com.dremio.service.jobs;
 
+import static com.dremio.service.jobs.JobsServiceUtil.finalJobStates;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.any;
@@ -31,8 +32,8 @@ import org.junit.Test;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 
-import com.dremio.datastore.IndexedStore;
-import com.dremio.datastore.IndexedStore.FindByCondition;
+import com.dremio.datastore.api.LegacyIndexedStore;
+import com.dremio.datastore.api.LegacyIndexedStore.LegacyFindByCondition;
 import com.dremio.service.job.proto.JobAttempt;
 import com.dremio.service.job.proto.JobId;
 import com.dremio.service.job.proto.JobInfo;
@@ -52,12 +53,9 @@ public class TestLocalJobsServiceStartup {
   @SuppressWarnings("unchecked")
   @Test
   public void cleanupJobStateOnStartUp() throws Exception {
-    final EnumSet<JobState> finalStates =
-        EnumSet.of(JobState.COMPLETED, JobState.CANCELED, JobState.FAILED);
-
-    final IndexedStore<JobId, JobResult> jobStore = (IndexedStore<JobId, JobResult>) mock(IndexedStore.class);
-    when(jobStore.find(any(FindByCondition.class)))
-        .thenReturn(FluentIterable.from(Sets.difference(EnumSet.allOf(JobState.class), finalStates))
+    final LegacyIndexedStore<JobId, JobResult> jobStore = (LegacyIndexedStore<JobId, JobResult>) mock(LegacyIndexedStore.class);
+    when(jobStore.find(any(LegacyFindByCondition.class)))
+        .thenReturn(FluentIterable.from(Sets.difference(EnumSet.allOf(JobState.class), finalJobStates))
             .transform(
                 new Function<JobState, Entry<JobId, JobResult>>() {
                   @Override
@@ -81,8 +79,9 @@ public class TestLocalJobsServiceStartup {
     LocalJobsService.setAbandonedJobsToFailedState(jobStore);
 
     assertTrue("all job states must be final, or handled by the above method",
-        returns.size() + finalStates.size() == JobState.values().length);
+        returns.size() + finalJobStates.size() == JobState.values().length);
     for (JobResult result : returns) {
+      assertTrue(result.getCompleted());
       assertEquals(result.getAttemptsList().get(0).getState(),
           JobState.FAILED);
       assertTrue(result.getAttemptsList()

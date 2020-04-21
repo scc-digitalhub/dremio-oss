@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,15 +20,16 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
+import java.nio.file.Paths;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.regex.Pattern;
 
 import org.apache.commons.lang3.text.StrTokenizer;
-import org.apache.hadoop.fs.Path;
 
 import com.dremio.common.exceptions.UserException;
+import com.dremio.io.file.Path;
 import com.github.slugify.Slugify;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
@@ -45,7 +46,7 @@ public class PathUtils {
   private static final String SLASH = Path.SEPARATOR;
   private static final char SLASH_CHAR = Path.SEPARATOR_CHAR;
   private static final Joiner PATH_JOINER = Joiner.on(SLASH_CHAR).useForNull("");
-  private static final Path ROOT_PATH = new Path(SLASH);
+  private static final Path ROOT_PATH = Path.of(SLASH);
   private static final List<String> EMPTY_SCHEMA_PATHS = Collections.emptyList();
 
   /**
@@ -58,11 +59,11 @@ public class PathUtils {
     if (schemaPath == null || schemaPath.isEmpty()) {
       return ROOT_PATH;
     }
-    return new Path(ROOT_PATH, PATH_JOINER.join(schemaPath));
+    return ROOT_PATH.resolve(PATH_JOINER.join(schemaPath));
   }
 
   public static String toFSPathString(final List<String> schemaPath) {
-    return Path.getPathWithoutSchemeAndAuthority(toFSPath(schemaPath)).toString();
+    return Path.withoutSchemeAndAuthority(toFSPath(schemaPath)).toString();
   }
 
   /**
@@ -94,7 +95,7 @@ public class PathUtils {
     final List<String> pathComponents = Lists.newArrayList();
     for (String component: parseFullPath(path)) {
       if (component.contains(SLASH)) {
-        pathComponents.addAll(toPathComponents(new Path(component)));
+        pathComponents.addAll(toPathComponents(Path.of(component)));
       } else {
         pathComponents.add(component);
       }
@@ -167,7 +168,7 @@ public class PathUtils {
       return EMPTY_SCHEMA_PATHS;
     }
 
-    return toPathComponents(fsPath.toUri().getPath());
+    return toPathComponents(fsPath.toURI().getPath());
   }
 
   /**
@@ -277,21 +278,31 @@ public class PathUtils {
 
   /**
    * Make sure the <i>givenPath</i> refers to an entity under the given <i>basePath</i>. Idea is to avoid using ".." to
-   * refer entities outside the ba
+   * refer entities outside the basePath.
    * @param basePath
    * @param givenPath
    */
   public static void verifyNoAccessOutsideBase(Path basePath, Path givenPath) {
-    final String givenPathNormalized = Path.getPathWithoutSchemeAndAuthority(givenPath).toString();
-    final String basePathNormalized = Path.getPathWithoutSchemeAndAuthority(basePath).toString();
-
-    if (!givenPathNormalized.startsWith(basePathNormalized)) {
+    if (!checkNoAccessOutsideBase(basePath, givenPath)) {
       throw UserException.permissionError()
           .message("Not allowed to access files outside of the source root")
-          .addContext("Source root", basePathNormalized)
-          .addContext("Requested to path", givenPathNormalized)
+          .addContext("Source root", Path.withoutSchemeAndAuthority(basePath).toString())
+          .addContext("Requested to path", Path.withoutSchemeAndAuthority(givenPath).toString())
           .build(logger);
     }
+  }
+
+  /**
+   * Checks if <i>givenPath</i> refers to an entity under the given <i>basePath</i>. Idea is to avoid using ".." to
+   * refer entities outside the basePath.
+   * @param basePath
+   * @param givenPath
+   * @return boolean indicating if the givenPath is valid or not relative to the basePath
+   */
+  public static boolean checkNoAccessOutsideBase(Path basePath, Path givenPath) {
+    final String basePathNormalized = Path.withoutSchemeAndAuthority(basePath).toString();
+    final String givenPathNormalized = Path.withoutSchemeAndAuthority(givenPath).toString();
+    return (Paths.get(givenPathNormalized).startsWith(Paths.get(basePathNormalized)));
   }
 
   /**

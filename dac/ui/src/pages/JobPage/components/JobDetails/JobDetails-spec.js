@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -63,20 +63,6 @@ describe('JobDetails', () => {
       expect(commonProps.loadJobDetails).to.be.calledTwice;
       wrapper.instance().componentWillUnmount();
     });
-  });
-
-  it('should poll job details', () => {
-    const clock = sinon.useFakeTimers();
-    const wrapper = shallow(<JobDetails {...commonProps}/>);
-    const instance = wrapper.instance();
-    expect(commonProps.loadJobDetails.callCount).to.eql(1);
-    clock.tick(3000);
-    expect(commonProps.loadJobDetails.callCount).to.eql(2);
-    instance.componentWillUnmount();
-    clock.tick(3000);
-    expect(commonProps.loadJobDetails.callCount).to.eql(2);
-    clock.restore();
-    wrapper.instance().componentWillUnmount();
   });
 
   describe('load', () => {

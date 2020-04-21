@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,11 +43,10 @@ public interface ExecConstants {
   String ZK_SESSION_TIMEOUT = "dremio.exec.zk.session.timeout";
   String ZK_ROOT = "dremio.exec.zk.root";
   String ZK_REFRESH = "dremio.exec.zk.refresh";
-  String BIT_RETRY_TIMES = "dremio.exec.rpc.bit.server.retry.count";
-  String BIT_RETRY_DELAY = "dremio.exec.rpc.bit.server.retry.delay";
-  String INITIAL_USER_PORT = "dremio.exec.rpc.user.server.port";
-  String USER_RPC_TIMEOUT = "dremio.exec.rpc.user.timeout";
-  String CLIENT_RPC_THREADS = "dremio.exec.rpc.user.client.threads";
+  String ZK_RETRY_UNLIMITED = "dremio.exec.zk.retry.unlimited";
+  String ZK_RETRY_LIMIT = "dremio.exec.zk.retry.limit";
+  String ZK_INITIAL_TIMEOUT_MS = "dremio.exec.zk.retry.initial_timeout_ms";
+
   String BIT_SERVER_RPC_THREADS = "dremio.exec.rpc.bit.server.threads";
   String USER_SERVER_RPC_THREADS = "dremio.exec.rpc.user.server.threads";
   String REGISTRATION_ADDRESS = "dremio.exec.rpc.publishedhost";
@@ -78,6 +77,16 @@ public interface ExecConstants {
   // Splits are enabled when this is set to true and QUERY_EXEC_OPTION is set to Gandiva
   BooleanValidator SPLIT_ENABLED = new BooleanValidator("exec.expression.split.enabled", true);
 
+  String MAX_SPLITS_PER_EXPR_KEY = "exec.expression" +
+    ".split.max_splits_per_expression";
+  PositiveLongValidator MAX_SPLITS_PER_EXPRESSION = new PositiveLongValidator(MAX_SPLITS_PER_EXPR_KEY, Long.MAX_VALUE, 10);
+
+  // Configuration option for deciding how much work should be done in Gandiva when there are excessive splits
+  // MAX_SPLITS_PER_EXPRESSION is used to configure excessive splits
+  // 1 unit of work approximately corresponds to 1 function evaluation in Gandiva
+  String WORK_THRESHOLD_FOR_SPLIT_KEY = "exec.expression.split.work_per_split";
+  DoubleValidator WORK_THRESHOLD_FOR_SPLIT = new RangeDoubleValidator(WORK_THRESHOLD_FOR_SPLIT_KEY, 0.0, Long.MAX_VALUE, 3.0);
+
   PositiveLongValidator MAX_FOREMEN_PER_COORDINATOR = new PositiveLongValidator("coordinator.alive_queries.limit", Long.MAX_VALUE, 1000);
 
   BooleanValidator REST_API_RUN_QUERY_ASYNC = new BooleanValidator("dremio.coordinator.rest.run_query.async", false);
@@ -88,13 +97,14 @@ public interface ExecConstants {
   // Number above which we replace a group of ORs with a set operation.
   PositiveLongValidator FAST_OR_MIN_THRESHOLD = new PositiveLongValidator("exec.operator.orfast.threshold.min", Integer.MAX_VALUE, 5);
 
+  // Number above which we replace a group of ORs with a set operation in gandiva
+  PositiveLongValidator FAST_OR_MIN_THRESHOLD_GANDIVA = new PositiveLongValidator("exec.operator.orfast.gandiva_threshold.min", Integer.MAX_VALUE, 5);
+
   // Number above which we stop replacing a group of ORs with a set operation.
   PositiveLongValidator FAST_OR_MAX_THRESHOLD = new PositiveLongValidator("exec.operator.orfast.threshold.max", Integer.MAX_VALUE, 1500);
 
   PositiveLongValidator CODE_GEN_NESTED_METHOD_THRESHOLD = new PositiveLongValidator("exec.operator.codegen.nested_method.threshold", Integer.MAX_VALUE, 100);
 
-  /** Size of JDBC batch queue (in batches) above which throttling begins. */
-  String JDBC_BATCH_QUEUE_THROTTLING_THRESHOLD = "dremio.jdbc.batch_queue_throttling_threshold";
 
   String JDBC_ROW_COUNT_QUERY_TIMEOUT = "store.jdbc.row_count_query_timeout_seconds";
   LongValidator JDBC_ROW_COUNT_QUERY_TIMEOUT_VALIDATOR = new PositiveLongValidator(JDBC_ROW_COUNT_QUERY_TIMEOUT, Integer.MAX_VALUE, 5);
@@ -119,7 +129,7 @@ public interface ExecConstants {
   String OPERATOR_TARGET_BATCH_BYTES = "dremio.exec.operator_batch_bytes";
   OptionValidator OPERATOR_TARGET_BATCH_BYTES_VALIDATOR = new LongValidator(OPERATOR_TARGET_BATCH_BYTES, 10*1024*1024);
 
-  String CLIENT_SUPPORT_COMPLEX_TYPES = "dremio.client.supports-complex-types";
+
 
   BooleanValidator ENABLE_VECTORIZED_HASHAGG = new BooleanValidator("exec.operator.aggregate.vectorize", true);
   BooleanValidator ENABLE_VECTORIZED_HASHJOIN = new BooleanValidator("exec.operator.join.vectorize", true);
@@ -140,6 +150,9 @@ public interface ExecConstants {
   String PARQUET_WRITER_COMPRESSION_TYPE = "store.parquet.compression";
   EnumeratedStringValidator PARQUET_WRITER_COMPRESSION_TYPE_VALIDATOR = new EnumeratedStringValidator(
       PARQUET_WRITER_COMPRESSION_TYPE, "snappy", "snappy", "gzip", "none");
+
+  String PARQUET_MAX_FOOTER_LEN = "store.parquet.max_footer_length";
+  LongValidator PARQUET_MAX_FOOTER_LEN_VALIDATOR = new LongValidator(PARQUET_MAX_FOOTER_LEN, 16*1024*1024);
 
   String PARQUET_MEMORY_THRESHOLD = "store.parquet.memory_threshold";
   LongValidator PARQUET_MEMORY_THRESHOLD_VALIDATOR = new LongValidator(PARQUET_MEMORY_THRESHOLD, 512*1024*1024);
@@ -163,6 +176,9 @@ public interface ExecConstants {
 
   String PARQUET_NEW_RECORD_READER = "store.parquet.use_new_reader";
   BooleanValidator PARQUET_RECORD_READER_IMPLEMENTATION_VALIDATOR = new BooleanValidator(PARQUET_NEW_RECORD_READER, false);
+
+  String PARQUET_AUTO_CORRECT_DATES = "store.parquet.auto.correct.dates";
+  BooleanValidator PARQUET_AUTO_CORRECT_DATES_VALIDATOR = new BooleanValidator(PARQUET_AUTO_CORRECT_DATES, true);
 
   BooleanValidator PARQUET_READER_VECTORIZE = new BooleanValidator("store.parquet.vectorize", true);
   BooleanValidator ENABLED_PARQUET_TRACING = new BooleanValidator("store.parquet.vectorize.tracing.enable", false);
@@ -352,7 +368,13 @@ public interface ExecConstants {
   LongValidator PARQUET_SINGLE_STREAM_COLUMN_THRESHOLD = new LongValidator("store.parquet.single_stream_column_threshold", 40);
   LongValidator PARQUET_MULTI_STREAM_SIZE_LIMIT = new LongValidator("store.parquet.multi_stream_limit", 1024*1024);
   BooleanValidator PARQUET_MULTI_STREAM_SIZE_LIMIT_ENABLE = new BooleanValidator("store.parquet.multi_stream_limit.enable", true);
+  LongValidator PARQUET_FULL_FILE_READ_THRESHOLD = new RangeLongValidator("store.parquet.full_file_read.threshold", 0, Integer.MAX_VALUE, 0);
+  DoubleValidator PARQUET_FULL_FILE_READ_COLUMN_RATIO = new RangeDoubleValidator("store.parquet.full_file_read.column_ratio", 0.0, 1.0, 0.25);
   BooleanValidator PARQUET_CACHED_ENTITY_SET_FILE_SIZE = new BooleanValidator("store.parquet.set_file_length",true);
+  BooleanValidator PARQUET_COLUMN_ORDERING = new BooleanValidator("store.parquet.column_ordering", false);
+
+  BooleanValidator HIVE_COMPLEXTYPES_ENABLED = new BooleanValidator("store.hive.parquet.support_complex_types", false);
+
   LongValidator RESULTS_MAX_AGE_IN_DAYS = new LongValidator("results.max.age_in_days", 1);
   // At what hour of the day to do job results cleanup - 0-23
   RangeLongValidator JOB_RESULTS_CLEANUP_START_HOUR = new RangeLongValidator("job.results.cleanup.start_at_hour", 0, 23, 0);
@@ -400,4 +422,9 @@ public interface ExecConstants {
       .toMillis(12));
 
   public static final BooleanValidator ENABLE_VECTORIZED_NOSPILL_VARCHAR_NDV_ACCUMULATOR = new BooleanValidator("exec.operator.vectorized_nospill.varchar_ndv", true);
+
+  BooleanValidator ENABLE_HEAP_MONITORING = new BooleanValidator("exec.heap.monitoring.enable", true);
+  RangeLongValidator HEAP_MONITORING_CLAWBACK_THRESH_PERCENTAGE = new RangeLongValidator("exec.heap.monitoring.thresh.percentage", 50, 100, 85);
+
+  BooleanValidator ENABLE_ICEBERG = new BooleanValidator("dremio.iceberg.enabled", false);
 }

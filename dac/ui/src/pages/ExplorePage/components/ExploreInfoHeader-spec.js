@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -97,9 +97,11 @@ describe('ExploreInfoHeader', () => {
   });
 
 
-  it('run and save buttons should be enabled', () => {
+  it('preview, run, and save buttons should be enabled', () => {
+    expect(wrapper.find('.preview-button').length).to.equal(1);
     expect(wrapper.find('.run-button').length).to.equal(1);
     expect(wrapper.find('.explore-save-button').length).to.equal(1);
+    expect(wrapper.find('.preview-button').getElement().props.disabled).to.be.undefined;
     expect(wrapper.find('.run-button').getElement().props.disabled).to.be.undefined;
     expect(wrapper.find('.explore-save-button').getElement().props.disabled).to.be.false;
   });
@@ -353,14 +355,14 @@ describe('ExploreInfoHeader', () => {
   });
 
   describe('right part rendering', () => {
-    it('should render settings button in enabled state when dataset is not new and saved', () => {
+    it('should render combined settings dropdown in enabled state when dataset is not new and saved', () => {
       wrapper.setProps({
         initialDatasetVersion: '1',
         currentSql: '23',
         dataset: commonProps.dataset.set('isNewQuery', false).set('tipVersion', '1')
       });
-      const settingsButton = wrapper.find('ExploreSettingsButton');
-      expect(settingsButton.props().disabled).to.be.false;
+      const settingsDroopdownButton = wrapper.find('.explore-ellipsis-button');
+      expect(settingsDroopdownButton.props().disabled).to.be.false;
     });
   });
 });

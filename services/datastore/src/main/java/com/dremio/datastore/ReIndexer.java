@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.index.Term;
 
 import com.dremio.datastore.CoreStoreProviderImpl.StoreWithId;
-import com.dremio.datastore.KVStoreProvider.DocumentConverter;
+import com.dremio.datastore.api.DocumentConverter;
 import com.dremio.datastore.indexed.CoreIndexedStoreImpl;
 import com.dremio.datastore.indexed.LuceneSearchIndex;
 import com.dremio.datastore.indexed.SimpleDocumentWriter;
@@ -90,11 +90,8 @@ public class ReIndexer implements ReplayHandler {
     assert isIndexed(name);
 
     if (!converters.containsKey(name)) {
-      converters.put(name, DataStoreUtils.getInstance(idToStore.get(name)
-              .getStoreBuilderConfig()
-              .getDocumentConverterClassName(),
-          DocumentConverter.class,
-          true));
+      converters.put(name,
+        idToStore.get(name).getStoreBuilderHelper().getDocumentConverter());
     }
 
     return converters.get(name);
@@ -104,11 +101,8 @@ public class ReIndexer implements ReplayHandler {
     assert isIndexed(name);
 
     if (!keySerializers.containsKey(name)) {
-      keySerializers.put(name, DataStoreUtils.getInstance(idToStore.get(name)
-              .getStoreBuilderConfig()
-              .getKeySerializerClassName(),
-          Serializer.class,
-          true));
+      keySerializers.put(name,
+        (Serializer) idToStore.get(name).getStoreBuilderHelper().getKeyFormat().apply(ByteSerializerFactory.INSTANCE));
     }
 
     return keySerializers.get(name);
@@ -118,11 +112,8 @@ public class ReIndexer implements ReplayHandler {
     assert isIndexed(name);
 
     if (!valueSerializers.containsKey(name)) {
-      valueSerializers.put(name, DataStoreUtils.getInstance(idToStore.get(name)
-              .getStoreBuilderConfig()
-              .getValueSerializerClassName(),
-          Serializer.class,
-          true));
+      valueSerializers.put(name,
+        (Serializer) idToStore.get(name).getStoreBuilderHelper().getValueFormat().apply(ByteSerializerFactory.INSTANCE));
     }
 
     return valueSerializers.get(name);

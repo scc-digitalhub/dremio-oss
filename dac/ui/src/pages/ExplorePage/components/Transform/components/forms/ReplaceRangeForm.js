@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,9 +22,9 @@ import { getExploreState } from '@app/selectors/explore';
 import fieldsMappers from 'utils/mappers/ExplorePage/Transform/fieldsMappers';
 import filterMappers from 'utils/mappers/ExplorePage/Transform/filterMappers';
 import NewFieldSection from 'components/Forms/NewFieldSection';
-import { getDefaultValue } from 'constants/DataTypes';
+import { getDefaultValue } from '@app/constants/DataTypes';
 import Tabs from 'components/Tabs';
-import { isDateType } from 'constants/DataTypes';
+import { isDateType } from '@app/constants/DataTypes';
 import exploreUtils from 'utils/explore/exploreUtils';
 import TransformForm, { formWrapperProps } from '../../../forms/TransformForm';
 import ReplaceFooter from './../ReplaceFooter';
@@ -144,30 +144,32 @@ export class ReplaceRangeForm extends Component {
       };
 
     return this.props.submit(data, submitType);
-  }
+  };
 
   render() {
     const { fields, submitForm, transform } = this.props;
     const columnType = transform.get('columnType');
     const transformType = transform.get('transformType');
     const chartWidth = this.getChartWidth();
+    const showChart = this.chartData && !!this.chartData.length;
 
     return (
       <TransformForm {...formWrapperProps(this.props)} onFormSubmit={this.submit}>
-        <TransformRange
+        {showChart && <TransformRange
           columnType={columnType}
           data={this.chartData}
           chartWidth={chartWidth}
           fields={fields}
           isReplace={transformType === 'replace'}
-          />
+        />
+        }
         <Tabs activeTab={transformType}>
           <ReplaceFooter
             tabId='replace'
             fields={fields}
             submitForm={submitForm}
             transform={transform}
-            />
+          />
         </Tabs>
       </TransformForm>
     );

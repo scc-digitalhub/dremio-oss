@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ import {
   DOUBLE,
   TIMESTAMP,
   VARCHAR
-} from 'constants/DataTypes';
+} from '@app/constants/DataTypes';
 
 // todo: why is this missing some items from constants/DataTypes.js?
 export const ALL_TYPES = [

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -280,9 +280,12 @@ final class PDFSProtocol extends AbstractProtocol {
 
   private Response writeData(Path path, ByteBuf buf, boolean create) throws IOException {
     try(FSDataOutputStream output = create ? localFS.create(path) : localFS.append(path)) {
-      byte[] bytes = new byte[buf.readableBytes()];
-      buf.readBytes(bytes);
-      output.write(bytes);
+      // empty buffers are just going to be null, we still want to create the file but write nothing to it
+      if (buf != null) {
+        byte[] bytes = new byte[buf.readableBytes()];
+        buf.readBytes(bytes);
+        output.write(bytes);
+      }
     }
     final FileStatus fs = localFS.getFileStatus(path);
     final WriteDataResponse response = WriteDataResponse.newBuilder().setUpdateTime(fs.getModificationTime()).build();

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,29 +18,38 @@ package com.dremio.exec.store.parquet;
 import java.util.List;
 
 import org.apache.arrow.vector.SimpleIntVector;
-import org.apache.parquet.hadoop.CodecFactory;
+import org.apache.parquet.compression.CompressionCodecFactory;
 import org.apache.parquet.hadoop.metadata.ColumnChunkMetaData;
 import org.apache.parquet.hadoop.metadata.ParquetMetadata;
 
-import com.dremio.common.expression.SchemaPath;
 import com.dremio.exec.store.RecordReader;
 import com.dremio.sabot.exec.context.OperatorContext;
 
 public interface ParquetReaderFactory {
+  enum ManagedSchemaType {
+    HIVE,
+    ICEBERG
+  }
 
   boolean isSupported(ColumnChunkMetaData chunk);
 
   RecordReader newReader(OperatorContext context,
-      List<SchemaPath> columns,
+      ParquetScanProjectedColumns projectedColumns,
       String path,
-      CodecFactory codecFactory,
+      CompressionCodecFactory codecFactory,
       List<ParquetFilterCondition> conditions,
+      ParquetFilterCreator filterCreator,
+      ParquetDictionaryConvertor dictionaryConvertor,
       boolean enableDetailedTracing,
       ParquetMetadata footer,
       int rowGroupIndex,
       SimpleIntVector deltas,
       SchemaDerivationHelper schemaHelper,
       InputStreamProvider inputStreamProvider);
+
+  ParquetFilterCreator newFilterCreator(ManagedSchemaType type, ManagedSchema schema);
+
+  ParquetDictionaryConvertor newDictionaryConvertor(ManagedSchemaType type, ManagedSchema schema);
 
   ParquetReaderFactory NONE = new ParquetReaderFactory(){
 
@@ -50,11 +59,31 @@ public interface ParquetReaderFactory {
     }
 
     @Override
-    public RecordReader newReader(OperatorContext context, List<SchemaPath> columns, String path,
-        CodecFactory codecFactory, List<ParquetFilterCondition> conditions, boolean enableDetailedTracing,
-        ParquetMetadata footer, int rowGroupIndex, SimpleIntVector deltas, SchemaDerivationHelper schemaHelper,
-        InputStreamProvider inputStreamProvider) {
-      throw new UnsupportedOperationException();
-    }};
+    public RecordReader newReader(OperatorContext context,
+                                  ParquetScanProjectedColumns projectedColumns,
+                                  String path,
+                                  CompressionCodecFactory codecFactory,
+                                  List<ParquetFilterCondition> conditions,
+                                  ParquetFilterCreator filterCreator,
+                                  ParquetDictionaryConvertor dictionaryConvertor,
+                                  boolean enableDetailedTracing,
+                                  ParquetMetadata footer,
+                                  int rowGroupIndex,
+                                  SimpleIntVector deltas,
+                                  SchemaDerivationHelper schemaHelper,
+                                  InputStreamProvider inputStreamProvider) {
 
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public ParquetFilterCreator newFilterCreator(ManagedSchemaType type, ManagedSchema managedSchema) {
+      return ParquetFilterCreator.DEFAULT;
+    }
+
+    @Override
+    public ParquetDictionaryConvertor newDictionaryConvertor(ManagedSchemaType type, ManagedSchema schema) {
+      return ParquetDictionaryConvertor.DEFAULT;
+    }
+  };
 }

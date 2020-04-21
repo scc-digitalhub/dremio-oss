@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,10 +19,11 @@ import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
+import com.dremio.common.concurrent.CloseableExecutorService;
 import com.dremio.common.concurrent.CloseableSchedulerThreadPool;
 import com.dremio.common.concurrent.NamedThreadFactory;
 
-public class CloseableThreadPool extends ThreadPoolExecutor implements AutoCloseable {
+public class CloseableThreadPool extends ThreadPoolExecutor implements CloseableExecutorService {
   private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(CloseableThreadPool.class);
 
   public CloseableThreadPool(String name) {

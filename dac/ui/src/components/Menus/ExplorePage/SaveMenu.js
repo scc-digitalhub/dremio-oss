@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,24 +22,39 @@ import PropTypes from 'prop-types';
 import MenuItem from './MenuItem';
 import Menu from './Menu';
 
+export const DOWNLOAD_TYPES = {
+  json: 'JSON',
+  csv: 'CSV',
+  parquet: 'PARQUET'
+};
+
 @Radium
 @pureRender
 export default class SaveMenu extends Component {
   static propTypes = {
-    action: PropTypes.func
+    action: PropTypes.func,
+    closeMenu: PropTypes.func,
+    mustSaveAs: PropTypes.bool
   };
 
-  constructor(props) {
-    super(props);
+  save = () => {
+    this.props.closeMenu();
+    this.props.action('save');
+  };
 
-    this.saveAs = props.action.bind(null, { name: 'saveAs', label: la('Save As…') });
-    this.save = props.action.bind(null, { name: 'save', label: la('Save') });
-  }
+  saveAs = () => {
+    this.props.closeMenu();
+    this.props.action('saveAs');
+  };
 
   render() {
+    const {mustSaveAs} = this.props;
     return (
       <Menu>
-        <MenuItem className='save-menu-item' onClick={this.save}>
+        <MenuItem
+          className='save-menu-item'
+          disabled={mustSaveAs}
+          onClick={mustSaveAs ? () => {} : this.save}>
           {la('Save')}
         </MenuItem>
         <MenuItem

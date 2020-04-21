@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,6 +50,19 @@ public class StreamAggPrule extends AggPruleBase {
   @Override
   public void onMatch(RelOptRuleCall call) {
     final AggregateRel aggregate = (AggregateRel) call.rel(0);
+
+    if (aggregate.getGroupCount() > 0 && !PrelUtil.getPlannerSettings(call.getPlanner()).getOptions().getOption(PlannerSettings.STREAM_AGG_WITH_GROUPS)) {
+      if (PrelUtil.getPlannerSettings(call.getPlanner()).isHashAggEnabled()) {
+        // if hash agg is enabled and stream agg with groups is disabled and this has >0 group count, don't match.
+        return;
+      }
+    }
+
+    // too many group by keys in streaming agg will result in compilation error
+    if (aggregate.getGroupCount() > PrelUtil.getPlannerSettings(call.getPlanner()).streamAggMaxGroupKey()) {
+      return;
+    }
+
     RelNode input = aggregate.getInput();
 
     // StreamAgg changes row type, therefore input and output collations are different

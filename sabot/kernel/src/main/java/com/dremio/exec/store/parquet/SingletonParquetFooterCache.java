@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,16 +20,15 @@ import java.io.IOException;
 import java.util.Arrays;
 
 import org.apache.commons.lang3.ArrayUtils;
-import org.apache.hadoop.fs.FileStatus;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
 import org.apache.parquet.bytes.BytesUtils;
 import org.apache.parquet.format.converter.ParquetMetadataConverter;
 import org.apache.parquet.format.converter.ParquetMetadataConverter.MetadataFilter;
 import org.apache.parquet.hadoop.ParquetFileWriter;
 import org.apache.parquet.hadoop.metadata.ParquetMetadata;
-import org.apache.parquet.hadoop.util.HadoopStreams;
 
+import com.dremio.io.file.FileAttributes;
+import com.dremio.io.file.FileSystem;
+import com.dremio.io.file.Path;
 import com.google.common.base.Preconditions;
 
 /**
@@ -47,10 +46,10 @@ public class SingletonParquetFooterCache {
   private ParquetMetadata footer;
   private String lastFile;
 
-  public ParquetMetadata getFooter(BulkInputStream is, String path, long fileLength, FileSystem fs) {
+  public ParquetMetadata getFooter(BulkInputStream is, String path, long fileLength, FileSystem fs, long maxFooterLen) {
     if (footer == null || !lastFile.equals(path)) {
       try {
-        footer = readFooter(is, path, fileLength, fs);
+        footer = readFooter(is, path, fileLength, fs, maxFooterLen);
       } catch (IOException ioe) {
         throw new RuntimeException("Failed to read parquet footer for file " + path, ioe);
       }
@@ -68,8 +67,9 @@ public class SingletonParquetFooterCache {
     }
   }
 
-  public static ParquetMetadata readFooter(final FileSystem fs, final Path file, ParquetMetadataConverter.MetadataFilter filter) throws IOException  {
-    return readFooter(fs, fs.getFileStatus(file), filter);
+  public static ParquetMetadata readFooter(final FileSystem fs, final Path file, ParquetMetadataConverter.MetadataFilter filter,
+                                           long maxFooterLen) throws IOException  {
+    return readFooter(fs, fs.getFileAttributes(file), filter, maxFooterLen);
   }
 
   /**
@@ -82,31 +82,37 @@ public class SingletonParquetFooterCache {
    */
   public static ParquetMetadata readFooter(
     final FileSystem fs,
-    final FileStatus status,
-    ParquetMetadataConverter.MetadataFilter filter) throws IOException {
-    try(BulkInputStream file = BulkInputStream.wrap(HadoopStreams.wrap(fs.open(status.getPath())))) {
-      return readFooter(file, status.getPath().toString(), status.getLen(), filter, fs);
+    final FileAttributes attributes,
+    ParquetMetadataConverter.MetadataFilter filter,
+    long maxFooterLen) throws IOException {
+    try(BulkInputStream file = BulkInputStream.wrap(Streams.wrap(fs.open(attributes.getPath())))) {
+      return readFooter(file, attributes.getPath().toString(), attributes.size(), filter, fs, maxFooterLen);
     }
   }
 
-  private ParquetMetadata readFooter(BulkInputStream file, String path, long fileLength, FileSystem fs) throws IOException {
-    return readFooter(file, path, fileLength, ParquetMetadataConverter.NO_FILTER, fs);
+  private ParquetMetadata readFooter(BulkInputStream file, String path, long fileLength, FileSystem fs, long maxFooterLen) throws IOException {
+    return readFooter(file, path, fileLength, ParquetMetadataConverter.NO_FILTER, fs, maxFooterLen);
   }
 
-  private static ParquetMetadata readFooter(BulkInputStream file, String path, long fileLength, MetadataFilter filter, FileSystem fs) throws IOException {
+  private static ParquetMetadata readFooter(BulkInputStream file, String path, long fileLength, MetadataFilter filter, FileSystem fs,
+                                            long maxFooterLen) throws IOException {
     Preconditions.checkArgument(fileLength >= MIN_FILE_SIZE || fileLength == -1, "%s is not a Parquet file (too small)", path);
 
     if (fileLength == -1) {
-      fileLength = fs.getFileStatus(new Path(path)).getLen();
+      fileLength = fs.getFileAttributes(Path.of(path)).size();
     }
 
-    int len = (int) Math.min( fileLength, (long) DEFAULT_READ_SIZE);
+    int len = (int) Math.min( fileLength, DEFAULT_READ_SIZE);
     byte[] footerBytes = new byte[len];
     file.seek(fileLength - len);
     file.readFully(footerBytes, 0, len);
 
     checkMagicBytes(path, footerBytes, footerBytes.length - ParquetFileWriter.MAGIC.length);
     final int size = BytesUtils.readIntLittleEndian(footerBytes, footerBytes.length - FOOTER_METADATA_SIZE);
+
+    if (size > maxFooterLen) {
+      throw new IOException("Footer size of " + path + " is " + size + ". Max supported footer size is " + maxFooterLen);
+    }
 
     if(size > footerBytes.length - FOOTER_METADATA_SIZE){
       // if the footer is larger than our initial read, we need to read the rest.

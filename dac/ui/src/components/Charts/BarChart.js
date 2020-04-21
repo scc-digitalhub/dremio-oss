@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ import c3 from 'c3';
 import 'c3/c3.css';
 import $ from 'jquery';
 
-import { isDateType, dateTypeToFormat, TIME, FLOAT, DECIMAL, DATE, DATETIME } from 'constants/DataTypes';
+import { isDateType, dateTypeToFormat, TIME, FLOAT, DECIMAL, DATE, DATETIME } from '@app/constants/DataTypes';
 import ChartTooltip from './ChartTooltip';
 
 const BAR_CHART_HEIGHT = 108;

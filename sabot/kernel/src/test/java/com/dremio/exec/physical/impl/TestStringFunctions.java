@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -215,8 +215,8 @@ public class TestStringFunctions extends BaseTestFunction {
       { "substring('', 1, 2)", ""},
       { "substring('abcdef', 10, 2)", ""},
       { "substring('भारतवर्ष', 1, 4)", "भारत"},
-      //TODO: DX-3623 { "substring('भारतवर्ष', 5, 4)", "वर्"},
-      //TODO: DX-3623 { "substring('भारतवर्ष', 5, 5)", "वर्"},
+      { "substring('भारतवर्ष', 5, 4)", "वर्ष"},
+      { "substring('भारतवर्ष', 5, 5)", "वर्ष"},
       { "substring('abcdef', 3)", "cdef"},
       { "substring('abcdef', -2)", "ef"},
       { "substring('abcdef', 0)", "abcdef"},

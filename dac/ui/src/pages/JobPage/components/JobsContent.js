@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,18 +13,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { Component } from 'react';
+import { PureComponent } from 'react';
 import $ from 'jquery';
+import classNames from 'classnames';
 import Immutable  from 'immutable';
-import PureRender from 'pure-render-decorator';
 import PropTypes from 'prop-types';
 import Radium from 'radium';
 import { injectIntl } from 'react-intl';
 
 import socket from 'utils/socket';
+import { flexColumnContainer } from '@app/uiTheme/less/layout.less';
 
 import ViewStateWrapper from 'components/ViewStateWrapper';
 import ViewCheckContent from 'components/ViewCheckContent';
+import jobUtils from 'utils/jobsUtils';
 import JobTable from './JobsTable/JobTable';
 import JobDetails from './JobDetails/JobDetails';
 import JobsFilters from './JobsFilters/JobsFilters';
@@ -36,8 +38,7 @@ const MIN_RIGHT_PANEL_WIDTH = 330;
 
 @injectIntl
 @Radium
-@PureRender
-export default class JobsContent extends Component {
+export default class JobsContent extends PureComponent {
 
   static propTypes = {
     jobId: PropTypes.string,
@@ -50,6 +51,7 @@ export default class JobsContent extends Component {
     isNextJobsInProgress: PropTypes.bool,
     location: PropTypes.object,
     intl: PropTypes.object.isRequired,
+    className: PropTypes.string,
 
     loadItemsForFilter: PropTypes.func,
     loadNextJobs: PropTypes.func
@@ -121,7 +123,7 @@ export default class JobsContent extends Component {
     jobs.forEach((job) => {
       const jobId = job.get('id');
       const jobState = job.get('state');
-      if (isStop || ['NOT_SUBMITTED', 'STARTING', 'RUNNING', 'ENQUEUED', 'CANCELLATION_REQUESTED'].includes(jobState)) {
+      if (isStop || jobUtils.isJobRunning(jobState)) {
         return callback(jobId);
       }
     });
@@ -154,19 +156,22 @@ export default class JobsContent extends Component {
   }
 
   render() {
-    const { jobId, jobs, queryState, onUpdateQueryState, viewState, location, intl } = this.props;
+    const {
+      jobId, jobs, queryState, onUpdateQueryState,
+      viewState, location, intl, className
+    } = this.props;
     const query = location.query || {};
     const resizeStyle = this.state.isResizing ? styles.noSelection : {};
 
     return (
-      <div className='jobs-content' style={[styles.base, resizeStyle]} ref='content'>
+      <div className={classNames('jobs-content', flexColumnContainer, className)} style={[styles.base, resizeStyle]} ref='content'>
         <JobsFilters
           queryState={queryState}
           onUpdateQueryState={onUpdateQueryState}
           style={styles.filters}
           loadItemsForFilter={this.props.loadItemsForFilter}
           dataWithItemsForFilters={this.props.dataWithItemsForFilters} />
-        <ViewStateWrapper viewState={viewState} style={{display: 'flex'}}>
+        <ViewStateWrapper viewState={viewState} style={styles.viewState}>
           <ViewCheckContent
             viewState={viewState}
             message={intl.formatMessage({ id: 'Job.NoMatchingJobsFound' })}
@@ -212,6 +217,12 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     width: '100%'
+  },
+  viewState: {
+    display: 'flex',
+    // this is needed to force a view state wrapper fit to parent and do not overflow it
+    // as this cause a scrollbar to appear
+    minHeight: 0
   },
   filters: {
     flexShrink: 0

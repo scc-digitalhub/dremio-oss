@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import static com.dremio.sabot.Fixtures.tr;
 
 import java.util.Arrays;
 
+import org.apache.calcite.rel.core.JoinRelType;
 import org.junit.Test;
 
 import com.dremio.exec.physical.config.NestedLoopJoinPOP;
@@ -28,52 +29,51 @@ import com.dremio.sabot.BaseTestOperator;
 import com.dremio.sabot.Fixtures.DataRow;
 import com.dremio.sabot.Fixtures.Table;
 import com.dremio.sabot.op.join.nlj.NLJOperator;
+import com.google.common.collect.ImmutableSet;
 
 import io.airlift.tpch.GenerationDefinition.TpchTable;
 import io.airlift.tpch.TpchGenerator;
 
 public class TestNLJ extends BaseTestOperator {
 
-
   @Test
   public void nljSmallBatch() throws Exception {
 
-  final Table expected = t(
-      th("r_name", "r_regionKey"),
-      tr("AFRICA", 0L),
-      tr("AFRICA", 1L),
-      tr("AFRICA", 2L),
-      tr("AMERICA", 0L),
-      tr("AMERICA", 1L),
-      tr("AMERICA", 2L),
-      tr("ASIA", 0L),
-      tr("ASIA", 1L),
-      tr("ASIA", 2L),
-      tr("EUROPE", 0L),
-      tr("EUROPE", 1L),
-      tr("EUROPE", 2L),
-      tr("MIDDLE EAST", 0L),
-      tr("MIDDLE EAST", 1L),
-      tr("MIDDLE EAST", 2L),
-      tr("AFRICA", 3L),
-      tr("AFRICA", 4L),
-      tr("AMERICA", 3L),
-      tr("AMERICA", 4L),
-      tr("ASIA", 3L),
-      tr("ASIA", 4L),
-      tr("EUROPE", 3L),
-      tr("EUROPE", 4L),
-      tr("MIDDLE EAST", 3L),
-      tr("MIDDLE EAST", 4L)
-      );
+    final Table expected = t(
+        th("r_name", "r_regionKey"),
+        tr("AFRICA", 0L),
+        tr("AFRICA", 1L),
+        tr("AFRICA", 2L),
+        tr("AMERICA", 0L),
+        tr("AMERICA", 1L),
+        tr("AMERICA", 2L),
+        tr("ASIA", 0L),
+        tr("ASIA", 1L),
+        tr("ASIA", 2L),
+        tr("EUROPE", 0L),
+        tr("EUROPE", 1L),
+        tr("EUROPE", 2L),
+        tr("MIDDLE EAST", 0L),
+        tr("MIDDLE EAST", 1L),
+        tr("MIDDLE EAST", 2L),
+        tr("AFRICA", 3L),
+        tr("AFRICA", 4L),
+        tr("AMERICA", 3L),
+        tr("AMERICA", 4L),
+        tr("ASIA", 3L),
+        tr("ASIA", 4L),
+        tr("EUROPE", 3L),
+        tr("EUROPE", 4L),
+        tr("MIDDLE EAST", 3L),
+        tr("MIDDLE EAST", 4L)
+        );
 
-  validateDual(
-      new NestedLoopJoinPOP(PROPS, null, null),
-      NLJOperator.class,
-      TpchGenerator.singleGenerator(TpchTable.REGION, 0.1, getTestAllocator(), "r_regionKey"),
-      TpchGenerator.singleGenerator(TpchTable.REGION, 0.1, getTestAllocator(), "r_name"),
-      3, expected);
-
+    validateDual(
+        new NestedLoopJoinPOP(PROPS, null, null, JoinRelType.INNER, null, false, null, ImmutableSet.of(0), ImmutableSet.of(0)),
+        NLJOperator.class,
+        TpchGenerator.singleGenerator(TpchTable.REGION, 0.1, getTestAllocator(), "r_regionKey"),
+        TpchGenerator.singleGenerator(TpchTable.REGION, 0.1, getTestAllocator(), "r_name"),
+        3, expected);
   }
 
 
@@ -81,42 +81,41 @@ public class TestNLJ extends BaseTestOperator {
   @Test
   public void nljSingleBatch() throws Exception {
 
-  final Table expected = t(
-      th("r_name", "r_regionKey"),
-      tr("AFRICA", 0L),
-      tr("AFRICA", 1L),
-      tr("AFRICA", 2L),
-      tr("AFRICA", 3L),
-      tr("AFRICA", 4L),
-      tr("AMERICA", 0L),
-      tr("AMERICA", 1L),
-      tr("AMERICA", 2L),
-      tr("AMERICA", 3L),
-      tr("AMERICA", 4L),
-      tr("ASIA", 0L),
-      tr("ASIA", 1L),
-      tr("ASIA", 2L),
-      tr("ASIA", 3L),
-      tr("ASIA", 4L),
-      tr("EUROPE", 0L),
-      tr("EUROPE", 1L),
-      tr("EUROPE", 2L),
-      tr("EUROPE", 3L),
-      tr("EUROPE", 4L),
-      tr("MIDDLE EAST", 0L),
-      tr("MIDDLE EAST", 1L),
-      tr("MIDDLE EAST", 2L),
-      tr("MIDDLE EAST", 3L),
-      tr("MIDDLE EAST", 4L)
-      );
+    final Table expected = t(
+        th("r_name", "r_regionKey"),
+        tr("AFRICA", 0L),
+        tr("AFRICA", 1L),
+        tr("AFRICA", 2L),
+        tr("AFRICA", 3L),
+        tr("AFRICA", 4L),
+        tr("AMERICA", 0L),
+        tr("AMERICA", 1L),
+        tr("AMERICA", 2L),
+        tr("AMERICA", 3L),
+        tr("AMERICA", 4L),
+        tr("ASIA", 0L),
+        tr("ASIA", 1L),
+        tr("ASIA", 2L),
+        tr("ASIA", 3L),
+        tr("ASIA", 4L),
+        tr("EUROPE", 0L),
+        tr("EUROPE", 1L),
+        tr("EUROPE", 2L),
+        tr("EUROPE", 3L),
+        tr("EUROPE", 4L),
+        tr("MIDDLE EAST", 0L),
+        tr("MIDDLE EAST", 1L),
+        tr("MIDDLE EAST", 2L),
+        tr("MIDDLE EAST", 3L),
+        tr("MIDDLE EAST", 4L)
+        );
 
-  validateDual(
-      new NestedLoopJoinPOP(PROPS, null, null),
-      NLJOperator.class,
-      TpchGenerator.singleGenerator(TpchTable.REGION, 0.1, getTestAllocator(), "r_regionKey"),
-      TpchGenerator.singleGenerator(TpchTable.REGION, 0.1, getTestAllocator(), "r_name"),
-      100, expected);
-
+    validateDual(
+        new NestedLoopJoinPOP(PROPS, null, null, JoinRelType.INNER, null, false, null, ImmutableSet.of(0), ImmutableSet.of(0)),
+        NLJOperator.class,
+        TpchGenerator.singleGenerator(TpchTable.REGION, 0.1, getTestAllocator(), "r_regionKey"),
+        TpchGenerator.singleGenerator(TpchTable.REGION, 0.1, getTestAllocator(), "r_name"),
+        100, expected);
   }
 
   @Test
@@ -151,9 +150,8 @@ public class TestNLJ extends BaseTestOperator {
       expectedData
     );
 
-
     validateDual(
-      new NestedLoopJoinPOP(PROPS, null, null),
+      new NestedLoopJoinPOP(PROPS, null, null, JoinRelType.INNER, null, false, null, ImmutableSet.of(0), ImmutableSet.of(0)),
       NLJOperator.class,
       t1.toGenerator(getTestAllocator()),
       t2.toGenerator(getTestAllocator()),

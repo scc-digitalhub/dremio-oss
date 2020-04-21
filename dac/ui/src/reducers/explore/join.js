@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 import Immutable  from 'immutable';
 import * as ActionTypes from 'actions/explore/join';
 import { EDIT_RECOMMENDED_JOIN } from 'actions/explore/join';
-import { CUSTOM_JOIN } from 'constants/explorePage/joinTabs';
+import { CUSTOM_JOIN } from '@app/constants/explorePage/joinTabs';
 
 const initialState = Immutable.fromJS({
   joinTab: null,

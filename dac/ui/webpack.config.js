@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,120 +13,145 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const fs = require('fs');
 const path = require('path');
 const webpack = require('webpack');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
-const ExtractTextPlugin = require('extract-text-webpack-plugin');
-const UglifyJSPlugin = require('uglifyjs-webpack-plugin');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
-
+const SentryCliPlugin = require('@sentry/webpack-plugin');
+const MiniCssExtractPlugin = require('mini-css-extract-plugin');
+const { getVersion } = require('./scripts/versionUtils');
 const dynLoader = require('./dynLoader');
+const injectionResolver = require('./scripts/injectionResolver');
+
 dynLoader.applyNodeModulesResolver();
+dynLoader.applyTSConfig();
 
 const isProductionBuild = process.env.NODE_ENV === 'production';
-const minify = process.env.DREMIO_MINIFY === 'true';
 const isBeta = process.env.DREMIO_BETA === 'true';
 const isRelease = process.env.DREMIO_RELEASE === 'true';
+const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN;
+const skipSourceMapUpload = process.env.SKIP_SENTRY_STEP === 'true';
+const dremioVersion = getVersion();
+const devtool = isProductionBuild ? 'source-map' : 'eval-source-map';  // chris says: '#cheap-eval-source-map' is really great for debugging
 
-let devtool = isProductionBuild ? 'source-map' : 'eval-source-map';  // chris says: '#cheap-eval-source-map' is really great for debugging
-if (isRelease) {
-  // for release, hide the source map
-  devtool = 'hidden-source-map';
+
+let outputPath = path.join(__dirname, 'build');
+const pathArg = '--output-path=';
+//output path may be overwritten by passing a command line argument
+for (const param of process.argv) {
+  if (param.toLowerCase().startsWith(pathArg)) {
+    outputPath = param.substr(pathArg.length);
+  }
 }
 
+const babelOptions = {
+  configFile: path.resolve(__dirname, '.babelrc.js')
+};
+
 console.info({
-  minify,
+  dremioVersion,
   isProductionBuild,
   isBeta,
   isRelease,
   dynLoaderPath: dynLoader.path,
-  devtool
+  devtool,
+  sentry: {
+    skip: skipSourceMapUpload,
+    token: sentryAuthToken
+  },
+  outputPath
 });
 
-const extractStyles = new ExtractTextPlugin({
-  filename: isProductionBuild ? 'style.[contentHash].css' : 'style.css',
-  ignoreOrder: isProductionBuild // see https://github.com/redbadger/website-honestly/issues/128
-});
 
-const getLessLoader = isModules => {
-  const rule = {
-    test: /\.less$/
-  };
-  const otherLoaders = [
-    { loader: 'postcss-loader', options: { config: { path: __dirname} } },
-    { loader: 'less-loader' }
-  ];
-  const cssLoader = {
-    loader: 'css-loader',
-    options: {
-      importLoaders: otherLoaders.length
-    }
-  };
-
-  if (isModules) {
-    cssLoader.options = {
-      ...cssLoader.options,
-      modules: true,
-      camelCase: true,
-      localIdentName: '[name]__[local]___[hash:base64:5]'
-    };
-  }
-
-  rule.use = extractStyles.extract({
-    use: [cssLoader, ...otherLoaders]
-  });
-
-  return rule;
+const getTime = date => {
+  const dateStr = date.toISOString();
+  const tIndex = dateStr.indexOf('T');
+  //extract time from ISO string '2019-08-16T19:49:36.337Z'
+  return dateStr.substr(tIndex + 1, dateStr.length - tIndex - 2);
 };
 
 class BuildInfo {
   apply(compiler) {
-    compiler.plugin('compilation', function(compilation) {
-      compilation.plugin('html-webpack-plugin-before-html-generation', function(htmlPluginData, callback) {
-        // because config is relying on freemarker template variables to be interpreted by the server
-        // at runtime, config has to be string (and not an object) otherwise, shouldEnableRSOD could
-        // not be a boolean for example. See oss/dac/backend/src/main/java/com/dremio/dac/server/IndexServlet.java
-        const config = `{
-          serverEnvironment: ${JSON.stringify(isProductionBuild ? '${dremio.environment}' : null)},
-          serverStatus: ${JSON.stringify(isProductionBuild ? '${dremio.status}' : 'OK')},
-          environment: ${JSON.stringify(isProductionBuild ? 'PRODUCTION' : 'DEVELOPMENT')},
-          isReleaseBuild: ${isRelease},
-          authType: ${JSON.stringify('${dremio.authType}')},
-          ts: "${new Date()}",
-          intercomAppId: ${JSON.stringify(isProductionBuild ? '${dremio.config.intercom.appid}' : null)},
-          shouldEnableBugFiling: ${!isProductionBuild || '${dremio.debug.bug.filing.enabled?c}'},
-          shouldEnableRSOD: ${!isProductionBuild || '${dremio.debug.rsod.enabled?c}'},
-          supportEmailTo: ${JSON.stringify(isProductionBuild ? '${dremio.settings.supportEmailTo}' : 'noreply@dremio.com')},
-          supportEmailSubjectForJobs: ${JSON.stringify(isProductionBuild ? '${dremio.settings.supportEmailSubjectForJobs}' : '')},
-          outsideCommunicationDisabled: ${isProductionBuild ? '${dremio.settings.outsideCommunicationDisabled?c}' : false},
-          subhourAccelerationPoliciesEnabled: ${isProductionBuild ? '${dremio.settings.subhourAccelerationPoliciesEnabled?c}' : false},
-          lowerProvisioningSettingsEnabled: ${isProductionBuild ? '${dremio.settings.lowerProvisioningSettingsEnabled?c}' : false},
-          allowFileUploads: ${isProductionBuild ? '${dremio.settings.allowFileUploads?c}' : true},
-          allowSpaceManagement: ${isProductionBuild ? '${dremio.settings.allowSpaceManagement?c}' : false},
-          tdsMimeType: ${JSON.stringify('${dremio.settings.tdsMimeType}')},
-          whiteLabelUrl: ${JSON.stringify(isProductionBuild ? '${dremio.settings.whiteLabelUrl}' : 'dremio')},
-          clusterId: ${JSON.stringify('${dremio.clusterId}')},
-          versionInfo: {
-            version: ${JSON.stringify('${dremio.versionInfo.version}')},
-            buildTime: ${isProductionBuild ? '${dremio.versionInfo.buildtime?c}' : 0},
-            commitHash: ${JSON.stringify('${dremio.versionInfo.commit.hash}')},
-            commitTime: ${isProductionBuild ? '${dremio.versionInfo.commit.time?c}' : 0}
-          }
-        }`;
+    compiler.hooks.compilation.tap('BuildInfo', (compilation) => {
+      // Static Plugin interface |compilation |HOOK NAME | register listener
+      compilation.hooks.htmlWebpackPluginBeforeHtmlGeneration.tapAsync(
+        'BuildInfo', // <-- Set a meaningful name here for stacktraces
+        (htmlPluginData, callback) => {
 
-        htmlPluginData.plugin.options.config = config;
-        callback(null, htmlPluginData);
-      });
+          // because config is relying on freemarker template variables to be interpreted by the server
+          // at runtime, config has to be string (and not an object). ${dremio} is a freemaker variable.
+          const config = isProductionBuild ? 'JSON.parse(\'${dremio?js_string}\')' : 'null';
+
+          htmlPluginData.plugin.options.config = config;
+          callback(null, htmlPluginData);
+        }
+      );
+    });
+
+    compiler.hooks.done.tap('BuildInfo', (stats) => {
+      const compilationTime = stats.endTime - stats.startTime;
+      const date = new Date(null);
+      date.setMilliseconds(compilationTime);
+      console.info('Compilation time: ', getTime(date));
     });
   }
 }
 
-const loaders = [
+
+const babelLoader = {
+  loader: 'babel-loader',
+  options: {
+    ...babelOptions,
+    cacheDirectory: true
+  }
+};
+
+const getStyleLoader = (isCss) => {
+  const otherLoaders = [
+    !isCss && 'less-loader'
+  ].filter(Boolean);
+  return {
+    test: isCss ? /\.css$/ : /\.less$/,
+    use: [
+      {
+        loader: MiniCssExtractPlugin.loader,
+        options: {
+          hmr: process.env.NODE_ENV === 'development'
+        }
+      },
+      {
+        loader: 'css-loader',
+        options: {
+
+          modules: !isCss && {
+            mode: 'local',
+            localIdentName: '[name]__[local]___[hash:base64:5]'
+          },
+          // do not use camelCaseOnly here, as composition for classes with '-' in name will be broken
+          // For example the following composition will not work:
+          // composes: some-selector-with-dash from '~@app/some.less'
+          localsConvention: 'camelCase',
+          importLoaders: otherLoaders.length
+        }
+      },
+      ...otherLoaders
+    ]
+  };
+};
+
+const rules = [
+  {
+    test : /\.(js(x)?|ts(x)?)$/,
+    exclude: /node_modules(?!\/regenerator-runtime|\/redux-saga|\/whatwg-fetch)/,
+    include:  [__dirname, dynLoader.path],
+    use: [babelLoader]
+  },
+  getStyleLoader(false),
+  getStyleLoader(true),
   {
     test: /art\/.*\.svg$/,
     use: [
-      'babel-loader',
+      babelLoader,
       {
         loader: 'react-svg-loader',
         options: {
@@ -138,52 +163,9 @@ const loaders = [
     ]
   },
   {
-    test : /\.js$/,
-    exclude: /node_modules(?!\/regenerator-runtime|\/redux-saga|\/whatwg-fetch)/,
-    include:  [__dirname, dynLoader.path],
-    use: [
-      {
-        loader: 'babel-loader',
-        options: {
-          // eslint-disable-next-line no-sync
-          ...JSON.parse(fs.readFileSync(path.resolve(__dirname, '.babelrc'), 'utf8')),
-          cacheDirectory: true
-        }
-      }
-    ]
-  },
-  {
-    test: /\.css$/,
-    use: extractStyles.extract({
-      use: [
-        { loader: 'css-loader', options: { importLoaders: 1 } },
-        { loader: 'postcss-loader', options: { config: { path: __dirname} } }
-      ]
-    })
-  },
-  {
-    // oneOf is an interim solution to migrate to css modules
-    oneOf: [
-      getLessLoader(true)]
-  },
-  {
-    test: /\.gif$/,
+    test: /\.pattern$/,
     use: {
-      loader: 'url-loader',
-      options: {
-        limit: 10000,
-        mimetype: 'image/gif'
-      }
-    }
-  },
-  {
-    test: /\.jpg$/,
-    use: {
-      loader: 'url-loader',
-      options: {
-        limit: 10000,
-        mimetype: 'image/jpg'
-      }
+      loader: 'glob-loader'
     }
   },
   {
@@ -218,92 +200,97 @@ const loaders = [
   }
 ];
 
-const plugins = [
-  new webpack.BannerPlugin(require(dynLoader.path + '/webpackBanner')),
-  extractStyles,
-  new webpack.optimize.CommonsChunkPlugin({
-    name: 'vendor',
-    filename: isProductionBuild ? 'vendor.[hash].js' : 'vendor.js'
-  }),
-  new HtmlWebpackPlugin({
-    template: './src/index.html',
-    cache: false, // make sure rebuilds kick BuildInfo too
-    files: {
-      css: [isProductionBuild ? 'style.[contentHash].css' : 'style.css'],
-      js: [isProductionBuild ? 'bundle.[hash].js' : 'bundle.js', isProductionBuild ? 'vendor.[hash].js' : 'vendor.js']
-    }
-  }),
-  new BuildInfo(),
-  new webpack.DefinePlugin({
-    // This is for React: https://facebook.github.io/react/docs/optimizing-performance.html#use-the-production-build
-    // You probably want `utils/config` instead.
-    'process.env': { NODE_ENV: JSON.stringify(isProductionBuild ? 'production' : 'development') }
-  }),
-  new CopyWebpackPlugin([
-    { from: 'src/favicon/favicons' },
-    {
-      from: `node_modules/monaco-editor/${isProductionBuild ? 'min' : 'dev'}/vs`,
-      to: 'vs'
-    }
-  ])
-];
-
-if (minify) {
-  plugins.push(new UglifyJSPlugin({
-    sourceMap: true
-  }));
-}
-
-if (isRelease) {
-  plugins.push(new webpack.SourceMapDevToolPlugin({
-    filename: '[file].map',
-    append: '\n//# sourceMappingURL=[url]'
-  }));
-}
-
-const polyfill = [
-  './src/polyfills',
-  'element-closest',
-  'babel-polyfill',
-  'url-search-params-polyfill'
-];
+const getName = (ext) => `[name]${isProductionBuild ? '.[contenthash]' : ''}.${ext}`;
+const outFileNameTemplate = getName('js');
+const cssFileNameTemplate = getName('css');
 
 const config = {
+  // abort process on errors
+  bail: true,
+  mode: isProductionBuild ? 'production' : 'development',
   entry: {
     app: [
+      './src/polyfills',
       path.resolve(__dirname, 'src/index.js')
-    ],
-    vendor: [
-      ...polyfill,
-      'codemirror',
-      'fixed-data-table-2',
-      'immutable',
-      'jquery',
-      'lodash',
-      'moment',
-      'radium',
-      'react',
-      'react-date-range',
-      'react-dnd-html5-backend',
-      'react-json-tree',
-      'react-overlays',
-      'react-redux',
-      'react-router-redux',
-      'react-router'
     ]
   },
   output: {
     publicPath: '/',
-    path: path.join(__dirname, 'build'),
-    filename: isProductionBuild ? 'bundle.[hash].js' : 'bundle.js',
+    path: outputPath,
+    filename: outFileNameTemplate,
+    chunkFilename: outFileNameTemplate,
     sourceMapFilename: 'sourcemaps/[file].map'
   },
   module: {
-    loaders
+    rules
   },
   devtool,
-  plugins,
+  plugins: [
+    new MiniCssExtractPlugin({
+      // Options similar to the same options in webpackOptions.output
+      // all options are optional
+      filename: cssFileNameTemplate,
+      chunkFilename: cssFileNameTemplate,
+      ignoreOrder: false // Enable to remove warnings about conflicting order
+    }),
+    new webpack.BannerPlugin(require(dynLoader.path + '/webpackBanner')),
+    new webpack.HashedModuleIdsPlugin(),
+    new HtmlWebpackPlugin({
+      template: './src/index.html',
+      cache: false, // make sure rebuilds kick BuildInfo too
+      files: {
+        css: [cssFileNameTemplate],
+        js: [outFileNameTemplate]
+      }
+    }),
+    new BuildInfo(),
+    // 'process.env.NODE_ENV' does not work, despite the fact that it is a recommended way, according
+    // to documentation (see https://webpack.js.org/plugins/define-plugin/)
+    new webpack.DefinePlugin({ // todo
+      // copy some variables that are required by UI code
+      'process.env': ['DREMIO_RELEASE', 'DREMIO_VERSION', 'EDITION_TYPE', 'SKIP_SENTRY_STEP'].reduce((resultObj, variableToCopy) => {
+        resultObj[variableToCopy] = JSON.stringify(process.env[variableToCopy]);
+        return resultObj;
+      }, {
+        // This is for React: https://facebook.github.io/react/docs/optimizing-performance.html#use-the-production-build
+        // and some other utility methods
+        // You probably want `utils/config` instead.
+        NODE_ENV: JSON.stringify(isProductionBuild ? 'production' : 'development')
+      })
+    }),
+    new CopyWebpackPlugin([
+      { from: 'src/favicon/favicons' },
+      {
+        from: `node_modules/monaco-editor/${isProductionBuild ? 'min' : 'dev'}/vs`,
+        to: 'vs'
+      }
+    ]),
+    !skipSourceMapUpload && new SentryCliPlugin({
+      release: dremioVersion,
+      include: outputPath,
+      ignore: [
+        'vs', // ignore monaco editor sources
+        '**/*.css.map'
+      ],
+      configFile: path.resolve(__dirname, '.sentryclirc'),
+      rewrite: true
+    })
+  ].filter(Boolean),
+  optimization: {
+    runtimeChunk: 'single',
+    splitChunks: {
+      cacheGroups: {
+        vendor: {
+          test: /node_modules/,
+          chunks: 'initial',
+          name: 'vendor',
+          enforce: true
+        }
+      }
+    }
+  },
   resolve: {
+    extensions: ['.js', '.jsx', '.ts', '.tsx', '.json'],
     modules: [
       path.resolve(__dirname, 'src'),
       'node_modules',
@@ -312,12 +299,14 @@ const config = {
     alias: {
       'dyn-load': dynLoader.path, // ref for std code to ref dynamic componentsd
       '@app': path.resolve(__dirname, 'src'),
+      '@root': path.resolve(__dirname),
       'Narwhal-Logo-With-Name-Light': path.resolve(
         isBeta
           ? './src/components/Icon/icons/Narwhal-Logo-With-Name-Light-Beta.svg'
           : './src/components/Icon/icons/Narwhal-Logo-With-Name-Light.svg'
       )
-    }
+    },
+    plugins: [new injectionResolver()]
   }
 };
 

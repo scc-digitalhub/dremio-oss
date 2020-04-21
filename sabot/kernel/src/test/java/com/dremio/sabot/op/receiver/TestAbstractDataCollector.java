@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ import javax.inject.Provider;
 
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.memory.OutOfMemoryException;
-import org.apache.arrow.memory.RootAllocator;
+import org.junit.Rule;
 import org.junit.Test;
 import org.mockito.Mockito;
 
@@ -44,8 +44,13 @@ import com.dremio.service.scheduler.SchedulerService;
 import com.dremio.service.spill.DefaultSpillServiceOptions;
 import com.dremio.service.spill.SpillService;
 import com.dremio.service.spill.SpillServiceImpl;
+import com.dremio.test.AllocatorRule;
+import com.dremio.test.DremioTest;
 
-public class TestAbstractDataCollector {
+public class TestAbstractDataCollector extends DremioTest {
+
+  @Rule
+  public final AllocatorRule allocatorRule = AllocatorRule.defaultAllocator();
 
   @Test
   public void testReserveMemory() {
@@ -73,7 +78,7 @@ public class TestAbstractDataCollector {
       .addAllIncomingMinorFragmentIndex(list)
       .build();
     ExecProtos.FragmentHandle handle = ExecProtos.FragmentHandle.newBuilder().setMajorFragmentId(2323).setMinorFragmentId(234234).build();
-    BufferAllocator allocator = new RootAllocator(2000000);
+    BufferAllocator allocator = allocatorRule.newAllocator("test-abstract-data-collector", 0, 2000000);
     boolean outOfMemory = false;
     final SchedulerService schedulerService = Mockito.mock(SchedulerService.class);
     final SpillService spillService = new SpillServiceImpl(DremioConfig.create(null, config), new DefaultSpillServiceOptions(),

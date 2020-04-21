@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,9 +18,8 @@ package com.dremio.plugins.s3.store;
 import java.util.List;
 
 import javax.inject.Provider;
-
-import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.fs.s3a.Constants;
+import javax.validation.constraints.Max;
+import javax.validation.constraints.Min;
 
 import com.dremio.exec.catalog.StoragePluginId;
 import com.dremio.exec.catalog.conf.AWSAuthenticationType;
@@ -32,41 +31,16 @@ import com.dremio.exec.catalog.conf.SourceType;
 import com.dremio.exec.server.SabotContext;
 import com.dremio.exec.store.dfs.FileSystemConf;
 import com.dremio.exec.store.dfs.SchemaMutability;
-import com.google.common.collect.ImmutableList;
+import com.dremio.io.file.Path;
+import com.dremio.options.OptionManager;
 
 import io.protostuff.Tag;
 
 /**
  * Connection Configuration for S3.
  */
-@SourceType(value = "S3", label = "Amazon S3")
+@SourceType(value = "S3", label = "Amazon S3", uiConfig = "s3-layout.json")
 public class S3PluginConfig extends FileSystemConf<S3PluginConfig, S3StoragePlugin> {
-
-  static final List<String> UNIQUE_CONN_PROPS = ImmutableList.of(
-    Constants.ACCESS_KEY,
-    Constants.SECRET_KEY,
-    Constants.SECURE_CONNECTIONS,
-    Constants.ENDPOINT,
-    Constants.AWS_CREDENTIALS_PROVIDER,
-    Constants.MAXIMUM_CONNECTIONS,
-    Constants.MAX_ERROR_RETRIES,
-    Constants.ESTABLISH_TIMEOUT,
-    Constants.SOCKET_TIMEOUT,
-    Constants.SOCKET_SEND_BUFFER,
-    Constants.SOCKET_RECV_BUFFER,
-    Constants.SIGNING_ALGORITHM,
-    Constants.USER_AGENT_PREFIX,
-    Constants.PROXY_HOST,
-    Constants.PROXY_PORT,
-    Constants.PROXY_DOMAIN,
-    Constants.PROXY_USERNAME,
-    Constants.PROXY_PASSWORD,
-    Constants.PROXY_WORKSTATION,
-    Constants.PATH_STYLE_ACCESS,
-    S3FileSystem.COMPATIBILITY_MODE,
-    S3FileSystem.REGION_OVERRIDE
-  );
-
   @Tag(1)
   @DisplayMetadata(label = "AWS Access Key")
   public String accessKey = "";
@@ -77,14 +51,16 @@ public class S3PluginConfig extends FileSystemConf<S3PluginConfig, S3StoragePlug
   public String accessSecret = "";
 
   @Tag(3)
+  @NotMetadataImpacting
   @DisplayMetadata(label = "Encrypt connection")
   public boolean secure;
 
   @Tag(4)
-  @DisplayMetadata(label = "External Buckets")
+  @DisplayMetadata(label = "Buckets")
   public List<String> externalBucketList;
 
   @Tag(5)
+  @DisplayMetadata(label = "Connection Properties")
   public List<Property> propertyList;
 
   @Tag(6)
@@ -108,6 +84,31 @@ public class S3PluginConfig extends FileSystemConf<S3PluginConfig, S3StoragePlug
   @DisplayMetadata(label = "Enable compatibility mode (experimental)")
   public boolean compatibilityMode = false;
 
+  @Tag(11)
+  @NotMetadataImpacting
+  @DisplayMetadata(label = "Enable local caching when possible")
+  public boolean isCachingEnabled = true;
+
+  @Tag(12)
+  @NotMetadataImpacting
+  @Min(value = 1, message = "Max percent of total available cache space must be between 1 and 100")
+  @Max(value = 100, message = "Max percent of total available cache space must be between 1 and 100")
+  @DisplayMetadata(label = "Max percent of total available cache space to use when possible")
+  public int maxCacheSpacePct = 100;
+
+  @Tag(13)
+  @DisplayMetadata(label = "Whitelisted buckets")
+  public List<String> whitelistedBuckets;
+
+  @Tag(15)
+  @DisplayMetadata(label = "IAM Role to Assume")
+  public String assumedRoleARN;
+
+  @Tag(16)
+  @DisplayMetadata(label = "Server side encryption key ARN")
+  @NotMetadataImpacting
+  public String kmsKeyARN;
+
   @Override
   public S3StoragePlugin newPlugin(SabotContext context, String name, Provider<StoragePluginId> pluginIdProvider) {
     return new S3StoragePlugin(this, context, name, pluginIdProvider);
@@ -115,7 +116,7 @@ public class S3PluginConfig extends FileSystemConf<S3PluginConfig, S3StoragePlug
 
   @Override
   public Path getPath() {
-    return new Path(rootPath);
+    return Path.of(rootPath);
   }
 
   @Override
@@ -125,17 +126,12 @@ public class S3PluginConfig extends FileSystemConf<S3PluginConfig, S3StoragePlug
 
   @Override
   public String getConnection() {
-    return "dremioS3:///";
+    return CloudFileSystemScheme.S3_FILE_SYSTEM_SCHEME.getScheme() + ":///";
   }
 
   @Override
   public SchemaMutability getSchemaMutability() {
     return allowCreateDrop ? SchemaMutability.USER_TABLE : SchemaMutability.NONE;
-  }
-
-  @Override
-  public List<String> getConnectionUniqueProperties() {
-    return UNIQUE_CONN_PROPS;
   }
 
   @Override
@@ -146,5 +142,20 @@ public class S3PluginConfig extends FileSystemConf<S3PluginConfig, S3StoragePlug
   @Override
   public boolean isAsyncEnabled() {
     return enableAsync;
+  }
+
+  @Override
+  public CacheProperties getCacheProperties() {
+    return new CacheProperties() {
+      @Override
+      public boolean isCachingEnabled(final OptionManager optionManager) {
+        return isCachingEnabled;
+      }
+
+      @Override
+      public int cacheMaxSpaceLimitPct() {
+        return maxCacheSpacePct;
+      }
+    };
   }
 }

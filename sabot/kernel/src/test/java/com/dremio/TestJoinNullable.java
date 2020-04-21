@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -104,6 +104,7 @@ public class TestJoinNullable extends PlanTestBase {
   }
 
   @Test
+  @Ignore
   public void withNullEqualInWhereConditionNegative() throws Exception {
     final String query = "SELECT * FROM " +
         "cp.\"jsoninput/nullableOrdered1.json\" t1, " +
@@ -111,7 +112,7 @@ public class TestJoinNullable extends PlanTestBase {
         "cp.\"jsoninput/nullableOrdered3.json\" t3 " +
         "WHERE t1.key = t2.key OR (t1.key IS NULL AND t2.key IS NULL)";
     errorMsgTestHelper(query,
-        "This query cannot be planned possibly due to either a cartesian join or an inequality join");
+        "This query cannot be planned");
   }
 
   @Ignore("DX-11205")

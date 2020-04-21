@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,10 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { CALL_API } from 'redux-api-middleware';
-import { API_URL_V2 } from 'constants/Api';
-
-import { makeUncachebleURL } from 'ie11.js';
+import { RSAA } from 'redux-api-middleware';
 
 import folderSchema from 'schemas/folder';
 import datasetSchema from 'schemas/dataset';
@@ -26,18 +23,28 @@ import actionUtils from 'utils/actionUtils/actionUtils';
 import { constructFullPathAndEncode } from 'utils/pathUtils';
 
 import { VIEW_ID as HOME_CONTENTS_VIEW_ID } from 'pages/HomePage/subpages/HomeContents';
+import { getEntityType, getNormalizedEntityPath } from '@app/selectors/home';
+import { ENTITY_TYPES } from '@app/constants/Constants';
+import { APIV2Call } from '@app/core/APICall';
 
 export const ADD_FOLDER_START = 'ADD_FOLDER_START';
 export const ADD_FOLDER_SUCCESS = 'ADD_FOLDER_SUCCESS';
 export const ADD_FOLDER_FAILURE = 'ADD_FOLDER_FAILURE';
 
-function fetchAddNewFolder(parentEntity, parentType, name) {
-  const parentPath = parentEntity.getIn(['links', 'self']);
-  const resourcePath = parentType === 'folder' ? `${parentPath}`
+export const addNewFolderForSpace = (name) => (dispatch, getState) => {
+  const state = getState();
+  const parentType = getEntityType(state);
+  const parentPath = getNormalizedEntityPath(state);
+  const resourcePath = parentType === ENTITY_TYPES.folder ? `${parentPath}`
     : `${parentPath}/folder/`;
   const meta = { resourcePath, invalidateViewIds: [HOME_CONTENTS_VIEW_ID] };
-  return {
-    [CALL_API]: {
+
+  const apiCall = new APIV2Call()
+    .paths(resourcePath)
+    .uncachable();
+
+  return dispatch({
+    [RSAA]: {
       types: [
         {
           type: ADD_FOLDER_START,
@@ -54,17 +61,10 @@ function fetchAddNewFolder(parentEntity, parentType, name) {
       body: JSON.stringify({
         name
       }),
-
-      endpoint: makeUncachebleURL(`${API_URL_V2}${resourcePath}`)
+      endpoint: apiCall
     }
-  };
-}
-
-export function addNewFolderForSpace(parentEntity, parentType, name) {
-  return (dispatch) => {
-    return dispatch(fetchAddNewFolder(parentEntity, parentType, name));
-  };
-}
+  });
+};
 
 export const REMOVE_SPACE_FOLDER_START = 'REMOVE_SPACE_FOLDER_START';
 export const REMOVE_SPACE_FOLDER_SUCCESS = 'REMOVE_SPACE_FOLDER_SUCCESS';
@@ -76,8 +76,13 @@ function fetchRemoveFolder(folder) {
     resourcePath,
     invalidateViewIds: [HOME_CONTENTS_VIEW_ID]
   };
+
+  const apiCall = new APIV2Call()
+    .paths(resourcePath)
+    .params({version: folder.get('version')});
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         {
           type: REMOVE_SPACE_FOLDER_START,
@@ -99,7 +104,7 @@ function fetchRemoveFolder(folder) {
         }
       ],
       method: 'DELETE',
-      endpoint: `${API_URL_V2}${resourcePath}?version=${folder.get('version')}`
+      endpoint: apiCall
     }
   };
 }
@@ -121,8 +126,13 @@ function fetchRemoveFile(file) {
     invalidateViewIds: [HOME_CONTENTS_VIEW_ID]
   };
   const errorMessage = la('There was an error removing the file.');
+
+  const apiCall = new APIV2Call()
+    .paths(resourcePath)
+    .params({version: file.getIn(['fileFormat', 'version'])});
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         {
           type: REMOVE_FILE_START,
@@ -141,7 +151,7 @@ function fetchRemoveFile(file) {
         }
       ],
       method: 'DELETE',
-      endpoint: `${API_URL_V2}${resourcePath}?version=${file.getIn(['fileFormat', 'version'])}`
+      endpoint: apiCall
     }
   };
 }
@@ -162,8 +172,12 @@ function fetchRemoveFileFormat(file) {
   };
   const errorMessage = la('There was an error removing the format for the file.');
   const entityRemovePaths = [['fileFormat', file.getIn(['fileFormat', 'id'])]];
+
+  const apiCall = new APIV2Call()
+    .fullpath(file.getIn(['links', 'delete_format']));
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         { type: REMOVE_FILE_FORMAT_START, meta},
         { type: REMOVE_FILE_FORMAT_SUCCESS, meta: {...meta, success: true, entityRemovePaths}},
@@ -176,7 +190,7 @@ function fetchRemoveFileFormat(file) {
         }
       ],
       method: 'DELETE',
-      endpoint: `${API_URL_V2}${file.getIn(['links', 'delete_format'])}`
+      endpoint: apiCall
     }
   };
 }
@@ -194,10 +208,14 @@ export const RENAME_SPACE_DATASET_FAILURE = 'RENAME_SPACE_DATASET_FAILURE';
 
 function fetchRenameDataset(dataset, newName) {
   const href = constructFullPathAndEncode(dataset.get('fullPathList'));
-  const encodedNewName = encodeURIComponent(newName);
   const meta = { newName, invalidateViewIds: [HOME_CONTENTS_VIEW_ID] };
+
+  const apiCall = new APIV2Call()
+    .paths(`dataset/${href}/rename`)
+    .params({renameTo: newName});
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         {
           type: RENAME_SPACE_DATASET_START,
@@ -210,7 +228,7 @@ function fetchRenameDataset(dataset, newName) {
         }
       ],
       method: 'POST',
-      endpoint: `${API_URL_V2}/dataset/${href}/rename?renameTo=${encodedNewName}`
+      endpoint: apiCall
     }
   };
 }
@@ -236,8 +254,13 @@ function fetchRemoveDataset(dataset) {
     level: 'success'
   };
   const errorMessage = la('There was an error removing the dataset.');
+
+  const apiCall = new APIV2Call()
+    .fullpath(href)
+    .params({savedTag: dataset.getIn(['datasetConfig', 'savedTag'])});
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         {
           type: REMOVE_DATASET_START, meta
@@ -254,7 +277,8 @@ function fetchRemoveDataset(dataset) {
         }
       ],
       method: 'DELETE',
-      endpoint: `${API_URL_V2}${href}?savedTag=${dataset.getIn(['datasetConfig', 'savedTag'])}`    }
+      endpoint: apiCall
+    }
   };
 }
 
@@ -270,8 +294,13 @@ export const RENAME_FOLDER_FAILURE = 'RENAME_FOLDER_FAILURE';
 
 function fetchRenameFolder(folder, newName) {
   const meta = { invalidateViewIds: [HOME_CONTENTS_VIEW_ID] };
+
+  const apiCall = new APIV2Call()
+    .paths(folder.getIn(['links', 'rename']))
+    .params({renameTo: newName});
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         {
           type: RENAME_FOLDER_START,
@@ -287,7 +316,7 @@ function fetchRenameFolder(folder, newName) {
         }
       ],
       method: 'POST',
-      endpoint: `${API_URL_V2}${folder.getIn(['links', 'rename'])}?renameTo=${newName}`
+      endpoint: apiCall
     }
   };
 }
@@ -304,11 +333,15 @@ export const LOAD_DEPENDENT_DATASETS_FAILURE = 'LOAD_DEPENDENT_DATASETS_FAILURE'
 
 function fetchDependentDatasets(fullPath) {
   const href = constructFullPathAndEncode(fullPath);
+
+  const apiCall = new APIV2Call()
+    .paths(`dataset/${href}/descendants`);
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [LOAD_DEPENDENT_DATASETS_STARTED, LOAD_DEPENDENT_DATASETS_SUCCESS, LOAD_DEPENDENT_DATASETS_FAILURE],
       method: 'GET',
-      endpoint: `${API_URL_V2}/dataset/${href}/descendants`
+      endpoint: apiCall
     }
   };
 }
@@ -327,8 +360,14 @@ export const LOAD_PARENTS_FAILURE = 'LOAD_PARENTS_FAILURE';
 function fetchParents(fullPath, version, viewId) {
   const href = constructFullPathAndEncode(fullPath);
   const meta = {viewId};
+
+  const apiCall = new APIV2Call()
+    .paths(`dataset/${href}/version`)
+    .path(version)
+    .path('parents');
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [{
         type: LOAD_PARENTS_START, meta
       }, {
@@ -337,7 +376,7 @@ function fetchParents(fullPath, version, viewId) {
         type: LOAD_PARENTS_FAILURE, meta
       }],
       method: 'GET',
-      endpoint: `${API_URL_V2}/dataset/${href}/version/${version}/parents`
+      endpoint: apiCall
     }
   };
 }

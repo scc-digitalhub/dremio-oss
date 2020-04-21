@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,23 +26,29 @@ import java.util.stream.Collectors;
 import javax.inject.Provider;
 
 import org.apache.arrow.util.Preconditions;
-import org.apache.hadoop.fs.FileSystem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.dremio.common.exceptions.UserException;
+import com.dremio.connector.metadata.BytesOutput;
+import com.dremio.connector.metadata.DatasetHandle;
+import com.dremio.connector.metadata.DatasetMetadata;
+import com.dremio.connector.metadata.extensions.ValidateMetadataOption;
 import com.dremio.exec.catalog.StoragePluginId;
 import com.dremio.exec.catalog.conf.Property;
 import com.dremio.exec.physical.base.WriterOptions;
 import com.dremio.exec.planner.logical.CreateTableEntry;
 import com.dremio.exec.server.SabotContext;
 import com.dremio.exec.store.SchemaConfig;
+import com.dremio.exec.store.dfs.FileSystemConf;
 import com.dremio.exec.store.dfs.FileSystemPlugin;
-import com.dremio.exec.store.dfs.FileSystemWrapper;
+import com.dremio.exec.store.dfs.IcebergTableProps;
+import com.dremio.io.file.FileSystem;
 import com.dremio.plugins.util.ContainerFileSystem.ContainerFailure;
 import com.dremio.sabot.exec.context.OperatorContext;
 import com.dremio.service.namespace.NamespaceKey;
 import com.dremio.service.namespace.SourceState;
+import com.google.common.annotations.VisibleForTesting;
 
 /**
  * Storage plugin for Microsoft Azure Storage
@@ -80,12 +86,22 @@ class AzureStoragePlugin extends FileSystemPlugin<AzureStorageConf> {
     }
   }
 
+  //DX-17365: Azure does not return correct "Last Modified" times for folders, therefore new
+  //          subfolder discovery is not possible by checking super folder's 'Last Modified" time.
+  //          A full refresh is required to guarantee that container content is up-to-date.
+  //          Always return metadata invalid in order to trigger a refresh.
+  @Override
+  public MetadataValidity validateMetadata(BytesOutput signature, DatasetHandle datasetHandle, DatasetMetadata metadata,
+                                           ValidateMetadataOption... options){
+    return MetadataValidity.INVALID;
+  }
+
   private void ensureDefaultName() throws IOException {
     String urlSafeName = URLEncoder.encode(getName(), "UTF-8");
-    getFsConf().set(FileSystem.FS_DEFAULT_NAME_KEY, AzureStorageFileSystem.SCHEME + urlSafeName);
-    final FileSystemWrapper fs = getSystemUserFS();
+    getFsConf().set(org.apache.hadoop.fs.FileSystem.FS_DEFAULT_NAME_KEY, FileSystemConf.CloudFileSystemScheme.AZURE_STORAGE_FILE_SYSTEM_SCHEME.getScheme() + urlSafeName);
+    final FileSystem fs = getSystemUserFS();
     // do not use fs.getURI() or fs.getConf() directly as they will produce wrong results
-    fs.initialize(URI.create(getFsConf().get(FileSystem.FS_DEFAULT_NAME_KEY)), getFsConf());
+    fs.unwrap(org.apache.hadoop.fs.FileSystem.class).initialize(URI.create(getFsConf().get(org.apache.hadoop.fs.FileSystem.FS_DEFAULT_NAME_KEY)), getFsConf());
   }
 
   @Override
@@ -97,10 +113,21 @@ class AzureStoragePlugin extends FileSystemPlugin<AzureStorageConf> {
     properties.add(new Property("fs.dremioAzureStorage.impl", AzureStorageFileSystem.class.getName()));
 
     // configure azure properties.
-    properties.add(new Property(AzureStorageFileSystem.KEY, config.accessKey));
     properties.add(new Property(AzureStorageFileSystem.ACCOUNT, config.accountName));
     properties.add(new Property(AzureStorageFileSystem.SECURE, Boolean.toString(config.enableSSL)));
     properties.add(new Property(AzureStorageFileSystem.MODE, config.accountKind.name()));
+
+    AzureAuthenticationType credentialsType = config.credentialsType;
+
+    if(credentialsType == AzureAuthenticationType.AZURE_ACTIVE_DIRECTORY) {
+      properties.add(new Property(AzureStorageFileSystem.CREDENTIALS_TYPE, AzureAuthenticationType.AZURE_ACTIVE_DIRECTORY.name()));
+      properties.add(new Property(AzureStorageFileSystem.CLIENT_ID, config.clientId));
+      properties.add(new Property(AzureStorageFileSystem.CLIENT_SECRET, config.clientSecret));
+      properties.add(new Property(AzureStorageFileSystem.TOKEN_ENDPOINT, config.tokenEndpoint));
+    } else {
+      properties.add(new Property(AzureStorageFileSystem.CREDENTIALS_TYPE, AzureAuthenticationType.ACCESS_KEY.name()));
+      properties.add(new Property(AzureStorageFileSystem.KEY, config.accessKey));
+    }
 
     if(config.containers != null && config.containers.size() > 0) {
       String containers = config.containers.stream()
@@ -123,20 +150,15 @@ class AzureStoragePlugin extends FileSystemPlugin<AzureStorageConf> {
 
   @Override
   public CreateTableEntry createNewTable(
-      SchemaConfig config,
-      NamespaceKey key,
-      WriterOptions writerOptions,
-      Map<String, Object> storageOptions
+    SchemaConfig config,
+    NamespaceKey key,
+    IcebergTableProps icebergTableProps,
+    WriterOptions writerOptions,
+    Map<String, Object> storageOptions
   ) {
-    Preconditions.checkArgument(key.size() >= 2, "key must be at least two parts");
-    final String containerName = key.getPathComponents().get(1);
-    if (key.size() == 2) {
-      throw UserException.validationError()
-          .message("Creating containers is not supported.", containerName)
-          .build(logger);
-    }
-
-    final CreateTableEntry entry = super.createNewTable(config, key, writerOptions, storageOptions);
+    final String containerName = getAndCheckContainerName(key);
+    final CreateTableEntry entry = super.createNewTable(config, key,
+      icebergTableProps, writerOptions, storageOptions);
 
     final AzureStorageFileSystem fs = getSystemUserFS().unwrap(AzureStorageFileSystem.class);
 
@@ -157,6 +179,19 @@ class AzureStoragePlugin extends FileSystemPlugin<AzureStorageConf> {
 //    }
 
     return entry;
+  }
+
+  @VisibleForTesting
+  String getAndCheckContainerName(NamespaceKey key) {
+    Preconditions.checkArgument(key.size() >= 2, "key must be at least two parts");
+    final List<String> resolvedPath = resolveTableNameToValidPath(key.getPathComponents()); // strips source name
+    final String containerName = resolvedPath.get(0);
+    if (resolvedPath.size() == 1) {
+      throw UserException.validationError()
+        .message("Creating containers is not supported.", containerName)
+        .build(logger);
+    }
+    return containerName;
   }
 
   @Override

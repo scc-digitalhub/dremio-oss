@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,52 +16,46 @@
 import { Route, IndexRoute, Redirect, IndexRedirect } from 'react-router';
 import React from 'react';
 
-import { UserIsAuthenticated, UserIsAdmin } from 'utils/authWrappers';
+import { UserIsAuthenticated, UserIsAdmin, CheckUserAuthentication } from '@app/components/Auth/authWrappers';
 
 import { ENTITY_TYPES } from '@app/constants/Constants';
 import { startExplorePageListener, explorePageLocationChanged, explorePageExit } from '@app/actions/explore/dataset/data';
-import Acceleration from 'dyn-load/pages/AdminPage/subpages/acceleration/Acceleration';
-import Roles from 'dyn-load/pages/AdminPage/subpages/Roles';
-import Votes from 'dyn-load/pages/AdminPage/subpages/Votes';
-import Queues from 'dyn-load/pages/AdminPage/subpages/WLM/Queues';
-import QAssignments from 'dyn-load/pages/AdminPage/subpages/WLM/QAssignments';
-import EulaPage from 'dyn-load/pages/EulaPage/EulaPage';
+import Acceleration from '@inject/pages/AdminPage/subpages/acceleration/Acceleration';
+import Roles from '@inject/pages/AdminPage/subpages/Roles';
+import Votes from '@inject/pages/AdminPage/subpages/Votes';
+import Queues from '@inject/pages/AdminPage/subpages/WLM/Queues';
+import QAssignments from '@inject/pages/AdminPage/subpages/WLM/QAssignments';
+import EulaPage from '@inject/pages/EulaPage/EulaPage';
+import PATListPage from '@inject/pages/AccountPage/personalAccessTokens/PATListPage';
+import SSOLandingPage from '@inject/pages/AuthenticationPage/components/SSOLandingPage';
 import { resetModuleState } from '@app/actions/modulesState';
 import { exploreStateKey } from '@app/selectors/explore';
+import { LOGIN_PATH, SIGNUP_PATH } from '@app/sagas/loginLogout';
+import { lazy } from '@app/components/Lazy';
+import Activation from '@inject/pages/AdminPage/subpages/Activation';
 
 import App from './containers/App';
 
 import ReloadPage from './pages/ReloadPage';
 
-import HomePage from './pages/HomePage/HomePage';
 import HomeModals from './pages/HomePage/HomeModals';
 import Home from './pages/HomePage/subpages/Home';
 import { AllSpaces } from './pages/HomePage/subpages/AllSpaces/AllSpaces';
 import AllSources from './pages/HomePage/subpages/AllSources/AllSources';
 
 import ExploreModals from './pages/ExplorePage/ExploreModals';
-import ExplorePage from './pages/ExplorePage/ExplorePageController';
 
 import AccountPage from './pages/AccountPage/AccountPage';
 import Info from './pages/AccountPage/subpages/InfoController';
-import Datastore from './pages/AccountPage/subpages/Datastore';
-import Jdbcodbc from './pages/AccountPage/subpages/Jdbcodbc';
-import Api from './pages/AccountPage/subpages/Api';
-import Business from './pages/AccountPage/subpages/Business';
 
 import AuthenticationPage from './pages/AuthenticationPage/AuthenticationPage';
 import SignupPage from './pages/SignupPage/SignupPage';
 import ServerStatusPage from './pages/ServerStatusPage/ServerStatusPage';
 
 import AdminPage from './pages/AdminPage/AdminPage';
-import NodeActivity from './pages/AdminPage/subpages/NodeActivity';
+import NodeActivity from './pages/AdminPage/subpages/NodeActivity/NodeActivity';
 import Users from './pages/AdminPage/subpages/Users';
 import Advanced from './pages/AdminPage/subpages/Advanced';
-import EmailDomain from './pages/AdminPage/subpages/EmailDomain';
-import Data from './pages/AdminPage/subpages/Data';
-import Logging from './pages/AdminPage/subpages/Logging';
-import Audit from './pages/AdminPage/subpages/Audit';
-import UsersV2 from './pages/AdminPage/subpages/UsersV2';
 import Provisioning from './pages/AdminPage/subpages/Provisioning';
 import Support from './pages/AdminPage/subpages/Support';
 
@@ -73,16 +67,9 @@ import AccountModals from './pages/AccountPage/AccountModals';
 import JobPage from './pages/JobPage/JobPage';
 import JobModals from './pages/JobPage/JobModals';
 
-import Page from './components/Page';
+import Page, { MainMasterPage } from './components/Page';
 
 window.React = React;
-
-export const SIGNUP_PATH = '/signup';
-export const LOGIN_PATH = '/login';
-
-export function getLoginUrl() {
-  return `${LOGIN_PATH}?redirect=${encodeURIComponent(window.location.href.slice(window.location.origin.length))}`;
-}
 
 const resourceKeyName = 'resourceId';
 export const getSourceRoute = (rootType, component) => {
@@ -94,6 +81,7 @@ export const getSourceRoute = (rootType, component) => {
   );
 };
 
+const ExplorePage = lazy(() => import('./pages/ExplorePage/ExplorePageController' /* webpackChunkName: 'ExplorePage' */));
 const getExploreRoute = (routeProps, dispatch) => {
 
   const onEnter = () => {
@@ -126,77 +114,73 @@ export default dispatch => (
     <Redirect from='/home' to='/'/>
     <Redirect from='/*/**/' to='/*/**'/>
     <Route path='/reload' component={ReloadPage} />
-    <Route component={UserIsAuthenticated(JobModals)}>
-      <Route component={Page}>
-        <Route path='/jobs(/:queryId)' component={JobPage} />
-      </Route>
-    </Route>
-    <Route component={UserIsAuthenticated(AccountModals)}>
-      <Route component={Page}>
-        <Route path='/account' component={AccountPage} >
-          <IndexRedirect to='/account/info' />
-          <Route path='/account/info' component={Info} />
-          <Route path='/account/datastore' component={Datastore} />
-          <Route path='/account/jdbcodbc' component={Jdbcodbc} />
-          <Route path='/account/api' component={Api} />
-          <Route path='/account/business' component={Business} />
-        </Route>
-      </Route>
-    </Route>
-    <Route component={UserIsAdmin(AdminModals)}>
-      <Route component={Page}>
-        <Route path='/admin' component={AdminPage} >
-          <IndexRedirect to='/admin/nodeActivity' />
-          <Route path='/admin/acceleration' component={Acceleration} />
-          <Route path='/admin/nodeActivity' component={NodeActivity} />
-          <Route path='/admin/users' component={UserIsAdmin(Users)} />
-          <Route path='/admin/roles' component={Roles} />
-          <Route path='/admin/advanced' component={Advanced} />
-          <Route path='/admin/emailDomain' component={EmailDomain} />
-          <Route path='/admin/data' component={Data} />
-          <Route path='/admin/logging' component={Logging} />
-          <Route path='/admin/audit' component={Audit} />
-          <Route path='/admin/usersv2' component={UsersV2} />
-          <Route path='/admin/provisioning' component={Provisioning} />
-          <Route path='/admin/support' component={Support} />
-          <Route path='/admin/votes' component={Votes} />
-          <Route path='/admin/queues' component={Queues} />
-          <Route path='/admin/rules' component={QAssignments} />
-        </Route>
-      </Route>
-    </Route>
+    <Route path='/sso' component={SSOLandingPage} />
     <Route component={Page}>
-      <Route path='/spaces/recent' component={HomePage} />
-
-      <Route path={LOGIN_PATH} component={AuthenticationPage} />
-      <Route path={SIGNUP_PATH} component={SignupPage} />
-      <Route path='/status' component={ServerStatusPage} />
       <Route path='/eula' component={EulaPage} />
-    </Route>
-    <Route component={UserIsAuthenticated(HomeModals)}>
-      <Route component={Page}>
-        <IndexRoute component={Home} /> {/* todo: is this valid?*/}
-        {/* a complicate route structure below is needed for correct work of Link component
-        from router package for case of onlyActiveOnIndex=false */}
-        {getSourceRoute(ENTITY_TYPES.source, Home)}
-        {getSourceRoute(ENTITY_TYPES.space, Home)}
-        <Route path='/home' component={Home}>
-          <Route path={`/home/:${resourceKeyName}/folder/**`} />
-        </Route>
-        <Route path='/spaces/list' component={AllSpaces} />
-        <Route path='/sources/list' component={AllSources} />
+      <Route component={CheckUserAuthentication}>
+        <Route path={LOGIN_PATH} component={AuthenticationPage} />
+        <Route path={SIGNUP_PATH} component={SignupPage} />
+        <Route path='/status' component={ServerStatusPage} />
       </Route>
     </Route>
-    <Route component={UserIsAuthenticated(ExploreModals)}>
-      {
-        getExploreRoute({
-          component: Page,
-          children: [
-            <Route key='new_query' path='/new_query' component={ExplorePage} />,
-            <Route key='existing_dataset' path='/:resources(/:resourceId)/:tableId(/:pageType)' component={ExplorePage} />
-          ]
-        }, dispatch)
-      }
+    <Route component={CheckUserAuthentication}>
+      <Route component={UserIsAuthenticated(JobModals)}>
+        <Route component={Page}>
+          <Route path='/jobs(/:queryId)' component={JobPage} />
+        </Route>
+      </Route>
+      <Route component={UserIsAuthenticated(AccountModals)}>
+        <Route component={Page}>
+          <Route path='/account' component={AccountPage} >
+            <IndexRedirect to='/account/info' />
+            <Route path='/account/info' component={Info} />
+            <Route path='/account/personalTokens' component={PATListPage} />
+          </Route>
+        </Route>
+      </Route>
+      <Route component={UserIsAdmin(AdminModals)}>
+        <Route component={Page}>
+          <Route path='/admin' component={AdminPage} >
+            <IndexRedirect to='/admin/nodeActivity' />
+            <Route path='/admin/acceleration' component={Acceleration} />
+            <Route path='/admin/nodeActivity' component={NodeActivity} />
+            <Route path='/admin/users' component={UserIsAdmin(Users)} />
+            <Route path='/admin/roles' component={Roles} />
+            <Route path='/admin/advanced' component={Advanced} />
+            <Route path='/admin/provisioning' component={Provisioning} />
+            <Route path='/admin/activation' component={Activation}/>
+            <Route path='/admin/support' component={Support} />
+            <Route path='/admin/votes' component={Votes} />
+            <Route path='/admin/queues' component={Queues} />
+            <Route path='/admin/rules' component={QAssignments} />
+          </Route>
+        </Route>
+      </Route>
+      <Route component={UserIsAuthenticated(HomeModals)}>
+        <Route component={Page}>
+          <IndexRoute component={Home} /> {/* todo: is this valid?*/}
+          {/* a complicate route structure below is needed for correct work of Link component
+          from router package for case of onlyActiveOnIndex=false */}
+          {getSourceRoute(ENTITY_TYPES.source, Home)}
+          {getSourceRoute(ENTITY_TYPES.space, Home)}
+          <Route path='/home' component={Home}>
+            <Route path={`/home/:${resourceKeyName}/folder/**`} />
+          </Route>
+          <Route path='/spaces/list' component={AllSpaces} />
+          <Route path='/sources/list' component={AllSources} />
+        </Route>
+      </Route>
+      <Route component={MainMasterPage}>
+        {
+          getExploreRoute({
+            component: UserIsAuthenticated(ExploreModals),
+            children: [
+              <Route key='new_query' path='/new_query' component={ExplorePage} />,
+              <Route key='existing_dataset' path='/:resources(/:resourceId)/:tableId(/:pageType)' component={ExplorePage} />
+            ]
+          }, dispatch)
+        }
+      </Route>
     </Route>
   </Route>
 );

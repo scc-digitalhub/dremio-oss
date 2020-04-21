@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 .base {
-  composes: row-of-inputs-spacing from '@app/uiTheme/less/forms.less';
+  composes: row-of-inputs-spacing from '~@app/uiTheme/less/forms.less';
   display: flex;
 }
 .text {
-  composes: row-margin from '@app/uiTheme/less/forms.less';
+  composes: row-margin from '~@app/uiTheme/less/forms.less';
   width: 200px !important; //todo remove important when all components would be switched to css modules
 }
 .row {
-  composes: row-margin from '@app/uiTheme/less/forms.less';
+  composes: row-margin from '~@app/uiTheme/less/forms.less';
 }

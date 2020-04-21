@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,9 +31,9 @@ public interface CoreStoreProviderRpcService extends CoreStoreProvider, Service 
 
   /**
    * Create new store for a given config or return existing store.
-   * @param config Store configuration
+   * @param name Table Name
    * @return store id
    */
-  String getOrCreateStore(StoreBuilderConfig config);
+  String getStoreID(String name);
 
 }

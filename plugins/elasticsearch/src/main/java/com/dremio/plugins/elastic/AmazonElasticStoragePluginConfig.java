@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,8 +19,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 import javax.inject.Provider;
-
-import org.hibernate.validator.constraints.NotEmpty;
+import javax.validation.constraints.Max;
+import javax.validation.constraints.Min;
+import javax.validation.constraints.NotEmpty;
 
 import com.dremio.exec.catalog.StoragePluginId;
 import com.dremio.exec.catalog.conf.AWSAuthenticationType;
@@ -36,7 +37,7 @@ import io.protostuff.Tag;
 /**
  * Configuration for Amazon Elasticsearch Service storage plugin.
  */
-@SourceType(value = "AMAZONELASTIC", label = "Amazon Elasticsearch Service")
+@SourceType(value = "AMAZONELASTIC", label = "Amazon Elasticsearch Service", uiConfig = "amazon-elastic-storage-layout.json")
 public class AmazonElasticStoragePluginConfig extends BaseElasticStoragePluginConfig<AmazonElasticStoragePluginConfig, ElasticsearchStoragePlugin> {
 
   //  optional string hostname = 1;
@@ -63,6 +64,8 @@ public class AmazonElasticStoragePluginConfig extends BaseElasticStoragePluginCo
   public String hostname;
 
   @Tag(2)
+  @Min(1)
+  @Max(65535)
   @DisplayMetadata(label = "Port")
   public Integer port = 443;
 

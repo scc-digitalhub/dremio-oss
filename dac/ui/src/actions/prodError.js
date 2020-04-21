@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,8 +26,10 @@ const getError = (e) => {
   if (e instanceof Error) {
     return e;
   }
-  if (e.message) {
-    return new Error(e.message + '\n\n' + e.stack + '\n\n(non-Error instance)');
+  const message = e.message
+    || e._error && e._error.message && e._error.message.get('errorMessage');
+  if (message) {
+    return new Error(message + '\n\n' + (e.stack || 'no stack') + '\n\n(non-Error instance)');
   }
   return new Error(e); // error components expect objects
 };

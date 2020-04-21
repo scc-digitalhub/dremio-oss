@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,21 +22,16 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
-import static org.mockito.Matchers.anyInt;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
 
 import javax.annotation.Nullable;
 
 import org.apache.arrow.memory.BufferAllocator;
-import org.apache.arrow.memory.RootAllocator;
 import org.apache.arrow.vector.BigIntVector;
 import org.apache.arrow.vector.BitVector;
 import org.apache.arrow.vector.DateMilliVector;
@@ -65,6 +60,7 @@ import org.apache.arrow.vector.util.DecimalUtility;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -74,17 +70,16 @@ import com.dremio.dac.model.job.JobData;
 import com.dremio.dac.model.job.JobDataFragment;
 import com.dremio.dac.model.job.JobDataFragmentWrapper;
 import com.dremio.dac.model.job.JobDataFragmentWrapper.JobDataFragmentSerializer;
-import com.dremio.dac.model.job.JobDataWrapper;
 import com.dremio.dac.proto.model.dataset.DataType;
 import com.dremio.exec.record.BatchSchema.SelectionVectorMode;
+import com.dremio.exec.record.RecordBatchData;
 import com.dremio.exec.record.VectorContainer;
-import com.dremio.sabot.op.sort.external.RecordBatchData;
 import com.dremio.service.job.proto.JobId;
 import com.dremio.service.jobs.JobDataFragmentImpl;
-import com.dremio.service.jobs.JobDataImpl;
-import com.dremio.service.jobs.JobLoader;
 import com.dremio.service.jobs.RecordBatchHolder;
 import com.dremio.service.jobs.RecordBatches;
+import com.dremio.test.AllocatorRule;
+import com.dremio.test.DremioTest;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.google.common.base.Function;
@@ -102,7 +97,7 @@ import io.netty.buffer.ArrowBuf;
  * </ul>
  */
 @RunWith(Parameterized.class)
-public class TestData {
+public class TestData extends DremioTest {
   private static final JobId TEST_JOB_ID = new JobId("testJobId");
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
   static {
@@ -111,8 +106,11 @@ public class TestData {
     OBJECT_MAPPER.registerModule(module);
   }
 
-  private static BufferAllocator allocator = new RootAllocator(Long.MAX_VALUE);
-  private static ArrowBuf tempBuf = allocator.buffer(1024);
+  @ClassRule
+  public static final AllocatorRule allocatorRule = AllocatorRule.defaultAllocator();
+
+  private static BufferAllocator allocator;
+  private static ArrowBuf tempBuf;
 
   private static String defaultMaxCellLength;
 
@@ -129,6 +127,8 @@ public class TestData {
 
   @BeforeClass
   public static void setMaxCellLength() {
+    allocator = allocatorRule.newAllocator("test-data", 0, Long.MAX_VALUE);
+    tempBuf = allocator.buffer(1024);
     // For testing purposes set the value to 30
     defaultMaxCellLength = System.getProperty(JobData.MAX_CELL_SIZE_KEY);
     System.setProperty(JobData.MAX_CELL_SIZE_KEY, "30");
@@ -139,6 +139,7 @@ public class TestData {
     if (defaultMaxCellLength != null) {
       System.setProperty(JobData.MAX_CELL_SIZE_KEY, defaultMaxCellLength);
     }
+    allocator.close();
   }
 
   private final boolean convertNumbersToStrings;
@@ -965,7 +966,7 @@ public class TestData {
   }
 
   @Test
-  public void testDataTrunc() throws Exception {
+  public void testDataSerialization() throws Exception {
     Pair<? extends ValueVector, ResultVerifier> varChar1 = testVarCharVector(0, 0);
     Pair<? extends ValueVector, ResultVerifier> varChar2 = testVarCharVector(5, 5);
     Pair<? extends ValueVector, ResultVerifier> varChar3 = testVarCharVector(10, 10);
@@ -977,20 +978,15 @@ public class TestData {
     RecordBatchData batch2 = createRecordBatch(varChar2.getKey(), date2.getKey());
     RecordBatchData batch3 = createRecordBatch(varChar3.getKey(), date3.getKey());
 
-    JobLoader jobLoader = mock(JobLoader.class);
-    when(jobLoader.load(anyInt(), anyInt())).thenReturn(
-        new RecordBatches(asList(
-            newRecordBatchHolder(batch1, 0, 5),
-            newRecordBatchHolder(batch2, 0, 5),
-            newRecordBatchHolder(batch3, 0, 5)
-        ))
-    );
-
-    try (JobData dataInput = new JobDataWrapper(new JobDataImpl(jobLoader, TEST_JOB_ID, new CountDownLatch(0)))) {
-      JobDataFragment truncDataInput = dataInput.truncate(10);
-      DataPOJO dataOutput = OBJECT_MAPPER.readValue(OBJECT_MAPPER.writeValueAsString(truncDataInput), DataPOJO.class);
-      assertEquals(truncDataInput.getColumns().toString(), dataOutput.getColumns().toString());
-      assertEquals(truncDataInput.getReturnedRowCount(), dataOutput.getReturnedRowCount());
+    try (JobDataFragment dataInput = new JobDataFragmentWrapper(0, new JobDataFragmentImpl(
+      new RecordBatches(asList(
+        newRecordBatchHolder(batch1, 0, 5),
+        newRecordBatchHolder(batch2, 0, 5),
+        newRecordBatchHolder(batch3, 0, 5)
+      )), 0, TEST_JOB_ID))) {
+      DataPOJO dataOutput = OBJECT_MAPPER.readValue(OBJECT_MAPPER.writeValueAsString(dataInput), DataPOJO.class);
+      assertEquals(dataInput.getColumns().toString(), dataOutput.getColumns().toString());
+      assertEquals(dataInput.getReturnedRowCount(), dataOutput.getReturnedRowCount());
 
       varChar1.getValue().verify(dataOutput);
       varChar2.getValue().verify(dataOutput);
@@ -1000,7 +996,7 @@ public class TestData {
   }
 
   @Test
-  public void testDataRange() throws Exception {
+  public void testDataWithOffsetSerialization() throws Exception {
     Pair<? extends ValueVector, ResultVerifier> varChar1 = testVarCharVector(0, 0);
     Pair<? extends ValueVector, ResultVerifier> varChar2 = testVarCharVector(0, 5);
     Pair<? extends ValueVector, ResultVerifier> varChar3 = testVarCharVector(5, 10);
@@ -1012,20 +1008,15 @@ public class TestData {
     RecordBatchData batch2 = createRecordBatch(varChar2.getKey(), date2.getKey());
     RecordBatchData batch3 = createRecordBatch(varChar3.getKey(), date3.getKey());
 
-    JobLoader jobLoader = mock(JobLoader.class);
-    when(jobLoader.load(anyInt(), anyInt())).thenReturn(
-        new RecordBatches(asList(
-            newRecordBatchHolder(batch1, 0, 5),
-            newRecordBatchHolder(batch2, 0, 5),
-            newRecordBatchHolder(batch3, 0, 5)
-        ))
-    );
-
-    try (JobData dataInput = new JobDataWrapper(new JobDataImpl(jobLoader, TEST_JOB_ID, new CountDownLatch(0)))) {
-      JobDataFragment rangeDataInput = dataInput.range(5, 10);
-      DataPOJO dataOutput = OBJECT_MAPPER.readValue(OBJECT_MAPPER.writeValueAsString(rangeDataInput), DataPOJO.class);
-      assertEquals(rangeDataInput.getColumns().toString(), dataOutput.getColumns().toString());
-      assertEquals(rangeDataInput.getReturnedRowCount(), dataOutput.getReturnedRowCount());
+    try (JobDataFragment dataInput = new JobDataFragmentWrapper(5, new JobDataFragmentImpl(
+      new RecordBatches(asList(
+        newRecordBatchHolder(batch1, 0, 5),
+        newRecordBatchHolder(batch2, 0, 5),
+        newRecordBatchHolder(batch3, 0, 5)
+      )), 0, TEST_JOB_ID))) {
+      DataPOJO dataOutput = OBJECT_MAPPER.readValue(OBJECT_MAPPER.writeValueAsString(dataInput), DataPOJO.class);
+      assertEquals(dataInput.getColumns().toString(), dataOutput.getColumns().toString());
+      assertEquals(dataInput.getReturnedRowCount(), dataOutput.getReturnedRowCount());
 
       varChar2.getValue().verify(dataOutput);
       varChar3.getValue().verify(dataOutput);
@@ -1051,7 +1042,8 @@ public class TestData {
     recordBatches.add(newRecordBatchHolder(data2, 0, data2.getRecordCount()));
     recordBatches.add(newRecordBatchHolder(data3, 0, data3.getRecordCount()));
 
-    try (JobDataFragment jdf = new JobDataFragmentWrapper(0, new JobDataFragmentImpl(new RecordBatches(recordBatches), 0, TEST_JOB_ID))) {
+    try (JobDataFragment jdf = new JobDataFragmentWrapper(0, new JobDataFragmentImpl(
+      new RecordBatches(recordBatches), 0, TEST_JOB_ID))) {
 
       String value = jdf.extractString("colVarChar", 3);
       assertEquals(null, value);
@@ -1070,31 +1062,25 @@ public class TestData {
         // noop
       }
 
-      JobLoader jobLoader = mock(JobLoader.class);
-      when(jobLoader.load(anyInt(), anyInt())).thenReturn(
+      try (JobDataFragment jdf2 = new JobDataFragmentWrapper(0 , new JobDataFragmentImpl(
         new RecordBatches(asList(
           newRecordBatchHolder(data1, 2, 5),
           newRecordBatchHolder(data2, 1, 3),
           newRecordBatchHolder(data3, 0, 4)
-        ))
-      );
-      try (JobData dataInput = new JobDataWrapper(new JobDataImpl(jobLoader, TEST_JOB_ID, new CountDownLatch(0)))) {
-        JobDataFragment rangeDataInput = dataInput.range(5, 10); // those numbers do not matter, mock holds all the truth
-        value = rangeDataInput.extractString("colVarChar", 0); // should be element #2 from first batch
+        )), 0, TEST_JOB_ID))) {
+        value = jdf2.extractString("colVarChar", 0); // should be element #2 from first batch
         assertEquals("long long long long value", value);
-        value = rangeDataInput.extractString("colVarChar", 3); // will not fit first batch - will be 1st element of the 2nd batch which element 1
+        value = jdf2.extractString("colVarChar", 3); // will not fit first batch - will be 1st element of the 2nd batch which element 1
         assertEquals("long long long long long long long long long long long long long long long long value", value);
-        value = rangeDataInput.extractString("colVarChar", 8); // last in 3rd batch (element #3)
+        value = jdf2.extractString("colVarChar", 8); // last in 3rd batch (element #3)
         assertEquals(null, value);
         try {
-          value = rangeDataInput.extractString("colVarChar", 9);
+          value = jdf2.extractString("colVarChar", 9);
           fail("Index out of bounds exception");
         } catch (IllegalArgumentException e) {
           // noop
         }
-
       }
-
     }
   }
   @AfterClass

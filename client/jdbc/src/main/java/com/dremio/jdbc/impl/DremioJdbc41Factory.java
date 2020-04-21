@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -174,9 +174,8 @@ public class DremioJdbc41Factory extends DremioFactory {
                                          QueryState state,
                                          Meta.Signature signature,
                                          TimeZone timeZone,
-                                         Meta.Frame firstFrame) {
-    final ResultSetMetaData metaData =
-        newResultSetMetaData(statement, signature);
+                                         Meta.Frame firstFrame) throws SQLException {
+    final ResultSetMetaData metaData = newResultSetMetaData(statement, signature);
     return new DremioResultSetImpl(statement, state, signature, metaData, timeZone, firstFrame);
   }
 

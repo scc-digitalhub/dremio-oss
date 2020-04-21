@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ public class FileTest {
     FSDataOutputStream out = fs.create(path);
     byte[] s = "hello world".getBytes();
     out.write(s);
-    out.sync();
+    out.hflush();
 //    out.close();
     FSDataInputStream in = fs.open(path);
     byte[] bytes = new byte[s.length];
@@ -58,7 +58,7 @@ public class FileTest {
       bytes = new byte[256*1024];
       Stopwatch watch = Stopwatch.createStarted();
       out.write(bytes);
-      out.sync();
+      out.hflush();
       long t = watch.elapsed(TimeUnit.MILLISECONDS);
       System.out.printf("Elapsed: %d. Rate %d.\n", t, (long) ((long) bytes.length * 1000L / t));
     }

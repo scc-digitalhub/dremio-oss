@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,11 +28,13 @@ describe('SingleCluster', () => {
         clusterType: 'YARN',
         currectState: 'RUNNING',
         desiredState: 'RUNNING',
-        subPropertyList: [
-          { key: 'yarn.resourcemanager.hostname', value: 'yarn_host'}
-        ],
-        virtualCoreCount: 1,
-        memoryMB: 1536
+        yarnProps: {
+          subPropertyList: [
+            { key: 'yarn.resourcemanager.hostname', value: 'yarn_host'}
+          ],
+          virtualCoreCount: 1,
+          memoryMB: 1536
+        }
       })
     };
   });
@@ -121,6 +123,19 @@ describe('SingleCluster', () => {
       const expectedHtml = '<span>yarn_host<span style="padding:0 .5em">|</span>'
         + '1 core, 1.5GB memory per worker</span>';
       expect(shallow(instance.getWorkerInfoTitle()).html()).to.be.eql(expectedHtml);
+    });
+  });
+
+  describe('getClusterSubProperty', () => {
+    it('should find subproperty by key', () => {
+      const wrapper = shallow(<SingleCluster {...minimalProps}/>);
+      const instance = wrapper.instance();
+      expect(instance.getClusterSubProperty('yarn.resourcemanager.hostname')).to.be.equal('yarn_host');
+    });
+    it('should not fail if subproperty not found', () => {
+      const wrapper = shallow(<SingleCluster {...minimalProps}/>);
+      const instance = wrapper.instance();
+      expect(instance.getClusterSubProperty('a')).to.be.undefined;
     });
   });
 });

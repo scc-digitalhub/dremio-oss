@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import PureRender from 'pure-render-decorator';
 import PropTypes from 'prop-types';
 import DocumentTitle from 'react-document-title';
 import { injectIntl } from 'react-intl';
+import { flexElementAuto } from '@app/uiTheme/less/layout.less';
 
 import {
   updateQueryState, filterJobsData, loadItemsForFilter, loadNextJobs
@@ -86,6 +87,7 @@ export class JobPage extends Component {
         <MainHeader />
         <RunningJobsHeader jobCount={runningJobsCount}/>
         <JobsContent
+          className={flexElementAuto} // Page object adds flex in style
           loadNextJobs={this.props.loadNextJobs}
           // todo: update to react-router v3 so don't have to deep pass `location` anymore
           location={location}

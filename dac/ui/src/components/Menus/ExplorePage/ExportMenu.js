@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,15 +15,21 @@
  */
 import { PureComponent } from 'react';
 import PropTypes from 'prop-types';
+import { connect } from 'react-redux';
+import { injectIntl } from 'react-intl';
 
-import { MAP, LIST, MIXED } from 'constants/DataTypes';
+import { LIST, MAP, MIXED } from '@app/constants/DataTypes';
+import localStorageUtils from '@app/utils/storageUtils/localStorageUtils';
+import { getExploreJobId, getExploreState } from '@app/selectors/explore';
+import { isSqlChanged } from '@app/sagas/utils';
+import { addNotification } from 'actions/notification';
+import { APIV2Call } from '@app/core/APICall';
+import MenuItem from './MenuItem';
+import Menu from './Menu';
 
 const UNSUPPORTED_TYPE_COLUMNS = {
   'CSV': new Set([MAP, LIST, MIXED])
 };
-
-import MenuItem from './MenuItem';
-import Menu from './Menu';
 
 const TYPES = [
   { label: 'JSON', name: 'JSON' },
@@ -31,28 +37,72 @@ const TYPES = [
   { label: 'Parquet', name: 'PARQUET' }
 ];
 
-export default class ExportMenu extends PureComponent {
+@injectIntl
+export class ExportMenu extends PureComponent {
   static propTypes = {
     action: PropTypes.func,
-    datasetColumns: PropTypes.array
+    datasetColumns: PropTypes.array,
+    datasetSql: PropTypes.string,
+    intl: PropTypes.object.isRequired,
+    //connected
+    jobId: PropTypes.string,
+    currentSql: PropTypes.string,
+    addNotification: PropTypes.func
   };
 
-  static defaultMenuItem = TYPES[0]
+  makeUrl = (type) => {
+    const {jobId} = this.props;
+    const token = localStorageUtils.getAuthToken();
+
+    const apiCall = new APIV2Call()
+      .path('job')
+      .path(jobId)
+      .path('download')
+      .params({
+        downloadFormat: type.name,
+        Authorization: token
+      });
+
+    return apiCall.toString();
+  };
 
   renderMenuItems() {
+    const { jobId, datasetSql, currentSql, intl } = this.props;
     const datasetColumns = new Set(this.props.datasetColumns);
+    const isSqlDirty = isSqlChanged(datasetSql, currentSql);
     const isTypesIntersected = (types) => !![...types].filter(type => datasetColumns.has(type)).length;
 
     return TYPES.map(type => {
       const types = UNSUPPORTED_TYPE_COLUMNS[type.name];
-      const disabled = types && isTypesIntersected(types);
-      const onClick = disabled ? () => {} : () => this.props.action(type);
+      const disabled = isSqlDirty || !jobId || (types && isTypesIntersected(types));
+      const href = this.makeUrl(type);
+      const itemTitle = intl.formatMessage({ id: 'Download.DownloadLimitValue' });
 
-      return <MenuItem key={type.name} onClick={onClick} disabled={disabled}>{type.label}</MenuItem>;
+      return <MenuItem key={type.name} href={href} disabled={disabled} title={itemTitle} onClick={this.showNotification.bind(this, type.label)}>{type.label}</MenuItem>;
     });
+  }
+
+  showNotification(type) {
+    const { intl } = this.props;
+    const notificationMessage = intl.formatMessage({ id: 'Download.Notification' }, {type});
+    const message = <span>{notificationMessage}</span>;
+    this.props.addNotification(message, 'success', 10);
   }
 
   render() {
     return <Menu>{this.renderMenuItems()}</Menu>;
   }
 }
+
+function mapStateToProps(state) {
+  const explorePageState = getExploreState(state);
+  const currentSql = explorePageState.view.currentSql;
+
+  const jobId = getExploreJobId(state);
+  return {
+    jobId,
+    currentSql
+  };
+}
+
+export default connect(mapStateToProps, { addNotification })(ExportMenu);

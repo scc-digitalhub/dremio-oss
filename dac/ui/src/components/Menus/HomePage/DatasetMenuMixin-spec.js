@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -91,17 +91,17 @@ describe('DatasetMenuMixin', () => {
     });
 
     it('should render "Remove Format" only when entity is file/folder and not home file', () => {
-      expect(findMenuItemByText(wrapper, 'Remove Format')).to.have.length(0);
+      expect(findMenuItemLinkByText(wrapper, 'Remove Format')).to.have.length(0);
 
       wrapper.setProps({
         entityType: 'file'
       });
-      expect(findMenuItemByText(wrapper, 'Remove Format')).to.have.length(1);
+      expect(findMenuItemLinkByText(wrapper, 'Remove Format')).to.have.length(1);
 
       wrapper.setProps({
         entityType: 'folder'
       });
-      expect(findMenuItemByText(wrapper, 'Remove Format')).to.have.length(1);
+      expect(findMenuItemLinkByText(wrapper, 'Remove Format')).to.have.length(1);
 
       wrapper.setProps({
         entityType: 'file',
@@ -109,7 +109,7 @@ describe('DatasetMenuMixin', () => {
           isHomeFile: true
         })
       });
-      expect(findMenuItemByText(wrapper, 'Remove Format')).to.have.length(0);
+      expect(findMenuItemLinkByText(wrapper, 'Remove Format')).to.have.length(0);
     });
 
     it('should render "Move"/"Rename"/"Remove" when can', () => {

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,18 +15,17 @@
  */
 package com.dremio.exec.catalog;
 
-import static com.dremio.test.DremioTest.CLASSPATH_SCAN_RESULT;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyString;
-import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 
@@ -34,13 +33,11 @@ import javax.inject.Provider;
 
 import org.junit.Before;
 import org.junit.Test;
-import org.mockito.invocation.InvocationOnMock;
-import org.mockito.stubbing.Answer;
 
 import com.dremio.common.config.LogicalPlanPersistence;
 import com.dremio.common.config.SabotConfig;
 import com.dremio.common.exceptions.UserException;
-import com.dremio.concurrent.Runnables;
+import com.dremio.config.DremioConfig;
 import com.dremio.connector.ConnectorException;
 import com.dremio.connector.metadata.BytesOutput;
 import com.dremio.connector.metadata.DatasetHandle;
@@ -52,17 +49,18 @@ import com.dremio.connector.metadata.GetMetadataOption;
 import com.dremio.connector.metadata.ListPartitionChunkOption;
 import com.dremio.connector.metadata.PartitionChunkListing;
 import com.dremio.connector.metadata.extensions.ValidateMetadataOption;
-import com.dremio.datastore.KVStore;
-import com.dremio.datastore.KVStoreProvider;
 import com.dremio.datastore.LocalKVStoreProvider;
+import com.dremio.datastore.adapter.LegacyKVStoreProviderAdapter;
+import com.dremio.datastore.api.LegacyKVStore;
+import com.dremio.datastore.api.LegacyKVStoreProvider;
 import com.dremio.exec.catalog.conf.ConnectionConf;
 import com.dremio.exec.catalog.conf.SourceType;
 import com.dremio.exec.planner.logical.ViewTable;
 import com.dremio.exec.server.SabotContext;
+import com.dremio.exec.server.options.DefaultOptionManager;
 import com.dremio.exec.server.options.SystemOptionManager;
 import com.dremio.exec.store.SchemaConfig;
 import com.dremio.exec.store.StoragePluginRulesFactory;
-import com.dremio.exec.store.sys.store.provider.KVPersistentStoreProvider;
 import com.dremio.service.coordinator.ClusterCoordinator;
 import com.dremio.service.listing.DatasetListingService;
 import com.dremio.service.namespace.NamespaceKey;
@@ -75,6 +73,7 @@ import com.dremio.service.namespace.source.proto.SourceConfig;
 import com.dremio.service.namespace.source.proto.SourceInternalData;
 import com.dremio.service.namespace.source.proto.UpdateMode;
 import com.dremio.service.scheduler.Cancellable;
+import com.dremio.service.scheduler.LocalSchedulerService;
 import com.dremio.service.scheduler.Schedule;
 import com.dremio.service.scheduler.SchedulerService;
 import com.dremio.test.DremioTest;
@@ -83,40 +82,35 @@ import com.google.common.collect.Sets;
 /**
  *
  */
-public class TestFailedToStartPlugin {
+public class TestFailedToStartPlugin extends DremioTest {
   private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(TestFailedToStartPlugin.class);
 
   private SabotConfig sabotConfig;
   private SabotContext sabotContext;
-  private KVStoreProvider storeProvider;
+  private LegacyKVStoreProvider storeProvider;
   private SchedulerService schedulerService;
-  private PluginsManager plugins;
   private static MockUpPlugin mockUpPlugin;
+  private SystemOptionManager som;
+  private NamespaceService mockNamespaceService;
+  private DatasetListingService mockDatasetListingService;
 
   private static final String MOCK_UP = "mockup-failed-to-start";
 
   @Before
   public void setup() throws Exception {
-    storeProvider = new LocalKVStoreProvider(CLASSPATH_SCAN_RESULT, null, true, false);
+    storeProvider = new LegacyKVStoreProviderAdapter(
+      new LocalKVStoreProvider(CLASSPATH_SCAN_RESULT, null, true, false),
+      CLASSPATH_SCAN_RESULT);
     storeProvider.start();
-    final KVPersistentStoreProvider psp = new KVPersistentStoreProvider(
-        new Provider<KVStoreProvider>() {
-          @Override
-          public KVStoreProvider get() {
-            return storeProvider;
-          }
-        },
-        true
-    );
-    final NamespaceService mockNamespaceService = mock(NamespaceService.class);
-    final DatasetListingService mockDatasetListingService = mock(DatasetListingService.class);
+    mockNamespaceService = mock(NamespaceService.class);
+    mockDatasetListingService = mock(DatasetListingService.class);
 
     mockUpPlugin = new MockUpPlugin();
     MetadataPolicy rapidRefreshPolicy = new MetadataPolicy()
         .setAuthTtlMs(1L)
         .setDatasetUpdateMode(UpdateMode.PREFETCH)
-        .setNamesRefreshMs(1L)
-        .setDatasetDefinitionRefreshAfterMs(1L)
+        .setNamesRefreshMs(100L)
+        .setDatasetDefinitionRefreshAfterMs(100L)
         .setDatasetDefinitionExpireAfterMs(1L);
 
     final SourceConfig mockUpConfig = new SourceConfig()
@@ -151,11 +145,10 @@ public class TestFailedToStartPlugin {
     final LogicalPlanPersistence lpp = new LogicalPlanPersistence(SabotConfig.create(), CLASSPATH_SCAN_RESULT);
     when(sabotContext.getLpPersistence())
         .thenReturn(lpp);
-    when(sabotContext.getStoreProvider())
-        .thenReturn(psp);
 
-    final SystemOptionManager som = new SystemOptionManager(CLASSPATH_SCAN_RESULT, lpp, psp);
-    som.init();
+    final DefaultOptionManager defaultOptionManager = new DefaultOptionManager(CLASSPATH_SCAN_RESULT);
+    som = new SystemOptionManager(defaultOptionManager, lpp, () -> storeProvider, true);
+    som.start();
     when(sabotContext.getOptionManager())
         .thenReturn(som);
 
@@ -172,7 +165,28 @@ public class TestFailedToStartPlugin {
     when(sabotContext.getRoles())
         .thenReturn(Sets.newHashSet(ClusterCoordinator.Role.MASTER));
 
-    schedulerService = mock(SchedulerService.class);
+    schedulerService = new SchedulerService() {
+      SchedulerService delegate = new LocalSchedulerService(3);
+      @Override
+      public void close() throws Exception {
+        delegate.close();
+      }
+
+      @Override
+      public void start() throws Exception {
+        delegate.start();
+      }
+
+      @Override
+      public Cancellable schedule(Schedule arg0, Runnable arg1) {
+        // replace timing of wakeup.
+        return delegate.schedule(
+            Schedule.Builder.everyMillis(100).asClusteredSingleton("metadata-refresh-test")
+          .build(), arg1);
+
+      }
+    };
+
   }
 
   /**
@@ -190,33 +204,6 @@ public class TestFailedToStartPlugin {
     }
   }
 
-  private void mockScheduleInvocation(InvocationCounter counter) {
-    doAnswer(new Answer<Cancellable>() {
-      @Override
-      public Cancellable answer(InvocationOnMock invocation) {
-        final Object[] arguments = invocation.getArguments();
-        final Runnable r = (Runnable) arguments[1];
-        Runnables.executeInSeparateThread(new Runnable() {
-          @Override
-          public void run() {
-            /* Next run scheduled for 100ms from now. Let's sleep for that 100ms to avoid the run failure of the
-               runnable r (SingletonRunnable) which will skip secondary execution before its previous run exits.
-             */
-            try {
-              Thread.sleep(100L);
-            } catch (Exception e) {
-              // ignored
-            }
-            counter.incrementCount();
-            r.run();
-          }
-
-        });
-        return mock(Cancellable.class);
-      }
-    }).when(schedulerService).schedule(any(Schedule.class), any(Runnable.class));
-  }
-
   /**
    * Wait until metadata refresh counts up three times - as we added thread for initial step,
    * making sure the metadata refresh actually ran in the meantime
@@ -231,47 +218,76 @@ public class TestFailedToStartPlugin {
 
   @Test
   public void testFailedToStart() throws Exception {
-    InvocationCounter counter = new InvocationCounter();
-    mockScheduleInvocation(counter);
+    InvocationCounter refreshCounter = new InvocationCounter();
+    InvocationCounter wakeupCounter = new InvocationCounter();
+    CatalogServiceMonitor monitor = new CatalogServiceMonitor() {
+      @Override
+      public void startBackgroundRefresh() {
+        refreshCounter.incrementCount();
+      }
 
-    KVStore<NamespaceKey, SourceInternalData> sourceDataStore = storeProvider.getStore(CatalogSourceDataCreator.class);
-    plugins = new PluginsManager(sabotContext, sourceDataStore, schedulerService, ConnectionReader.of(sabotContext.getClasspathScan(), sabotConfig));
+      @Override
+      public void onWakeup() {
+        wakeupCounter.incrementCount();
+      }
+    };
+    LegacyKVStore<NamespaceKey, SourceInternalData> sourceDataStore = storeProvider.getStore(CatalogSourceDataCreator.class);
 
-    mockUpPlugin.setThrowAtStart();
-    assertEquals(0, mockUpPlugin.getNumFailedStarts());
-    plugins.start();
-    // mockUpPlugin should be failing over and over right around now
-    waitForRefresh(counter);
-    long currNumFailedStarts = mockUpPlugin.getNumFailedStarts();
-    assertTrue(currNumFailedStarts > 1);
-    mockUpPlugin.unsetThrowAtStart();
-    waitForRefresh(counter);
-    currNumFailedStarts = mockUpPlugin.getNumFailedStarts();
-    waitForRefresh(counter);
-    assertEquals(currNumFailedStarts, mockUpPlugin.getNumFailedStarts());
+    try (PluginsManager plugins = new PluginsManager(sabotContext, mockNamespaceService, mockDatasetListingService, som, DremioConfig.create(),
+      EnumSet.allOf(ClusterCoordinator.Role.class), sourceDataStore, schedulerService,
+      ConnectionReader.of(sabotContext.getClasspathScan(), sabotConfig), monitor)) {
+
+      mockUpPlugin.setThrowAtStart();
+      assertEquals(0, mockUpPlugin.getNumFailedStarts());
+      plugins.start();
+      // mockUpPlugin should be failing over and over right around now
+      waitForRefresh(wakeupCounter);
+      long currNumFailedStarts = mockUpPlugin.getNumFailedStarts();
+      assertTrue(currNumFailedStarts > 1);
+      mockUpPlugin.unsetThrowAtStart();
+      waitForRefresh(refreshCounter);
+      currNumFailedStarts = mockUpPlugin.getNumFailedStarts();
+      waitForRefresh(refreshCounter);
+      assertEquals(currNumFailedStarts, mockUpPlugin.getNumFailedStarts());
+    }
   }
 
   @Test
   public void testBadSourceAtStart() throws Exception {
-    InvocationCounter counter = new InvocationCounter();
-    mockScheduleInvocation(counter);
+    InvocationCounter refreshCounter = new InvocationCounter();
+    InvocationCounter wakeupCounter = new InvocationCounter();
+    CatalogServiceMonitor monitor = new CatalogServiceMonitor() {
+      @Override
+      public void startBackgroundRefresh() {
+        refreshCounter.incrementCount();
+      }
 
-    KVStore<NamespaceKey, SourceInternalData> sourceDataStore = storeProvider.getStore(CatalogSourceDataCreator.class);
-    plugins = new PluginsManager(sabotContext, sourceDataStore, schedulerService, ConnectionReader.of(sabotContext.getClasspathScan(), sabotConfig));
+      @Override
+      public void onWakeup() {
+        wakeupCounter.incrementCount();
+      }
+    };
 
-    mockUpPlugin.setSimulateBadState(true);
-    assertEquals(false, mockUpPlugin.gotDatasets());
-    plugins.start();
-    // metadata refresh should be running right now
-    waitForRefresh(counter);
-    assertFalse(mockUpPlugin.gotDatasets());
-    mockUpPlugin.setSimulateBadState(false);
-    // Give metadata refresh a chance to run again
-    waitForRefresh(counter);
-    assertTrue(mockUpPlugin.gotDatasets());
-    mockUpPlugin.unsetGotDatasets();
-    waitForRefresh(counter);
-    assertTrue(mockUpPlugin.gotDatasets());
+    LegacyKVStore<NamespaceKey, SourceInternalData> sourceDataStore = storeProvider.getStore(CatalogSourceDataCreator.class);
+
+    try (PluginsManager plugins = new PluginsManager(sabotContext, mockNamespaceService, mockDatasetListingService, som, DremioConfig.create(),
+      EnumSet.allOf(ClusterCoordinator.Role.class), sourceDataStore, schedulerService,
+      ConnectionReader.of(sabotContext.getClasspathScan(), sabotConfig), monitor)) {
+
+      mockUpPlugin.setSimulateBadState(true);
+      assertEquals(false, mockUpPlugin.gotDatasets());
+      plugins.start();
+      // metadata refresh should be running right now
+      waitForRefresh(wakeupCounter);
+      assertFalse(mockUpPlugin.gotDatasets());
+      mockUpPlugin.setSimulateBadState(false);
+      // Give metadata refresh a chance to run again
+      waitForRefresh(refreshCounter);
+      assertTrue(mockUpPlugin.gotDatasets());
+      mockUpPlugin.unsetGotDatasets();
+      waitForRefresh(refreshCounter);
+      assertTrue(mockUpPlugin.gotDatasets());
+    }
   }
 
   @SourceType(value = MOCK_UP, configurable = false)

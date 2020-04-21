@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package com.dremio.exec.physical.impl.window;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
 
+import org.junit.Ignore;
 import org.junit.Test;
 
 import com.dremio.BaseTestQuery;
@@ -220,6 +221,7 @@ public class TestWindowFrame extends BaseTestQuery {
   }
 
   @Test
+  @Ignore //DX-18534
   public void testNtile() throws Exception {
     testBuilder()
       .sqlQuery(getFile("window/ntile.sql"), TEST_RES_PATH)

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,25 +29,25 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-import org.apache.arrow.vector.types.pojo.ArrowType;
-import org.apache.arrow.vector.types.pojo.Field;
+import org.apache.arrow.memory.BufferAllocator;
 import org.joda.time.LocalDateTime;
 import org.joda.time.format.DateTimeFormatter;
+import org.junit.After;
 import org.junit.Assert;
+import org.junit.Before;
 import org.junit.Test;
-import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 
+import com.dremio.common.memory.DremioRootAllocator;
 import com.dremio.dac.explore.HistogramGenerator.TruncEvalEnum;
 import com.dremio.dac.explore.model.DatasetPath;
-import com.dremio.dac.model.job.JobUI;
+import com.dremio.dac.model.job.JobData;
+import com.dremio.dac.model.job.JobDataFragment;
+import com.dremio.dac.model.job.JobDataWrapper;
 import com.dremio.dac.proto.model.dataset.DataType;
 import com.dremio.exec.expr.fn.impl.DateFunctionsUtils;
-import com.dremio.exec.record.BatchSchema;
 import com.dremio.service.job.proto.QueryType;
-import com.dremio.service.jobs.Job;
-import com.dremio.service.jobs.JobData;
-import com.dremio.service.jobs.JobDataFragment;
+import com.dremio.service.jobs.JobStatusListener;
 import com.dremio.service.jobs.SqlQuery;
 import com.dremio.service.namespace.dataset.DatasetVersion;
 import com.google.common.collect.ImmutableSet;
@@ -56,6 +56,17 @@ import com.google.common.collect.ImmutableSet;
  * Test class for Histogram Generation
  */
 public class TestHistogramGenerator {
+  private BufferAllocator allocator;
+
+  @Before
+  public void setUp() {
+    allocator = DremioRootAllocator.create(0, Long.MAX_VALUE);
+  }
+
+  @After
+  public void cleanUp() {
+    allocator.close();
+  }
 
   @Test
   public void testTimeIntervals() throws Exception {
@@ -154,42 +165,43 @@ public class TestHistogramGenerator {
     final DatasetVersion datasetVersion = DatasetVersion.newVersion();
 
     final QueryExecutor queryExecutor = mock(QueryExecutor.class);
-    when(queryExecutor.runQuery(any(SqlQuery.class), any(QueryType.class), any(DatasetPath.class), any(DatasetVersion.class)))
+    when(queryExecutor.runQueryWithListener(any(SqlQuery.class), any(QueryType.class), any(DatasetPath.class), any(DatasetVersion.class), any(JobStatusListener.class)))
         .thenAnswer(
-            new Answer<JobUI>() {
-              @Override
-              public JobUI answer(InvocationOnMock invocation) throws Throwable {
-                String query = invocation.getArgumentAt(0, SqlQuery.class).getSql();
-                Job job = mock(Job.class);
-                JobData jobData = mock(JobData.class);
-                when(job.getData()).thenReturn(jobData);
-                if ("SELECT * FROM dataset".equals(query)) {
-                  when(jobData.getJobResultsTable()).thenReturn("jobResults.previewJob");
-                } else if (query.contains("jobResults.previewJob")) {
-                  if (expFilter != null) {
-                    assertTrue(query, query.contains(expFilter));
-                  } else {
-                    assertFalse(query, query.contains("WHERE"));
-                  }
-                  JobDataFragment fragment = mock(JobDataFragment.class);
-                  when(jobData.truncate(1)).thenReturn(fragment);
-                  when(fragment.getSchema()).thenReturn(
-                      BatchSchema.newBuilder()
-                          .addField(new Field("dremio_selection_count", true, new ArrowType.Int(64, true), null))
-                          .build()
-                  );
-                  when(fragment.extractValue("dremio_selection_count", 0)).thenReturn(expCount);
-                }
+          (Answer<JobData>) invocation -> {
+            final String query = invocation.getArgumentAt(0, SqlQuery.class).getSql();
+            final JobStatusListener listener = invocation.getArgumentAt(4, JobStatusListener.class);
+            JobData jobData = mock(JobDataWrapper.class);
 
-                return new JobUI(job);
-              }
-            }
+            when(jobData.getJobResultsTable()).thenReturn("jobResults.previewJob");
+
+            listener.jobCompleted();
+            return jobData;
+          }
         );
+    when(queryExecutor.runQueryAndWaitForCompletion(any(SqlQuery.class), any(QueryType.class), any(DatasetPath.class), any(DatasetVersion.class)))
+      .thenAnswer(
+        (Answer<JobData>) invocation -> {
+          final String query = invocation.getArgumentAt(0, SqlQuery.class).getSql();
+          JobData jobData = mock(JobDataWrapper.class);
+
+          if (expFilter != null) {
+            assertTrue(query, query.contains(expFilter));
+          } else {
+            assertFalse(query, query.contains("WHERE"));
+          }
+          JobDataFragment fragment = mock(JobDataFragment.class);
+          when(jobData.truncate(allocator, 1)).thenReturn(fragment);
+
+          when(fragment.extractValue("dremio_selection_count", 0)).thenReturn(expCount);
+          return jobData;
+        }
+      );
+
 
     HistogramGenerator hg = new HistogramGenerator(queryExecutor);
     long count = hg.getSelectionCount(datasetPath, datasetVersion,
         new SqlQuery("SELECT * FROM dataset", "user"),
-        type, "colName", selectedValues
+        type, "colName", selectedValues, allocator
     );
 
     assertEquals(expCount, count);

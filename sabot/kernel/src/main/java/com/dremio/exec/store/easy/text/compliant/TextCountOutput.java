@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,8 +41,7 @@ public class TextCountOutput extends TextOutput  {
   @Override
   public boolean endField() {
     fieldOpen = false;
-    // We just need to process one filed in each record.
-    return false;
+    return true;
   }
 
   @Override

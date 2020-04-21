@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,8 @@
  */
 package com.dremio.resource;
 
+import com.dremio.exec.enginemanagement.proto.EngineManagementProtos.EngineId;
+import com.dremio.exec.enginemanagement.proto.EngineManagementProtos.SubEngineId;
 import com.dremio.exec.proto.UserBitShared;
 
 /**
@@ -32,6 +34,9 @@ public class ResourceSchedulingDecisionInfo {
   private UserBitShared.WorkloadClass workloadClass;
   private long schedulingStartTimeMs;  // Time when resource allocation started, in ms
   private long schedulingEndTimeMs;    // Time when resources were fully allocated, in ms
+  private String queueTag;
+  private EngineId engineId;
+  private SubEngineId subEngineId;
 
   private ResourceSchedulingProperties resourceSchedulingProperties;
 
@@ -128,5 +133,29 @@ public class ResourceSchedulingDecisionInfo {
 
   public void setSchedulingEndTimeMs(long schedulingEndTimeMs) {
     this.schedulingEndTimeMs = schedulingEndTimeMs;
+  }
+
+  public String getQueueTag() {
+    return queueTag;
+  }
+
+  public void setQueueTag(String queueTag) {
+    this.queueTag = queueTag;
+  }
+
+  public EngineId getEngineId() {
+    return engineId;
+  }
+
+  public void setEngineId(EngineId engineId) {
+    this.engineId = engineId;
+  }
+
+  public SubEngineId getSubEngineId() {
+    return subEngineId;
+  }
+
+  public void setSubEngineId(SubEngineId subEngineId) {
+    this.subEngineId = subEngineId;
   }
 }

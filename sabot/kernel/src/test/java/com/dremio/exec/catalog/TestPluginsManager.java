@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.util.Collections;
+import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.Optional;
 
 import javax.inject.Provider;
@@ -32,6 +34,7 @@ import javax.inject.Provider;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.Mockito;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 
@@ -40,19 +43,20 @@ import com.dremio.common.config.SabotConfig;
 import com.dremio.common.exceptions.UserException;
 import com.dremio.concurrent.Runnables;
 import com.dremio.concurrent.SafeRunnable;
+import com.dremio.config.DremioConfig;
 import com.dremio.connector.metadata.DatasetHandle;
 import com.dremio.connector.metadata.EntityPath;
-import com.dremio.datastore.KVStore;
-import com.dremio.datastore.KVStoreProvider;
 import com.dremio.datastore.LocalKVStoreProvider;
+import com.dremio.datastore.api.LegacyKVStore;
+import com.dremio.datastore.api.LegacyKVStoreProvider;
 import com.dremio.exec.catalog.conf.ConnectionConf;
 import com.dremio.exec.catalog.conf.SourceType;
 import com.dremio.exec.server.SabotContext;
+import com.dremio.exec.server.options.DefaultOptionManager;
 import com.dremio.exec.server.options.SystemOptionManager;
 import com.dremio.exec.store.CatalogService;
 import com.dremio.exec.store.SchemaConfig;
 import com.dremio.exec.store.StoragePlugin;
-import com.dremio.exec.store.sys.store.provider.KVPersistentStoreProvider;
 import com.dremio.service.coordinator.ClusterCoordinator;
 import com.dremio.service.listing.DatasetListingService;
 import com.dremio.service.namespace.NamespaceKey;
@@ -64,6 +68,7 @@ import com.dremio.service.namespace.source.proto.SourceInternalData;
 import com.dremio.service.scheduler.Cancellable;
 import com.dremio.service.scheduler.Schedule;
 import com.dremio.service.scheduler.SchedulerService;
+import com.dremio.service.users.SystemUser;
 import com.dremio.test.DremioTest;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
@@ -72,26 +77,21 @@ import com.google.common.collect.Sets;
  * Unit tests for PluginsManager.
  */
 public class TestPluginsManager {
-  private KVStoreProvider storeProvider;
+  private LegacyKVStoreProvider storeProvider;
   private PluginsManager plugins;
   private SabotContext sabotContext;
   private SchedulerService schedulerService;
 
   @Before
   public void setup() throws Exception {
-    storeProvider = new LocalKVStoreProvider(CLASSPATH_SCAN_RESULT, null, true, false);
+    storeProvider =
+      new LocalKVStoreProvider(CLASSPATH_SCAN_RESULT, null, true, false).asLegacy();
     storeProvider.start();
-    final KVPersistentStoreProvider psp = new KVPersistentStoreProvider(
-        new Provider<KVStoreProvider>() {
-          @Override
-          public KVStoreProvider get() {
-            return storeProvider;
-          }
-        },
-        true
-    );
     final NamespaceService mockNamespaceService = mock(NamespaceService.class);
+    when(mockNamespaceService.getAllDatasets(Mockito.anyObject())).thenReturn(Collections.emptyList());
+
     final DatasetListingService mockDatasetListingService = mock(DatasetListingService.class);
+    final DremioConfig dremioConfig = DremioConfig.create();
     final SabotConfig sabotConfig = SabotConfig.create();
     sabotContext = mock(SabotContext.class);
 
@@ -106,11 +106,10 @@ public class TestPluginsManager {
     final LogicalPlanPersistence lpp = new LogicalPlanPersistence(SabotConfig.create(), CLASSPATH_SCAN_RESULT);
     when(sabotContext.getLpPersistence())
         .thenReturn(lpp);
-    when(sabotContext.getStoreProvider())
-        .thenReturn(psp);
 
-    final SystemOptionManager som = new SystemOptionManager(CLASSPATH_SCAN_RESULT, lpp, psp);
-    som.init();
+    final DefaultOptionManager defaultOptionManager = new DefaultOptionManager(CLASSPATH_SCAN_RESULT);
+    final SystemOptionManager som = new SystemOptionManager(defaultOptionManager, lpp, () -> storeProvider, true);
+    som.start();
     when(sabotContext.getOptionManager())
         .thenReturn(som);
 
@@ -120,17 +119,20 @@ public class TestPluginsManager {
     when(sabotContext.getConfig())
         .thenReturn(DremioTest.DEFAULT_SABOT_CONFIG);
 
+    final HashSet<ClusterCoordinator.Role> roles = Sets.newHashSet(ClusterCoordinator.Role.MASTER);
+
     // used in newPlugin
     when(sabotContext.getRoles())
-        .thenReturn(Sets.newHashSet(ClusterCoordinator.Role.MASTER));
+        .thenReturn(roles);
     when(sabotContext.isMaster())
         .thenReturn(true);
 
-    KVStore<NamespaceKey, SourceInternalData> sourceDataStore = storeProvider.getStore(CatalogSourceDataCreator.class);
+    LegacyKVStore<NamespaceKey, SourceInternalData> sourceDataStore = storeProvider.getStore(CatalogSourceDataCreator.class);
     schedulerService = mock(SchedulerService.class);
     mockScheduleInvocation();
-    plugins = new PluginsManager(sabotContext, sourceDataStore, schedulerService,
-        ConnectionReader.of(sabotContext.getClasspathScan(), sabotConfig));
+    plugins = new PluginsManager(sabotContext, mockNamespaceService, mockDatasetListingService, som, dremioConfig,
+      EnumSet.allOf(ClusterCoordinator.Role.class), sourceDataStore, schedulerService,
+      ConnectionReader.of(sabotContext.getClasspathScan(), sabotConfig), CatalogServiceMonitor.DEFAULT);
     plugins.start();
   }
 
@@ -200,7 +202,7 @@ public class TestPluginsManager {
             .thenReturn(Optional.empty());
 
         when(mockStoragePlugin.getDatasetHandle(eq(ENTITY_PATH)))
-            .thenReturn((Optional) Optional.of(DATASET_HANDLE));
+            .thenReturn(Optional.of(DATASET_HANDLE));
 
         when(mockStoragePlugin.getState())
             .thenReturn(SourceState.GOOD);
@@ -222,28 +224,27 @@ public class TestPluginsManager {
 
   @Test
   public void permissionCacheShouldClearOnReplace() throws Exception {
-    final NamespaceKey sourceKey = new NamespaceKey(INSPECTOR);
     final SourceConfig inspectorConfig = new SourceConfig()
         .setType(INSPECTOR)
         .setName(INSPECTOR)
         .setMetadataPolicy(CatalogService.DEFAULT_METADATA_POLICY)
         .setConfig(new Inspector(true).toBytesString());
 
-    final KVStore<NamespaceKey, SourceInternalData> kvStore = storeProvider.getStore(CatalogSourceDataCreator.class);
+    final LegacyKVStore<NamespaceKey, SourceInternalData> kvStore = storeProvider.getStore(CatalogSourceDataCreator.class);
 
     // create one; lock required
     final ManagedStoragePlugin plugin;
-    try (AutoCloseable ignored = plugins.writeLock()) {
-      plugin = plugins.create(inspectorConfig);
-      plugin.startAsync().checkedGet();
-    }
+    plugin = plugins.create(inspectorConfig, SystemUser.SYSTEM_USERNAME);
+    plugin.startAsync().get();
 
     final SchemaConfig schemaConfig = mock(SchemaConfig.class);
     when(schemaConfig.getUserName()).thenReturn("user");
-    final MetadataRequestOptions metadataRequestOptions = new MetadataRequestOptions(schemaConfig, 1000);
+    final MetadataRequestOptions requestOptions = MetadataRequestOptions.newBuilder(schemaConfig)
+        .setNewerThan(1000)
+        .build();
 
     // force a cache of the permissions
-    plugin.checkAccess(new NamespaceKey("test"), datasetConfig, "user", metadataRequestOptions);
+    plugin.checkAccess(new NamespaceKey("test"), datasetConfig, "user", requestOptions);
 
     // create a replacement that will always fail permission checks
     final SourceConfig newConfig = new SourceConfig()
@@ -252,12 +253,12 @@ public class TestPluginsManager {
         .setMetadataPolicy(CatalogService.DEFAULT_METADATA_POLICY)
         .setConfig(new Inspector(false).toBytesString());
 
-    plugin.replacePlugin(newConfig, sabotContext, 1000);
+    plugin.replacePluginWithLock(newConfig, 1000, false);
 
     // will throw if the cache has been cleared
     boolean threw = false;
     try {
-      plugin.checkAccess(new NamespaceKey("test"), datasetConfig, "user", metadataRequestOptions);
+      plugin.checkAccess(new NamespaceKey("test"), datasetConfig, "user", requestOptions);
     } catch (UserException e) {
       threw = true;
     }

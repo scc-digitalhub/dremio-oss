@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,16 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { CALL_API } from 'redux-api-middleware';
+import { RSAA } from 'redux-api-middleware';
 import { replace } from 'react-router-redux';
 import uuid from 'uuid';
 
-import { API_URL_V2 } from 'constants/Api';
 import schemaUtils from 'utils/apiUtils/schemaUtils';
 import exploreUtils from 'utils/explore/exploreUtils';
 
 import previewTableSchema from 'schemas/previewTable';
 import apiUtils from '@app/utils/apiUtils/apiUtils';
+import { APIV2Call } from '@app/core/APICall';
 
 export const TRANSFORM_PEEK_START   = 'TRANSFORM_PEEK_START';
 export const TRANSFORM_PEEK_SUCCESS = 'TRANSFORM_PEEK_SUCCESS';
@@ -37,8 +37,11 @@ function transformPeekFetch(dataset, values, detailType, viewId, submitType) {
   const peekId = uuid.v4();
   const uiPropsForEntity = [{ key: 'id', value: peekId }];
   const meta = { viewId, peekId, submitType };
+
+  const apiCall = new APIV2Call().fullpath(href);
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         { type: TRANSFORM_PEEK_START, meta },
         schemaUtils.getSuccessActionTypeWithSchema(
@@ -51,7 +54,7 @@ function transformPeekFetch(dataset, values, detailType, viewId, submitType) {
         ...apiUtils.getJobDataNumbersAsStringsHeader()
       },
       body: JSON.stringify(body),
-      endpoint: `${API_URL_V2}${href}`
+      endpoint: apiCall
     }
   };
 }

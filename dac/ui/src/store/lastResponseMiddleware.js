@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ function lastResponseMiddleware() {
         };
       } else if (action.type && action.type !== 'GET_DATASET_ACCELERATION_SUCCESS' && action.type.endsWith('_SUCCESS') &&
           action.payload && action.payload.toJS) {
-          // dataset acceleration requests can break some e2e tests so skip storing them here
+        // dataset acceleration requests can break some e2e tests so skip storing them here
         data = action.payload.toJS();
       }
 

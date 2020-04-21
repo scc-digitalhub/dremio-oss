@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@
  */
 package com.dremio.exec.sql;
 
-import static com.dremio.exec.util.ImpersonationUtil.getProcessUserName;
 import static java.lang.String.format;
 
 import java.io.File;
@@ -36,6 +35,7 @@ import com.dremio.common.CloseableByteBuf;
 import com.dremio.common.DeferredException;
 import com.dremio.common.util.TestTools;
 import com.dremio.common.utils.PathUtils;
+import com.dremio.common.utils.protos.AttemptId;
 import com.dremio.common.utils.protos.ExternalIdHelper;
 import com.dremio.common.utils.protos.QueryIdHelper;
 import com.dremio.common.utils.protos.QueryWritableBatch;
@@ -55,16 +55,13 @@ import com.dremio.exec.proto.UserProtos.RunQuery;
 import com.dremio.exec.proto.UserProtos.SubmissionSource;
 import com.dremio.exec.rpc.Acks;
 import com.dremio.exec.rpc.RpcOutcomeListener;
-import com.dremio.exec.work.AttemptId;
 import com.dremio.exec.work.protector.UserResult;
 import com.dremio.exec.work.user.LocalExecutionConfig;
 import com.dremio.exec.work.user.LocalQueryExecutor;
 import com.dremio.exec.work.user.SubstitutionSettings;
 import com.dremio.proto.model.attempts.AttemptReason;
-import com.google.common.base.Function;
-import com.google.common.collect.FluentIterable;
-
-import io.netty.buffer.ByteBuf;
+import com.google.common.base.StandardSystemProperty;
+import com.google.common.collect.ImmutableList;
 
 /**
  * Tests various types of queries and commands to make sure storing query results in a table works. Basically when
@@ -95,11 +92,9 @@ public class TestStoreQueryResults extends BaseTestQuery {
         public void execDataArrived(RpcOutcomeListener<Ack> outcomeListener, QueryWritableBatch result) {
           try {
             AutoCloseables.close(
-            FluentIterable.of(result.getBuffers()).transform(new Function<ByteBuf, AutoCloseable>(){
-              @Override
-              public AutoCloseable apply(ByteBuf input) {
-                return new CloseableByteBuf(input);
-              }}).toList());
+              Arrays.stream(result.getBuffers())
+                .map(CloseableByteBuf::new)
+                .collect(ImmutableList.toImmutableList()));
           } catch (Exception e) {
             exception.addException(e);
           }
@@ -300,7 +295,7 @@ public class TestStoreQueryResults extends BaseTestQuery {
     LocalExecutionConfig config = LocalExecutionConfig.newBuilder()
         .setEnableLeafLimits(false)
         .setFailIfNonEmptySent(false)
-        .setUsername(getProcessUserName())
+        .setUsername(StandardSystemProperty.USER_NAME.value())
         .setSqlContext(Collections.<String>emptyList())
         .setInternalSingleThreaded(false)
         .setQueryResultsStorePath(queryResultsStorePath)
@@ -310,7 +305,7 @@ public class TestStoreQueryResults extends BaseTestQuery {
         .build();
 
     TestQueryObserver queryObserver = new TestQueryObserver(checkWriterDistributionTrait);
-    localQueryExecutor.submitLocalQuery(ExternalIdHelper.generateExternalId(), queryObserver, queryCmd, false, config);
+    localQueryExecutor.submitLocalQuery(ExternalIdHelper.generateExternalId(), queryObserver, queryCmd, false, config, false);
 
     queryObserver.waitForCompletion();
 

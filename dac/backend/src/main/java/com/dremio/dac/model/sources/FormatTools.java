@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,40 +15,35 @@
  */
 package com.dremio.dac.model.sources;
 
+import static com.dremio.io.file.PathFilters.NO_HIDDEN_FILES;
+
 import java.io.IOException;
-import java.util.ArrayList;
+import java.nio.file.DirectoryIteratorException;
+import java.nio.file.DirectoryStream;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Predicate;
-import java.util.stream.Collectors;
 
 import javax.inject.Inject;
 import javax.ws.rs.core.SecurityContext;
 
 import org.apache.arrow.memory.BufferAllocator;
-import org.apache.arrow.vector.SchemaChangeCallBack;
 import org.apache.arrow.vector.ValueVector;
 import org.apache.commons.io.FilenameUtils;
-import org.apache.hadoop.fs.FileStatus;
-import org.apache.hadoop.fs.Path;
 
-import com.dremio.common.AutoCloseables;
 import com.dremio.common.AutoCloseables.RollbackCloseable;
 import com.dremio.common.exceptions.UserException;
 import com.dremio.common.logical.FormatPluginConfig;
 import com.dremio.dac.model.common.NamespacePath;
 import com.dremio.dac.model.job.JobDataFragment;
 import com.dremio.dac.model.job.JobDataFragmentWrapper;
-import com.dremio.dac.model.job.ReleaseAfterSerialization;
+import com.dremio.dac.model.job.ReleasingData;
 import com.dremio.dac.service.errors.PhysicalDatasetNotFoundException;
 import com.dremio.dac.service.source.SourceService;
 import com.dremio.exec.catalog.CatalogOptions;
 import com.dremio.exec.catalog.ColumnCountTooLargeException;
-import com.dremio.exec.record.VectorAccessible;
 import com.dremio.exec.record.VectorContainer;
 import com.dremio.exec.server.ContextService;
 import com.dremio.exec.server.SabotContext;
@@ -59,20 +54,20 @@ import com.dremio.exec.store.dfs.FileCountTooLargeException;
 import com.dremio.exec.store.dfs.FileDatasetHandle;
 import com.dremio.exec.store.dfs.FileSelection;
 import com.dremio.exec.store.dfs.FileSystemPlugin;
-import com.dremio.exec.store.dfs.FileSystemWrapper;
 import com.dremio.exec.store.dfs.FormatPlugin;
 import com.dremio.exec.store.dfs.PhysicalDatasetUtils;
+import com.dremio.io.file.FileAttributes;
+import com.dremio.io.file.FileSystem;
+import com.dremio.io.file.FileSystemUtils;
+import com.dremio.io.file.FilterDirectoryStream;
+import com.dremio.io.file.Path;
 import com.dremio.options.Options;
 import com.dremio.options.TypeValidators.BooleanValidator;
 import com.dremio.options.TypeValidators.PositiveLongValidator;
 import com.dremio.sabot.exec.context.OperatorContextImpl;
+import com.dremio.sabot.op.scan.MutatorSchemaChangeCallBack;
 import com.dremio.sabot.op.scan.OutputMutator;
 import com.dremio.sabot.op.scan.ScanOperator;
-import com.dremio.sabot.op.sort.external.RecordBatchData;
-import com.dremio.service.job.proto.JobId;
-import com.dremio.service.jobs.JobDataFragmentImpl;
-import com.dremio.service.jobs.RecordBatchHolder;
-import com.dremio.service.jobs.RecordBatches;
 import com.dremio.service.namespace.NamespaceException;
 import com.dremio.service.namespace.NamespaceKey;
 import com.dremio.service.namespace.dataset.proto.DatasetType;
@@ -81,6 +76,7 @@ import com.dremio.service.namespace.file.proto.FileConfig;
 import com.dremio.service.namespace.physicaldataset.proto.PhysicalDatasetConfig;
 import com.google.common.base.Stopwatch;
 import com.google.common.base.Throwables;
+import com.google.common.collect.Iterators;
 
 /**
  * A resource focused on guessing, previewing and applying formats to files and folders.
@@ -168,14 +164,27 @@ public class FormatTools {
   }
 
   private FileFormat detectFileFormat(NamespaceKey key) {
-    final FileSystemPlugin plugin = getPlugin(key);
-    final FileSystemWrapper fs = plugin.createFS(securityContext.getUserPrincipal().getName());
+    final FileSystemPlugin<?> plugin = getPlugin(key);
+    FileSystem fs;
+    try {
+      fs = plugin.createFS(securityContext.getUserPrincipal().getName());
+    } catch (IOException ex) {
+      throw UserException.ioExceptionError(ex)
+        .message("Unable to read file with selected format.")
+        .build(logger);
+    }
     final Path path = FileSelection.getPathBasedOnFullPath(plugin.resolveTableNameToValidPath(key.getPathComponents()));
 
     // for now, existing rudimentary behavior that uses extension detection.
-    final FileStatus status;
+    final FileAttributes attributes;
     try {
-      status = fs.getFileStatus(path);
+      attributes = fs.getFileAttributes(path);
+      if (attributes.isDirectory()) {
+        FileFormat fileFormat = plugin.findLayeredFormatMatch(fs, FileSelection.create(fs, path));
+        if (fileFormat != null) {
+          return asLayerFormat(key, fileFormat);
+        }
+      }
     } catch(IOException ex) {
       // we could return unknown but if there no files, what's the point.
       throw UserException.ioExceptionError(ex)
@@ -183,16 +192,14 @@ public class FormatTools {
         .build(logger);
     }
 
-    if(status.isFile()) {
+    if(attributes.isRegularFile()) {
       return asFormat(key, path, false);
     }
 
     // was something other than file.
-    try {
-      Iterator<FileStatus> iter = getFilesForFormatting(fs, path);
-      while(iter.hasNext()) {
-        FileStatus child = iter.next();
-        if(!child.isFile()) {
+    try (DirectoryStream<FileAttributes> files = getFilesForFormatting(fs, path)) {
+      for (FileAttributes child: files) {
+        if(!child.isRegularFile()) {
           continue;
         }
 
@@ -201,8 +208,12 @@ public class FormatTools {
 
       // if we fall through, we didn't find any files.
       throw UserException.ioExceptionError()
-      .message("No files were found.")
-      .build(logger);
+        .message("No files were found.")
+        .build(logger);
+    } catch (DirectoryIteratorException ex) {
+      throw UserException.ioExceptionError(ex.getCause())
+        .message("Unable to read file with selected format.")
+        .build(logger);
     } catch (IOException ex) {
       throw UserException.ioExceptionError(ex)
         .message("Unable to read file with selected format.")
@@ -211,15 +222,20 @@ public class FormatTools {
     }
   }
 
-  private Iterator<FileStatus> getFilesForFormatting(FileSystemWrapper fs, Path path) throws IOException, FileCountTooLargeException {
-    final List<FileStatus> files =  fs.listRecursive(path, false)
-      .stream()
-      .filter(f -> f.isFile())
-      .collect(Collectors.toList());
+  private DirectoryStream<FileAttributes> getFilesForFormatting(FileSystem fs, Path path) throws IOException, FileCountTooLargeException {
+    final int maxFilesLimit = FileDatasetHandle.getMaxFilesLimit(context);
 
-    FileDatasetHandle.checkMaxFiles(path.getName(), files.size(), context,
-      false /* format previews are explicitly done by the user */);
-    return files.iterator();
+    final DirectoryStream<FileAttributes> baseIterator = FileSystemUtils.listRecursive(fs, path, NO_HIDDEN_FILES);
+    if (maxFilesLimit <= 0) {
+      return baseIterator;
+    }
+
+    return new FilterDirectoryStream<FileAttributes>(baseIterator) {
+      @Override
+      public Iterator<FileAttributes> iterator() {
+        return Iterators.limit(super.iterator(), maxFilesLimit);
+      }
+    };
   }
 
   private static FileFormat asFormat(NamespaceKey key, Path path, boolean isFolder) {
@@ -242,16 +258,32 @@ public class FormatTools {
     return isFolder ? FileFormat.getForFolder(config) : FileFormat.getForFile(config);
   }
 
+  private static FileFormat asLayerFormat(NamespaceKey key, FileFormat fileFormat) {
+    final FileConfig config = new FileConfig()
+      .setCtime(System.currentTimeMillis())
+      .setFullPathList(key.getPathComponents())
+      .setName(key.getName())
+      .setType(fileFormat.getFileType())
+      .setTag(null);
+
+    return FileFormat.getForFolder(config);
+  }
+
   public JobDataFragment previewData(FileFormat format, NamespacePath namespacePath, boolean useFormatLocation) {
     final NamespaceKey key = namespacePath.toNamespaceKey();
-    final FileSystemPlugin plugin = getPlugin(key);
-    final FileSystemWrapper fs = plugin.createFS(securityContext.getUserPrincipal().getName());
+    final FileSystemPlugin<?> plugin = getPlugin(key);
+    FileSystem fs;
+    try {
+      fs = plugin.createFS(securityContext.getUserPrincipal().getName());
+    } catch (IOException ex) {
+      throw new IllegalStateException("No files detected or unable to read data.", ex);
+    }
     final Path path = FileSelection.getPathBasedOnFullPath(plugin.resolveTableNameToValidPath(key.getPathComponents()));
 
     // for now, existing rudimentary behavior that uses extension detection.
-    final FileStatus status;
+    final FileAttributes attributes;
     try {
-      status = fs.getFileStatus(path);
+      attributes = fs.getFileAttributes(path);
     } catch(IOException ex) {
       // we could return unknown but if there no files, what's the point.
       throw new IllegalStateException("No files detected or unable to read data.", ex);
@@ -259,26 +291,27 @@ public class FormatTools {
 
     try {
 
-      if(status.isFile()) {
-        return getData(format, plugin, fs, new NextableSingleton<>(status));
+      if(attributes.isRegularFile()) {
+        return getData(format, plugin, fs, Collections.singleton(attributes).iterator());
       }
 
-      Iterator<FileStatus> iter = getFilesForFormatting(fs, path);
-      return getData(
-          format,
-          plugin,
-          fs,
-          new PredicateNextable<>(
-              () -> iter.hasNext() ? iter.next() : null,
-              f -> f.isFile()
-              )
-          );
+      try(DirectoryStream<FileAttributes> files = getFilesForFormatting(fs, path)) {
+        Iterator<FileAttributes> iter = files.iterator();
+        return getData(
+            format,
+            plugin,
+            fs,
+            Iterators.filter(iter, FileAttributes::isRegularFile)
+            );
+      }
+    } catch (DirectoryIteratorException ex) {
+      throw new RuntimeException(ex.getCause());
     } catch (Exception ex) {
       throw Throwables.propagate(ex);
     }
   }
 
-  private JobDataFragment getData(FileFormat format, FileSystemPlugin plugin, FileSystemWrapper filesystem, Nextable<? extends FileStatus> files) throws Exception {
+  private JobDataFragment getData(FileFormat format, FileSystemPlugin<?> plugin, FileSystem filesystem, Iterator<FileAttributes> files) throws Exception {
 
     final int minRecords = (int) context.getOptionManager().getOption(MIN_RECORDS);
     final long maxReadTime = context.getOptionManager().getOption(MAX_READTIME_MS);
@@ -303,8 +336,8 @@ public class FormatTools {
       final BufferAllocator readerAllocator = opCtxt.getAllocator();
       final VectorContainer container = cls.add(new VectorContainer(readerAllocator));
       final Map<String, ValueVector> fieldVectorMap = new HashMap<>();
-      final OutputMutator mutator = new ScanOperator.ScanMutator(container, fieldVectorMap, opCtxt, new SchemaChangeCallBack());
-      final RBDList batches = cls.add(new RBDList(container, readerAllocator));
+      final OutputMutator mutator = new ScanOperator.ScanMutator(container, fieldVectorMap, opCtxt, new MutatorSchemaChangeCallBack());
+      final ReleasingData.RBDList batches = cls.add(new ReleasingData.RBDList(container, readerAllocator));
       int records = 0;
 
       boolean first = true;
@@ -314,16 +347,15 @@ public class FormatTools {
           records < targetRecords
           && !(records > minRecords && timer.elapsed(TimeUnit.MILLISECONDS) > maxReadTime)
           ) { // loop for each record reader.
-        FileStatus status = files.next();
-        if(status == null) {
+        if (!files.hasNext()) {
           break;
         }
-
+        FileAttributes attributes = files.next();
 
         try (
           // Reader can be closed since data that we're using will be transferred to allocator owned by us
           // when added to RecordBatchData.
-          RecordReader reader = formatPlugin.getRecordReader(opCtxt, filesystem, status)) {
+          RecordReader reader = formatPlugin.getRecordReader(opCtxt, filesystem, attributes)) {
 
           reader.setup(mutator);
 
@@ -345,14 +377,14 @@ public class FormatTools {
               container.buildSchema();
               if (container.getSchema().getTotalFieldCount() >= maxLeafColumns) {
                 throw UserException.validationError()
-                    .message(ColumnCountTooLargeException.MESSAGE, format.getName(), maxLeafColumns)
+                    .message(ColumnCountTooLargeException.MESSAGE, maxLeafColumns)
                     .build(logger);
               }
 
               // call to reset state.
-              mutator.isSchemaChanged();
+              mutator.getAndResetSchemaChanged();
             } else {
-              if (mutator.isSchemaChanged()) {
+              if (mutator.getAndResetSchemaChanged()) {
                 // let's stop early and not add this data. For format preview we'll just show data until a schema change.
                 break readersLoop;
               }
@@ -376,116 +408,15 @@ public class FormatTools {
     }
   }
 
-  private static class ReleasingData extends JobDataFragmentImpl implements ReleaseAfterSerialization {
 
-    private final RollbackCloseable closeable;
-
-    public ReleasingData(RollbackCloseable closeable, RBDList rbdList) {
-      super(rbdList.toRecordBatches(), 0, new JobId().setId("preview-job").setName("preview-job"));
-      this.closeable = closeable;
-    }
-
-    @Override
-    public synchronized void close() {
-      List<AutoCloseable> closeables = new ArrayList<>();
-      closeables.add(() -> super.close());
-      List<AutoCloseable> backList = new ArrayList<>();
-      backList.addAll(closeable.getCloseables());
-      Collections.reverse(backList);
-      closeables.addAll(backList);
-      AutoCloseables.closeNoChecked(AutoCloseables.all(closeables));
-    }
-  }
-
-  private class RBDList implements AutoCloseable {
-
-    private final List<RecordBatchData> batches = new ArrayList<>();
-    private final VectorAccessible accessible;
-    private final BufferAllocator allocator;
-
-    public RBDList(VectorAccessible accessible, BufferAllocator allocator) {
-      super();
-      this.accessible = accessible;
-      this.allocator = allocator;
-    }
-
-    public void add() {
-      RecordBatchData d = new RecordBatchData(accessible, allocator);
-      batches.add(d);
-    }
-
-    @Override
-    public void close() throws Exception {
-      AutoCloseables.close(batches);
-    }
-
-    public RecordBatches toRecordBatches() {
-      return new RecordBatches(batches.stream()
-          .map(t -> RecordBatchHolder.newRecordBatchHolder(t, 0, t.getRecordCount()))
-          .collect(Collectors.toList())
-          );
-    }
-  }
-
-  private final FileSystemPlugin getPlugin(NamespaceKey key) {
+  private final FileSystemPlugin<?> getPlugin(NamespaceKey key) {
     StoragePlugin plugin = catalogService.getSource(key.getRoot());
     if(plugin instanceof FileSystemPlugin) {
-      return (FileSystemPlugin) plugin;
+      return (FileSystemPlugin<?>) plugin;
     } else {
       throw UserException.validationError()
         .message("Source identified was invalid type. Only sources that can contain files or folders can detect a format.")
         .build(logger);
     }
   }
-
-  private interface Nextable<T> {
-    T next() throws IOException;
-  }
-
-  private static class PredicateNextable<T> implements Nextable<T> {
-
-    private final Nextable<T> delegate;
-    private final Predicate<T> predicate;
-
-    public PredicateNextable(Nextable<T> delegate, Predicate<T> predicate) {
-      super();
-      this.delegate = delegate;
-      this.predicate = predicate;
-    }
-
-    @Override
-    public T next() throws IOException {
-
-      T next = delegate.next();
-      while(next != null) {
-        if(predicate.test(next)) {
-          return next;
-        } else {
-          next = delegate.next();
-        }
-      }
-
-      return null;
-    }
-
-  }
-
-  private static class NextableSingleton<T> implements Nextable<T> {
-
-    public NextableSingleton(T singleValue) {
-      super();
-      this.singleValue = singleValue;
-    }
-
-    private T singleValue;
-
-    @Override
-    public T next() throws IOException {
-      T tmp = singleValue;
-      singleValue = null;
-      return tmp;
-    }
-
-  }
-
 }

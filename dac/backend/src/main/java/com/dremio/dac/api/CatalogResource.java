@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -64,16 +64,15 @@ public class CatalogResource {
   }
 
   @GET
-  public ResponseList<CatalogItem> listTopLevelCatalog() {
-    ResponseList<CatalogItem> catalogItems = new ResponseList<>(catalogServiceHelper.getTopLevelCatalogItems());
-
-    return catalogItems;
+  public ResponseList<? extends CatalogItem> listTopLevelCatalog(@QueryParam("include") final List<String> include) {
+    return new ResponseList<>(catalogServiceHelper.getTopLevelCatalogItems(include));
   }
 
   @GET
   @Path("/{id}")
-  public CatalogEntity getCatalogItem(@PathParam("id") String id) throws NamespaceException {
-    Optional<CatalogEntity> entity = catalogServiceHelper.getCatalogEntityById(id);
+  public CatalogEntity getCatalogItem(@PathParam("id") String id,
+                                      @QueryParam("include") final List<String> include) throws NamespaceException {
+    Optional<CatalogEntity> entity = catalogServiceHelper.getCatalogEntityById(id, include);
 
     if (!entity.isPresent()) {
       throw new NotFoundException(String.format("Could not find entity with id [%s]", id));

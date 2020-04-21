@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-$(window).load(function () {
+$(window).on('load', function() {
     globalconfig.majorcolorscale = d3.scale.category20().domain([0, d3.max(globalconfig.fragmentProfileSize, accessor("majorFragmentId"))]);
 
     // for each record, unroll the array pointed to by "fieldpath" into a new

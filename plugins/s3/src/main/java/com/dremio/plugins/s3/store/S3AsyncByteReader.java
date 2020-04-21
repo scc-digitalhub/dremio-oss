@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.reactivestreams.Subscriber;
 import org.reactivestreams.Subscription;
 
-import com.dremio.exec.store.dfs.async.AsyncByteReader;
+import com.dremio.io.AsyncByteReader;
 import com.google.common.base.Stopwatch;
 
 import io.netty.buffer.ByteBuf;
@@ -39,7 +39,7 @@ import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 class S3AsyncByteReader implements AsyncByteReader {
   private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(S3AsyncByteReader.class);
 
-  private static AtomicInteger numOutstandingReads = new AtomicInteger(0);
+  private static final AtomicInteger numOutstandingReads = new AtomicInteger(0);
   private final S3AsyncClient client;
   private final String bucket;
   private final String path;
@@ -83,7 +83,7 @@ class S3AsyncByteReader implements AsyncByteReader {
   /**
    * Used to read a single byte range.
    */
-  private class ByteRangeReader implements AsyncResponseTransformer<GetObjectResponse, Void>{
+  private static class ByteRangeReader implements AsyncResponseTransformer<GetObjectResponse, Void>{
 
     private int curOffset;
     private final ByteBuf dst;

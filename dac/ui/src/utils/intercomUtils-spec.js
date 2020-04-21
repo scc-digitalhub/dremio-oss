@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { useTestIntercomApp } from './intercomUtils';
+import IntercomUtils, { useTestIntercomApp } from './intercomUtils';
 import config from './config';
 
 const testCase = ([valueToTest, expectedResult]) => {
@@ -75,5 +75,12 @@ describe('useTestIntercomApp', () => {
       doesNotMatchTestPattern.map(email => [email, false])
         .map(testCase);
     });
+  });
+});
+
+describe('ifChatAllowed', () => {
+  // per DX-16804: disable chat
+  it('should return false disabling chat', () => {
+    expect(IntercomUtils.ifChatAllowed()).to.equal(false);
   });
 });

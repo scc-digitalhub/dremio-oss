@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -221,5 +221,34 @@ public class TestFilterFinder {
     assertEquals(SqlKind.LITERAL, conditions.get(0).getOperands().get(0).getKind());
     assertFalse(holder.hasRemainingExpression());
 
+  }
+
+  @Test
+  public void multipleConditions() {
+    final RexNode node = builder.makeCall(
+      SqlStdOperatorTable.AND,
+      builder.makeCall(
+        SqlStdOperatorTable.GREATER_THAN_OR_EQUAL,
+        builder.makeInputRef(factory.createSqlType(SqlTypeName.BIGINT), 0),
+        builder.makeBigintLiteral(new BigDecimal("1"))
+      ),
+      builder.makeCall(
+        SqlStdOperatorTable.AND,
+        builder.makeCall(
+          SqlStdOperatorTable.LESS_THAN_OR_EQUAL,
+          builder.makeInputRef(factory.createSqlType(SqlTypeName.BIGINT), 0),
+          builder.makeBigintLiteral(new BigDecimal("1"))
+        ),
+        builder.makeCall(
+          SqlStdOperatorTable.LIKE,
+          builder.makeInputRef(factory.createSqlType(SqlTypeName.BIGINT), 1),
+          builder.makeLiteral("%1mg")
+        )
+      )
+    );
+    FindSimpleFilters finder = new FindSimpleFilters((builder));
+    StateHolder holder = node.accept(finder);
+    assertEquals(holder.getConditions().size(), 2);
+    assertTrue(holder.hasRemainingExpression());
   }
 }

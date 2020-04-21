@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -92,10 +92,10 @@ export class SaveAsDatasetModal extends Component {
   submit = (values) => {
     const {location, nextAction} = this.props;
     invariant(typeof values.location === 'string',
-     `values.location must be of type string. Got '${typeof values.location}' instead.`);
+      `values.location must be of type string. Got '${typeof values.location}' instead.`);
     const action = values.reapply === 'ORIGINAL'
-          ? this.props.submitReapplyAndSaveAsDataset
-          : this.props.submitSaveAsDataset;
+      ? this.props.submitReapplyAndSaveAsDataset
+      : this.props.submitSaveAsDataset;
     return ApiUtils.attachFormSubmitHandlers(
       action(values.name, splitFullPath(values.location), location)
     ).then((response) => {

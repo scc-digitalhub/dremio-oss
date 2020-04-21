@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -76,7 +76,7 @@ describe('CodeMirror', () => {
       sinon.spy(instance, 'resetValue');
       instance.componentDidMount();
       expect(instance.resetValue).to.be.called;
-      instance.resetValue.reset();
+      instance.resetValue.resetHistory();
 
       wrapper = shallow(<CodeMirror {...commonProps} defaultValue={undefined}/>);
       instance = wrapper.instance();

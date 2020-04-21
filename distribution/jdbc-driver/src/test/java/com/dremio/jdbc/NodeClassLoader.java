@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class NodeClassLoader extends URLClassLoader {
-
+  private static final org.slf4j.Logger LOGGER = org.slf4j.LoggerFactory.getLogger(NodeClassLoader.class);
   public NodeClassLoader() {
     super(URLS);
   }
@@ -33,6 +33,7 @@ public class NodeClassLoader extends URLClassLoader {
   static {
     ArrayList<URL> urlList = new ArrayList<URL>();
     final String classPath = System.getProperty("app.class.path");
+    LOGGER.info("app.class.path: {}", classPath);
     final String[] st = fracture(classPath, File.pathSeparator);
     final int l = st.length;
     for (int i = 0; i < l; i++) {

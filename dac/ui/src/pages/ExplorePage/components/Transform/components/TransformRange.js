@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ import d3 from 'd3';
 import moment from 'moment';
 
 import Checkbox from 'components/Fields/Checkbox';
-import { isDateType, dateTypeToFormat, convertToUnix } from 'constants/DataTypes';
+import { isDateType, dateTypeToFormat, convertToUnix } from '@app/constants/DataTypes';
 import { isEmptyValue } from 'utils/validation';
 
 import TransformRangeBound from './TransformRangeBound';

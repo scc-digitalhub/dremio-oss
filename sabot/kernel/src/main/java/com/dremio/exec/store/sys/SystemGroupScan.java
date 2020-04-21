@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -103,7 +103,7 @@ public class SystemGroupScan extends AbstractBase implements GroupScan<SimpleCom
 
   @Override
   public String toString() {
-    return table.getTableName();
+    return table.getDatasetPath().getName();
   }
 
   /**

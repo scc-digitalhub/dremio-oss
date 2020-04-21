@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,19 +16,24 @@
 package com.dremio.sabot;
 
 import org.apache.arrow.memory.BufferAllocator;
-import org.apache.arrow.memory.RootAllocator;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Rule;
 
 import com.dremio.common.AutoCloseables;
+import com.dremio.test.AllocatorRule;
+import com.dremio.test.DremioTest;
 
-public abstract class BaseTestWithAllocator {
+public abstract class BaseTestWithAllocator extends DremioTest {
 
   protected BufferAllocator allocator;
 
+  @Rule
+  public final AllocatorRule allocatorRule = AllocatorRule.defaultAllocator();
+
   @Before
-  public void setup(){
-    this.allocator = new RootAllocator(Long.MAX_VALUE);
+  public void setup() {
+    this.allocator = allocatorRule.newAllocator(this.getClass().getSimpleName(), 0, Long.MAX_VALUE);
   }
 
   @After

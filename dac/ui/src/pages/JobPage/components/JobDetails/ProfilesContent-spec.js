@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -69,7 +69,7 @@ describe('ProfilesContent', () => {
     const profiles = wrapper.find('.profiles > div');
     profiles.at(0).find('a').simulate('click');
     expect(commonProps.showJobProfile).to.be.calledWith('/profiles/insufficient');
-    commonProps.showJobProfile.reset();
+    commonProps.showJobProfile.resetHistory();
     profiles.at(1).find('a').simulate('click');
     expect(commonProps.showJobProfile).to.be.calledWith('/profiles/schema-learning');
   });

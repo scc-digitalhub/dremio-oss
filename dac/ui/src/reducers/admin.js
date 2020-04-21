@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -46,7 +46,6 @@ export default function admins(state = initialState, action) {
 
   case ActionTypes.LOAD_FILTERED_USER_SUCCESS:
     return state.set('users', action.payload.getIn(['result', 'users']));
-
 
   case ActionTypes.LOAD_FILTERED_GROUP_SUCCESS:
     return state.set('groups', action.payload.getIn(['result', 'groups']));

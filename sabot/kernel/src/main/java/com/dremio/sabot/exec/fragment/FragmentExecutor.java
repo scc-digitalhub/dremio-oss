@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,21 +18,20 @@ package com.dremio.sabot.exec.fragment;
 import static com.dremio.sabot.exec.fragment.FragmentExecutorBuilder.PIPELINE_RES_GRP;
 import static com.dremio.sabot.exec.fragment.FragmentExecutorBuilder.WORK_QUEUE_RES_GRP;
 
-import java.io.IOException;
-import java.security.PrivilegedAction;
 import java.security.PrivilegedExceptionAction;
+import java.util.Optional;
 import java.util.Set;
 
 import org.apache.arrow.memory.BufferAllocator;
-import org.apache.hadoop.security.UserGroupInformation;
+import org.apache.arrow.memory.OutOfMemoryException;
 
 import com.dremio.common.DeferredException;
 import com.dremio.common.ProcessExit;
 import com.dremio.common.config.SabotConfig;
 import com.dremio.common.exceptions.UserException;
+import com.dremio.common.memory.MemoryDebugInfo;
 import com.dremio.common.utils.protos.QueryIdHelper;
 import com.dremio.exec.ExecConstants;
-import com.dremio.exec.exception.FragmentSetupException;
 import com.dremio.exec.expr.fn.FunctionLookupContext;
 import com.dremio.exec.physical.base.PhysicalOperator;
 import com.dremio.exec.planner.fragment.CachedFragmentReader;
@@ -46,16 +45,15 @@ import com.dremio.exec.proto.ExecProtos.FragmentHandle;
 import com.dremio.exec.proto.ExecRPC.FragmentStreamComplete;
 import com.dremio.exec.proto.UserBitShared.FragmentState;
 import com.dremio.exec.store.CatalogService;
+import com.dremio.exec.testing.ControlsInjector;
+import com.dremio.exec.testing.ControlsInjectorFactory;
 import com.dremio.exec.testing.ExecutionControls;
-import com.dremio.exec.util.ImpersonationUtil;
 import com.dremio.options.OptionManager;
-import com.dremio.sabot.driver.OperatorCreator;
 import com.dremio.sabot.driver.OperatorCreatorRegistry;
 import com.dremio.sabot.driver.Pipeline;
 import com.dremio.sabot.driver.PipelineCreator;
-import com.dremio.sabot.driver.UserDelegatingOperatorCreator;
 import com.dremio.sabot.exec.EventProvider;
-import com.dremio.sabot.exec.QueriesClerk.FragmentTicket;
+import com.dremio.sabot.exec.FragmentTicket;
 import com.dremio.sabot.exec.StateTransitionException;
 import com.dremio.sabot.exec.context.ContextInformation;
 import com.dremio.sabot.exec.context.FragmentStats;
@@ -68,12 +66,14 @@ import com.dremio.sabot.task.SchedulingGroup;
 import com.dremio.sabot.task.Task.State;
 import com.dremio.sabot.task.TaskDescriptor;
 import com.dremio.sabot.threads.AvailabilityCallback;
+import com.dremio.sabot.threads.sharedres.ActivableResource;
 import com.dremio.sabot.threads.sharedres.SharedResourceManager;
 import com.dremio.sabot.threads.sharedres.SharedResourceType;
 import com.dremio.sabot.threads.sharedres.SharedResourcesContextImpl;
 import com.dremio.service.coordinator.ClusterCoordinator;
 import com.dremio.service.coordinator.NodeStatusListener;
 import com.dremio.service.spill.SpillService;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.SettableFuture;
 
@@ -92,6 +92,10 @@ import io.netty.util.internal.OutOfDirectMemoryError;
 public class FragmentExecutor {
 
   private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(FragmentExecutor.class);
+  private static final ControlsInjector injector = ControlsInjectorFactory.getInjector(FragmentExecutor.class);
+
+  @VisibleForTesting
+  public static final String INJECTOR_DO_WORK = "injectOOMOnRun";
 
   /** threadsafe fields, influenced by external events. **/
   private final FragmentExecutorListener listener = new FragmentExecutorListener();
@@ -104,7 +108,6 @@ public class FragmentExecutor {
   private final DeferredException deferredException;
 
   private final PlanFragmentFull fragment;
-  private final UserGroupInformation queryUserUgi;
   private final ClusterCoordinator clusterCoordinator;
   private final CachedFragmentReader reader;
   private final SharedResourceManager sharedResources;
@@ -142,6 +145,13 @@ public class FragmentExecutor {
 
   private final SettableFuture<Boolean> cancelled;
 
+  private final ExecutionControls executionControls;
+
+  // The fragment will not be activated until it gets :
+  // a. a activate/cancel from the foreman (or)
+  // b. an incoming data/oob/finished msg from any upstream fragment.
+  private final ActivableResource activateResource;
+
   public FragmentExecutor(
       FragmentStatusReporter statusReporter,
       SabotConfig config,
@@ -167,7 +177,6 @@ public class FragmentExecutor {
       SpillService spillService) {
     super();
     this.name = QueryIdHelper.getExecutorThreadName(fragment.getHandle());
-    this.queryUserUgi = ImpersonationUtil.createProxyUgi(fragment.getMajor().getCredentials().getUserName());
     this.statusReporter = statusReporter;
     this.fragment = fragment;
     this.clusterCoordinator = clusterCoordinator;
@@ -186,12 +195,15 @@ public class FragmentExecutor {
     this.ticket = ticket;
     this.deferredException = exception;
     this.sources = sources;
+    this.activateResource = new ActivableResource(sharedResources.getGroup(PIPELINE_RES_GRP).createResource(
+      "activate-signal-" + this.name, SharedResourceType.FRAGMENT_ACTIVATE_SIGNAL));
     this.workQueue = new FragmentWorkQueue(sharedResources.getGroup(WORK_QUEUE_RES_GRP));
     this.buffers = new IncomingBuffers(
       deferredException, sharedResources.getGroup(PIPELINE_RES_GRP), workQueue, tunnelProvider,
       fragment, allocator, config, executionControls, spillService, reader.getPlanFragmentsIndex());
     this.eventProvider = eventProvider;
     this.cancelled = SettableFuture.create();
+    this.executionControls = executionControls;
   }
 
   /**
@@ -200,6 +212,13 @@ public class FragmentExecutor {
   private void run(){
     assert taskState != State.DONE : "Attempted to run a task with state of DONE.";
     assert eventProvider != null : "Attempted to run without an eventProvider";
+
+    if (!activateResource.isActivated()) {
+      // All tasks are expected to begin in a runnable state. So, switch to the BLOCKED state on the
+      // first call.
+      taskState = State.BLOCKED_ON_SHARED_RESOURCE;
+      return;
+    }
     stats.runStarted();
 
     // update thread name.
@@ -223,7 +242,14 @@ public class FragmentExecutor {
       }
 
       // if cancellation is requested, that is always the top priority.
-      if (eventProvider.isCancelled()) {
+      if (cancelled.isDone()) {
+        Optional<Throwable> failedReason = eventProvider.getFailedReason();
+        if (failedReason.isPresent()) {
+          // check if it was failed due to an external reason (eg. by heap monitor).
+          transitionToFailed(failedReason.get());
+          return;
+        }
+
         transitionToCancelled();
         taskState = State.DONE;
         return;
@@ -256,18 +282,21 @@ public class FragmentExecutor {
       }
 
       // pump the pipeline
-      // TODO: look at whether the doAs here is actually necessary.
-      taskState = queryUserUgi.doAs(pumper);
+      taskState = pumper.run();
 
       // if we've finished all work, let's wrap up.
       if(taskState == State.DONE){
         transitionToFinished();
       }
 
+      injector.injectChecked(executionControls, INJECTOR_DO_WORK, OutOfMemoryError.class);
+
     } catch (OutOfMemoryError e) {
       // handle out of memory errors differently from other error types.
-      if (e instanceof OutOfDirectMemoryError || "Direct buffer memory".equals(e.getMessage())) {
-        transitionToFailed(UserException.memoryError(e).build(logger));
+      if (e instanceof OutOfDirectMemoryError || "Direct buffer memory".equals(e.getMessage()) || INJECTOR_DO_WORK.equals(e.getMessage())) {
+        transitionToFailed(UserException.memoryError(e)
+            .addContext(MemoryDebugInfo.getDetailsOnAllocationFailure(new OutOfMemoryException(e), allocator))
+            .buildSilently());
       } else {
         // we have a heap out of memory error. The JVM in unstable, exit.
         ProcessExit.exitHeap(e);
@@ -341,7 +370,6 @@ public class FragmentExecutor {
     contextCreator.setFragmentOutputAllocator(outputAllocator);
 
     final PhysicalOperator rootOperator = reader.readFragment(fragment);
-    final OperatorCreator operatorCreator = new UserDelegatingOperatorCreator(contextInfo.getQueryUser(), opCreator);
     FunctionLookupContext functionLookupContextToUse = functionLookupContext;
     if (fragmentOptions.getOption(PlannerSettings.ENABLE_DECIMAL_V2)) {
       functionLookupContextToUse = decimalFunctionLookupContext;
@@ -349,7 +377,7 @@ public class FragmentExecutor {
     pipeline = PipelineCreator.get(
         new FragmentExecutionContext(major.getForeman(), sources, cancelled),
         buffers,
-        operatorCreator,
+        opCreator,
         contextCreator,
         functionLookupContextToUse,
         rootOperator,
@@ -385,6 +413,13 @@ public class FragmentExecutor {
       Thread.currentThread().setName(originalThreadName);
       stats.finishEnded();
     }
+  }
+
+  /**
+   * Entered by something other than the execution thread. Makes this fragment's pipeline runnable.
+   */
+  private void requestActivate(String trigger) {
+    this.activateResource.activate(trigger);
   }
 
   /**
@@ -579,17 +614,19 @@ public class FragmentExecutor {
    */
   public class FragmentExecutorListener {
 
-    public void handle(final IncomingDataBatch batch) throws FragmentSetupException, IOException {
+    public void handle(final IncomingDataBatch batch) {
+      requestActivate("incoming data batch");
       buffers.batchArrived(batch);
     }
 
     public void handle(FragmentStreamComplete completion) {
+      requestActivate("stream completion");
       buffers.completionArrived(completion);
     }
 
     public void handle(OutOfBandMessage message) {
+      requestActivate("out of band message");
       workQueue.put(() -> {
-        queryUserUgi.doAs((PrivilegedAction<Void>) () -> {
           try {
             if (!isSetup) {
               if (message.getIsOptional()) {
@@ -605,14 +642,19 @@ public class FragmentExecutor {
             }
           } catch(Exception e) {
             logger.warn("Failure while handling OOB message. {}", message, e);
-          }
 
-          return null;
-        });
+            //propagate the exception
+            throw e;
+          }
       });
     }
 
+    public void activate() {
+      requestActivate("activate message from foreman");
+    }
+
     public void cancel() {
+      requestActivate("cancel message from foreman");
       requestCancellation();
     }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ import { Link } from 'react-router';
 
 import Tabs from 'components/Tabs';
 
-import { LIST, MAP } from 'constants/DataTypes';
+import { LIST, MAP } from '@app/constants/DataTypes';
 
 import { methodTitle, methodTab } from 'uiTheme/radium/exploreTransform';
 import { PALE_BLUE } from 'uiTheme/radium/colors';
@@ -123,7 +123,7 @@ export default class TransformView extends Component {
           {...formProps}
           loadTransformValuesPreview={this.props.loadTransformValuesPreview}
           formKey={formKey}
-          />
+        />
         <ReplaceRangeForm
           tabId='Range'
           {...formProps}

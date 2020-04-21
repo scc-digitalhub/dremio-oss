@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,14 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { CALL_API } from 'redux-api-middleware';
-import { API_URL_V2 } from 'constants/Api';
-
-import {makeUncachebleURL} from 'ie11.js';
+import { RSAA } from 'redux-api-middleware';
 
 import schemaUtils from 'utils/apiUtils/schemaUtils';
 import * as schemas from 'schemas';
-import { datasetTypeToEntityType } from 'constants/datasetTypes';
+import { datasetTypeToEntityType } from '@app/constants/datasetTypes';
+import { APIV2Call } from '@app/core/APICall';
 
 export const LOAD_ENTITIES_STARTED = 'LOAD_ENTITIES_STARTED';
 export const LOAD_ENTITIES_SUCCESS = 'LOAD_ENTITIES_SUCCESS';
@@ -29,15 +27,20 @@ export const LOAD_ENTITIES_FAILURE = 'LOAD_ENTITIES_FAILURE';
 function fetchEntities(urlPath, schema, viewId) {
   const resourcePath = urlPath;
   const meta = { resourcePath, viewId };
+
+  const apiCall = new APIV2Call()
+    .paths(resourcePath)
+    .uncachable();
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         { type: LOAD_ENTITIES_STARTED, meta},
         schemaUtils.getSuccessActionTypeWithSchema(LOAD_ENTITIES_SUCCESS, schema, meta),
         { type: LOAD_ENTITIES_FAILURE, meta}
       ],
       method: 'GET',
-      endpoint: makeUncachebleURL(`${API_URL_V2}${resourcePath}`)
+      endpoint: apiCall
     }
   };
 }
@@ -46,13 +49,6 @@ export function loadEntities(urlPath, schema, viewId) {
   return (dispatch) => {
     return dispatch(fetchEntities(urlPath, schema, viewId));
   };
-}
-
-export function loadHomeEntities(urlPath, username, schema, viewId) {
-  if (urlPath === '/') {
-    return loadEntities(`/home/@${encodeURIComponent(username)}`, schema, viewId);
-  }
-  return loadEntities(urlPath, schema, viewId);
 }
 
 export function loadDatasetForDatasetType(datasetType, datasetUrl, viewId) {
@@ -71,15 +67,20 @@ function postRenameHomeEntity(entity, entityType, newName, invalidateViewIds) {
   const resourcePath = entity.getIn(['links', 'rename']);
   const schema = schemas[entityType];
   const meta = { invalidateViewIds };
+
+  const apiCall = new APIV2Call()
+    .paths(resourcePath)
+    .params({renameTo: newName});
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         { type: RENAME_ENTITY_STARTED, meta},
         schemaUtils.getSuccessActionTypeWithSchema(RENAME_ENTITY_SUCCESS, schema, meta),
         { type: RENAME_ENTITY_FAILURE, meta}
       ],
       method: 'POST',
-      endpoint: `${API_URL_V2}${resourcePath}?renameTo=${newName}`
+      endpoint: apiCall
     }
   };
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,8 +31,7 @@ const SOURCE_LIST = [
   {'label': 'NAS', 'sourceType': 'NAS'},
   {'label': 'Oracle', 'sourceType': 'ORACLE'},
   {'label': 'PostgreSQL', 'sourceType': 'POSTGRES', 'tags': ['beta']},
-  {'label': 'Azure Data Lake Store', 'sourceType': 'ADL', 'tags': ['beta']},
-  {'label': 'IBM DB2', 'sourceType': 'DB2'}
+  {'label': 'Azure Data Lake Store', 'sourceType': 'ADL', 'tags': ['beta']}
 ];
 
 

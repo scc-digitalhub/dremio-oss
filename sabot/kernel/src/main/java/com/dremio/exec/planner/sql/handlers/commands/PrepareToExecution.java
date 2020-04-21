@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,12 +15,8 @@
  */
 package com.dremio.exec.planner.sql.handlers.commands;
 
-import com.dremio.exec.ops.QueryContext;
 import com.dremio.exec.physical.PhysicalPlan;
-import com.dremio.exec.planner.PhysicalPlanReader;
 import com.dremio.exec.planner.observer.AttemptObserver;
-import com.dremio.exec.work.rpc.CoordToExecTunnelCreator;
-import com.dremio.resource.ResourceAllocator;
 
 /**
  * Go from prepare to execution.
@@ -30,16 +26,14 @@ public class PrepareToExecution extends AsyncCommand {
   private final PreparedPlan plan;
   private final AttemptObserver observer;
 
-  public PrepareToExecution(PreparedPlan plan, QueryContext context, AttemptObserver observer,
-                            PhysicalPlanReader reader,
-                            CoordToExecTunnelCreator tunnelCreator, ResourceAllocator queryResourceManager) {
-    super(context, queryResourceManager, observer, reader, tunnelCreator);
+  public PrepareToExecution(PreparedPlan plan, AttemptObserver observer) {
+    super();
     this.plan = plan;
     this.observer = observer;
   }
 
   @Override
-  protected PhysicalPlan getPhysicalPlan() {
+  public PhysicalPlan getPhysicalPlan() {
     return plan.getPlan();
   }
 

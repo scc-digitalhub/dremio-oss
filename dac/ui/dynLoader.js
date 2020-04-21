@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 /*eslint no-sync: 0*/
-
+const fs = require('fs');
 const path = require('path');
 
 exports.path = path.resolve(__dirname, process.env.DREMIO_DYN_LOADER_PATH || './src');
@@ -40,3 +40,12 @@ exports.applyNodeResolver = () => {
 exports.applyNodeModulesResolver = () => {
   require('app-module-path').addPath(path.resolve(__dirname, 'node_modules'));
 };
+
+
+exports.applyTSConfig = () => {
+  const tsconfigPathToCopy = path.resolve(exports.path, '../tsconfig.dev.json');
+  // apply tsconfig for dynamic modules
+  console.info(`Typescript config is applied: '${tsconfigPathToCopy}'`);
+  fs.copyFileSync(tsconfigPathToCopy, path.resolve(__dirname, 'tsconfig.json'));
+};
+

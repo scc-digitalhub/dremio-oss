@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ import Radium from 'radium';
 import PropTypes from 'prop-types';
 
 import { Radio, PrevalidatedTextField, DateInput } from 'components/Fields';
-import { isDateType } from 'constants/DataTypes';
+import { isDateType } from '@app/constants/DataTypes';
 import { formContext } from 'uiTheme/radium/typography';
 import { LINE_START_CENTER } from 'uiTheme/radium/flexStyle';
 
@@ -84,14 +84,14 @@ export default class TransformRangeBound extends Component {
           style={styles.dateInput}
           value={this.state.customValue}
           onChange={this.handleValueChange}
-      />
-    )
-    : <PrevalidatedTextField
-      style={styles.input}
-      value={this.state.customValue}
-      onChange={this.handleValueChange}
-      validate={this.props.validate}
-    />;
+        />
+      )
+      : <PrevalidatedTextField
+        style={styles.input}
+        value={this.state.customValue}
+        onChange={this.handleValueChange}
+        validate={this.props.validate}
+      />;
   }
 
   render() {

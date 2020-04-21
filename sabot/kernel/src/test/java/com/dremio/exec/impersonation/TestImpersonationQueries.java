@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,17 +30,19 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Test;
 
 import com.dremio.common.exceptions.UserRemoteException;
-import com.dremio.common.util.FileUtils;
+import com.dremio.config.DremioConfig;
 import com.dremio.exec.catalog.CatalogServiceImpl;
 import com.dremio.exec.proto.UserBitShared.DremioPBError.ErrorType;
-import com.dremio.exec.store.avro.AvroTestUtil;
 import com.dremio.exec.store.dfs.WorkspaceConfig;
 import com.dremio.service.namespace.NamespaceKey;
+import com.dremio.service.namespace.NamespaceNotFoundException;
 import com.dremio.service.namespace.source.proto.SourceConfig;
 import com.dremio.service.users.SystemUser;
+import com.dremio.test.TemporarySystemProperties;
 import com.google.common.collect.Maps;
 
 /**
@@ -48,9 +50,14 @@ import com.google.common.collect.Maps;
  * a nested view.
  */
 public class TestImpersonationQueries extends BaseTestImpersonation {
+  @ClassRule
+  public static TemporarySystemProperties properties = new TemporarySystemProperties();
+
   @BeforeClass
   public static void setup() throws Exception {
     assumeNonMaprProfile();
+
+    properties.set(DremioConfig.LEGACY_STORE_VIEWS_ENABLED, "true");
     startMiniDfsCluster(TestImpersonationQueries.class.getSimpleName());
     addMiniDfsBasedStorage(createTestWorkspaces(), /*impersonationEnabled=*/true);
     createTestData();
@@ -69,7 +76,6 @@ public class TestImpersonationQueries extends BaseTestImpersonation {
 
     createNestedTestViewsOnLineItem();
     createNestedTestViewsOnOrders();
-    createRecordReadersData(org1Users[0], org1Groups[0]);
   }
 
   private static Map<String, WorkspaceConfig> createTestWorkspaces() throws Exception {
@@ -159,22 +165,6 @@ public class TestImpersonationQueries extends BaseTestImpersonation {
     // Create a view on top of u3_orders view
     // /user/user4_2    u4_orders    755    user4_2:group4_2
     createView(org2Users[4], org2Groups[4], (short)0755, "u4_orders", getUserHome(org2Users[3]) + "/u3_orders");
-  }
-
-  private static void createRecordReadersData(String user, String group) throws Exception {
-    // copy sequence file
-    updateClient(user);
-    Path localFile = new Path(FileUtils.getResourceAsFile("/sequencefiles/simple.seq").toURI().toString());
-    Path dfsFile = new Path(getUserHome(user), "simple.seq");
-    fs.copyFromLocalFile(localFile, dfsFile);
-    fs.setOwner(dfsFile, user, group);
-    fs.setPermission(dfsFile, new FsPermission((short) 0700));
-
-    localFile = new Path(AvroTestUtil.generateSimplePrimitiveSchema_NoNullValues().getFilePath());
-    dfsFile = new Path(getUserHome(user), "simple.avro");
-    fs.copyFromLocalFile(localFile, dfsFile);
-    fs.setOwner(dfsFile, user, group);
-    fs.setPermission(dfsFile, new FsPermission((short) 0700));
   }
 
   private String fullPath(String user, String table) {
@@ -272,8 +262,12 @@ public class TestImpersonationQueries extends BaseTestImpersonation {
 
   @AfterClass
   public static void removeMiniDfsBasedStorage() throws Exception {
-    SourceConfig config = getSabotContext().getNamespaceService(SystemUser.SYSTEM_USERNAME).getSource(new NamespaceKey(MINIDFS_STORAGE_PLUGIN_NAME));
-    ((CatalogServiceImpl) getSabotContext().getCatalogService()).getSystemUserCatalog().deleteSource(config);
+    try {
+      SourceConfig config = getSabotContext().getNamespaceService(SystemUser.SYSTEM_USERNAME).getSource(new NamespaceKey(MINIDFS_STORAGE_PLUGIN_NAME));
+      ((CatalogServiceImpl) getSabotContext().getCatalogService()).getSystemUserCatalog().deleteSource(config);
+    } catch (NamespaceNotFoundException e) {
+      // ignore if source is not found
+    }
     stopMiniDfsCluster();
   }
 }

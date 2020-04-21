@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -416,7 +416,7 @@ export class ExploreTableView extends PureComponent {
           showMessage={showMessage}
           hideChildrenWhenFailed={false}
           overlayStyle={maskStyle}
-          >
+        >
           {this.props.isGrayed && <div data-qa='table-grayed-out' style={{...styles.grayed, ...maskStyle}}/>}
           {this.renderTable()}
           <ViewCheckContent
@@ -428,7 +428,7 @@ export class ExploreTableView extends PureComponent {
               position: 'absolute',
               height: 0
             }}
-            />
+          />
         </ViewStateWrapper>
       </div>
     );

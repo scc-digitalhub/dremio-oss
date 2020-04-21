@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -113,15 +113,6 @@ public class TestDisabledFunctionality extends BaseTestQuery{
     }
   }
 
-  @Test(expected = UnsupportedRelOperatorException.class) // see DRILL-1921
-  public void testDisabledCrossJoin() throws Exception {
-    try {
-      test("select * from cp.\"tpch/nation.parquet\" CROSS JOIN cp.\"tpch/region.parquet\"");
-    } catch(UserException ex) {
-      throwAsUnsupportedException(ex);
-    }
-  }
-
   @Test(expected = UnsupportedDataTypeException.class) // see DRILL-1959
   public void testDisabledCastTINYINT() throws Exception {
     try {
@@ -159,6 +150,7 @@ public class TestDisabledFunctionality extends BaseTestQuery{
   }
 
   @Test(expected = UnsupportedRelOperatorException.class) // DRILL-2068
+  @Ignore
   public void testImplicitCartesianJoin() throws Exception {
     try {
       test("select a.*, b.user_port " +
@@ -169,6 +161,7 @@ public class TestDisabledFunctionality extends BaseTestQuery{
   }
 
   @Test(expected = UnsupportedRelOperatorException.class) // see DRILL-2068, DRILL-1325
+  @Ignore
   public void testNonEqualJoin() throws Exception {
     try {
       test("select a.*, b.user_port " +
@@ -180,6 +173,7 @@ public class TestDisabledFunctionality extends BaseTestQuery{
   }
 
   @Test(expected = UnsupportedRelOperatorException.class) // see DRILL-2068, DRILL-1325
+  @Ignore
   public void testMultipleJoinsWithOneNonEqualJoin() throws Exception {
     try {
       test("select a.last_name, b.n_name, c.r_name " +
@@ -191,6 +185,7 @@ public class TestDisabledFunctionality extends BaseTestQuery{
   }
 
   @Test(expected = UnsupportedRelOperatorException.class) // see  DRILL-2068, DRILL-1325
+  @Ignore
   public void testLeftOuterJoin() throws Exception {
     try {
       test("select a.last_name, b.n_name " +
@@ -202,6 +197,7 @@ public class TestDisabledFunctionality extends BaseTestQuery{
   }
 
   @Test(expected = UnsupportedRelOperatorException.class) // see DRILL-2068, DRILL-1325
+  @Ignore
   public void testInnerJoin() throws Exception {
     try {
       test("select a.last_name, b.n_name " +
@@ -226,6 +222,7 @@ public class TestDisabledFunctionality extends BaseTestQuery{
   }
 
   @Test(expected = UnsupportedRelOperatorException.class) // see DRILL-2068, DRILL-1325
+  @Ignore
   public void testExplainPlanForCartesianJoin() throws Exception {
     try {
       test("explain plan for (select a.last_name, b.n_name " +
@@ -237,6 +234,7 @@ public class TestDisabledFunctionality extends BaseTestQuery{
   }
 
   @Test(expected = UnsupportedRelOperatorException.class) // see DRILL-2441
+  @Ignore
   public void testExplainPlanOuterJoinWithInequality() throws Exception {
     try {
       test("explain plan for (select a.last_name, b.n_name " +
@@ -248,6 +246,7 @@ public class TestDisabledFunctionality extends BaseTestQuery{
   }
 
   @Test(expected = UnsupportedRelOperatorException.class) // see DRILL-2441
+  @Ignore
   public void testOuterJoinWithInequality() throws Exception {
     try {
       test("select a.last_name, b.n_name " +
