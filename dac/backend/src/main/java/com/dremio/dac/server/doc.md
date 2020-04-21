@@ -4299,6 +4299,7 @@
 {
   createdAt: 1,
   email: "abc",
+  extra: "abc",
   firstName: "abc",
   lastName: "abc",
   modifiedAt: 1,
@@ -4333,6 +4334,7 @@
   userConfig: {
     createdAt: 1,
     email: "abc",
+    extra: "abc",
     firstName: "abc",
     lastName: "abc",
     modifiedAt: 1,
@@ -4361,6 +4363,7 @@
       userConfig: {
         createdAt: 1,
         email: "abc",
+        extra: "abc",
         firstName: "abc",
         lastName: "abc",
         modifiedAt: 1,
