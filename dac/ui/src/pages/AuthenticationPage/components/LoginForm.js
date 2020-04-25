@@ -67,10 +67,11 @@ export class LoginForm extends PureComponent {
       <div style={{marginTop: 20}}>
         <h2 style={{color: '#43B8C9'}}>or login via external provider</h2>
         <a href={'/apiv2/oauth/login'}>
-          <SimpleButton
-            buttonStyle='primary'>
-          OAuth login
-          </SimpleButton>
+          <Button
+              type={ButtonTypes.NEXT}
+              key='oauth-login'
+              style={{marginBottom: 0}}
+              text={la('OAuth login')}/>
         </a>
       </div>
     );
