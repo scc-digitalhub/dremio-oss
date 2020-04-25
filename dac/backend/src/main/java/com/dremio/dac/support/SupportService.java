@@ -148,7 +148,7 @@ public class SupportService implements Service {
   public static final StringValidator SUPPORT_UPLOAD_BASE = new StringValidator("support.upload.base", "https://s3-us-west-2.amazonaws.com/supportuploads.dremio.com/");
   public static final StringValidator TEMPORARY_SUPPORT_PATH = new StringValidator("support.temp", "/tmp/dremio-support/");
 
-  public static final BooleanValidator OUTSIDE_COMMUNICATION_DISABLED = new BooleanValidator("dremio.ui.outside_communication_disabled", true);
+  public static final BooleanValidator OUTSIDE_COMMUNICATION_DISABLED = new BooleanValidator("dremio.ui.outside_communication_disabled", false);
 
   public static final String NAME = "support";
 
