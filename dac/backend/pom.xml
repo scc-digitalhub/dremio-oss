@@ -431,6 +431,11 @@
       <artifactId>hibernate-validator</artifactId>
     </dependency>
     <dependency>
+        <groupId>com.github.scribejava</groupId>
+        <artifactId>scribejava-core</artifactId>
+        <version>6.5.1</version>
+    </dependency>
+    <dependency>
       <groupId>org.glassfish</groupId>
       <artifactId>javax.el</artifactId>
     </dependency>
