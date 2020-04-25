@@ -68,12 +68,12 @@ export class LoginForm extends PureComponent {
         <h2 style={{color: '#43B8C9'}}>or login via external provider</h2>
         <a href={'/apiv2/oauth/login'}>
           <SimpleButton
-          buttonStyle='primary'>
+            buttonStyle='primary'>
           OAuth login
           </SimpleButton>
         </a>
       </div>
-          );
+    );
 
     return (
       <div id='login-form' style={[styles.base]}>
@@ -88,6 +88,7 @@ export class LoginForm extends PureComponent {
           multilineErrorMessage
         >
           {this.renderForm()}
+          {config.authType === 'oauth' ? oauthForm : null}
         </ViewStateWrapper>
       </div>
     );
@@ -141,7 +142,6 @@ export class LoginForm extends PureComponent {
           </div>
         </div>
       </InnerComplexForm>
-      {config.authType === 'oauth' ? oauthForm : null}
     );
   }
 }
