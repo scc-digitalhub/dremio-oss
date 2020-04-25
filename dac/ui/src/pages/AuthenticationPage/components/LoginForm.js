@@ -84,50 +84,10 @@ export class LoginForm extends PureComponent {
           style={{paddingTop: 45}}
           hideChildrenWhenFailed={false}
           viewState={viewState}
-          hideSpinner>
-          <InnerComplexForm
-            {...this.props}
-            style={styles.form}
-            onSubmit={this.submit}>
-            <div style={styles.fieldsRow}>
-              <FieldWithError
-                {...userName}
-                errorPlacement='top'
-                label={la('Username')}
-                labelStyle={styles.label}
-                style={{...formLabel, ...styles.field}}>
-                <TextField
-                  {...userName}
-                  initialFocus
-                  style={styles.input}/>
-              </FieldWithError>
-              <FieldWithError
-                {...password}
-                errorPlacement='top'
-                label={la('Password')}
-                labelStyle={styles.label}
-                style={{...formLabel, ...styles.field}}>
-                <TextField
-                  {...password}
-                  type='password'
-                  style={styles.input}/>
-              </FieldWithError>
-            </div>
-            <div style={styles.submitWrapper}>
-              <Button
-                type={ButtonTypes.NEXT}
-                key='details-wizard-next'
-                style={{marginBottom: 0}}
-                text={la('Log In')}/>
-              <Spinner
-                iconStyle={styles.spinnerIcon}
-                style={{display: viewState.get('isInProgress') ? 'block' : 'none', ...styles.spinner}}/>
-              {false && <div style={styles.link}>
-                <Link to='#' >{la('Forgot your password?')}</Link>
-              </div>}
-            </div>
-          </InnerComplexForm>
-          {config.authType === 'oauth' ? oauthForm : null}
+          hideSpinner
+          multilineErrorMessage
+        >
+          {this.renderForm()}
         </ViewStateWrapper>
       </div>
     );
@@ -181,6 +141,7 @@ export class LoginForm extends PureComponent {
           </div>
         </div>
       </InnerComplexForm>
+      {config.authType === 'oauth' ? oauthForm : null}
     );
   }
 }
