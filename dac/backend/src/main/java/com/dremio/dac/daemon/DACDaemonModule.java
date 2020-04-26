@@ -882,12 +882,12 @@ public class DACDaemonModule implements DACModule {
     }
 
     if ("oauth".equals(authType)) {
-      registry.bind(UserService.class, SimpleUserService.class);
+      registry.bindProvider(UserService.class, () -> new SimpleUserService(registry.provider(LegacyKVStoreProvider.class)));
       logger.info("Internal+OAuth user/group service is configured.");
       return true;
     }
 
-    logger.error("Unknown value '{}' set for {}. Accepted values are ['internal', 'ldap']", authType, WEB_AUTH_TYPE);
+    logger.error("Unknown value '{}' set for {}. Accepted values are ['internal', 'ldap','oauth']", authType, WEB_AUTH_TYPE);
     throw new RuntimeException(
         String.format("Unknown auth type '%s' set in config path '%s'", authType, WEB_AUTH_TYPE));
   }
