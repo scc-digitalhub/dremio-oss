@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,9 +15,16 @@
  */
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
-import { page } from 'uiTheme/radium/general';
-import './Page.less';
+import classNames from 'classnames';
 
+import MainHeader from '@app/components/MainHeader';
+import { flexColumnContainer, fullHeight } from '@app/uiTheme/less/layout.less';
+import { Suspense } from '@app/components/Lazy';
+
+import { page } from 'uiTheme/radium/general';
+import { pageContent } from './Page.less';
+
+//todo (DX-17781) we should migrate all the pages to use MainMasterPage
 export default class Page extends Component {
   static propTypes = {
     children: PropTypes.node
@@ -27,6 +34,28 @@ export default class Page extends Component {
     const { children } = this.props;
     return (
       React.cloneElement(children, {style: {...children.style, ...page}})
+    );
+  }
+}
+
+export class MainMasterPage extends Component {
+  static propTypes = {
+    children: PropTypes.node
+  }
+
+  render() {
+    const { children } = this.props;
+    return (
+      <div className={classNames(fullHeight, flexColumnContainer)}>
+        <div>
+          <MainHeader />
+        </div>
+        <div className={pageContent}>
+          <Suspense>
+            {children}
+          </Suspense>
+        </div>
+      </div>
     );
   }
 }

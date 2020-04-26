@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -59,11 +59,11 @@ import com.dremio.common.expression.Describer;
 import com.dremio.common.util.DremioGetObject;
 import com.dremio.exec.record.BatchSchema;
 import com.dremio.exec.record.BatchSchema.SelectionVectorMode;
+import com.dremio.exec.record.RecordBatchData;
 import com.dremio.exec.record.VectorAccessible;
 import com.dremio.exec.record.VectorContainer;
 import com.dremio.exec.record.VectorWrapper;
 import com.dremio.exec.record.selection.SelectionVector2;
-import com.dremio.sabot.op.sort.external.RecordBatchData;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.io.BaseEncoding;
@@ -91,6 +91,7 @@ public final class Fixtures {
   public static final Cell NULL_INTERVAL_DAY_SECOND = new IntervalDaySecond(null);
   public static final Cell NULL_INTERVAL_YEAR_MONTH = new IntervalYearMonth(null);
   public static final Cell NULL_DECIMAL = new Decimal(null);
+
 
   private Fixtures(){}
 
@@ -240,7 +241,7 @@ public final class Fixtures {
 
   private static boolean compareTableResultMap(StringBuilder sb, Field[] fields, List<RecordBatchData> actual,
                                                int expectedRecordCount, HashMap<Object, Fixtures.DataRow> resultMap) {
-    final StringBuilder sb1 = new StringBuilder(sb);
+
     int failures  = 0;
     NavigableMap<Integer, RangeHolder<DataHolder>> actualRange = new TreeMap<>();
     {
@@ -1009,14 +1010,28 @@ public final class Fixtures {
     }
   }
 
+  public static Decimal createDecimal(BigDecimal d, int precision, int scale) {
+    return new Decimal(d, precision, scale);
+  }
+
   private static class Decimal extends ValueCell<BigDecimal> {
+    int precision;
+    int scale;
+
     public Decimal(BigDecimal obj) {
-      super(obj);
+      this(obj, 38, obj == null ? 0 : obj.scale());
     }
+
+    public Decimal(BigDecimal obj, int precision, int scale) {
+      super(obj);
+      this.precision = precision;
+      this.scale = scale;
+    }
+
 
     @Override
     ArrowType getType() {
-      return new ArrowType.Decimal(38 , obj == null ? 0 : obj.scale());
+      return new ArrowType.Decimal(precision, scale);
     }
 
     @Override

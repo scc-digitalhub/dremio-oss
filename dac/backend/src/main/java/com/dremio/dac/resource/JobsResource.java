@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,8 +33,9 @@ import javax.ws.rs.core.SecurityContext;
 import com.dremio.dac.annotations.RestResource;
 import com.dremio.dac.annotations.Secured;
 import com.dremio.dac.model.job.JobsUI;
-import com.dremio.datastore.SearchTypes.SortOrder;
-import com.dremio.service.jobs.Job;
+import com.dremio.dac.model.job.ResultOrder;
+import com.dremio.service.job.JobSummary;
+import com.dremio.service.job.SearchJobsRequest;
 import com.dremio.service.jobs.JobsService;
 import com.dremio.service.namespace.NamespaceService;
 import com.google.common.collect.ImmutableList;
@@ -72,13 +73,26 @@ public class JobsResource {
   public JobsUI getJobs(
       @QueryParam("filter") String filters,
       @QueryParam("sort") String sortColumn,
-      @QueryParam("order") SortOrder order,
+      @QueryParam("order") ResultOrder order,
       @QueryParam("offset") @DefaultValue("0") int offset,
       @QueryParam("limit") @DefaultValue("100") int limit
       ) {
 
-    final List<Job> jobs = ImmutableList.copyOf(jobsService.get().getAllJobs(filters, sortColumn, order, offset, limit,
-      securityContext.getUserPrincipal().getName()));
+    final SearchJobsRequest.Builder requestBuilder = SearchJobsRequest.newBuilder();
+    requestBuilder.setOffset(offset);
+    requestBuilder.setLimit(limit);
+    requestBuilder.setUserName(securityContext.getUserPrincipal().getName());
+    if (filters != null) {
+      requestBuilder.setFilterString(filters);
+    }
+    if (sortColumn != null) {
+      requestBuilder.setSortColumn(sortColumn);
+    }
+    if (order != null) {
+      requestBuilder.setSortOrder(order.toSortOrder());
+    }
+
+    final List<JobSummary> jobs = ImmutableList.copyOf(jobsService.get().searchJobs(requestBuilder.build()));
     return new JobsUI(
         namespace,
         jobs,
@@ -86,7 +100,14 @@ public class JobsResource {
         );
   }
 
-  private String getNext(final int offset, final int limit, String filter, String sortColumn, SortOrder order, int previousReturn){
+  private String getNext(
+      final int offset,
+      final int limit,
+      String filter,
+      String sortColumn,
+      ResultOrder order,
+      int previousReturn
+  ) {
 
     // only return a next if we returned a full list.
     if(previousReturn != limit){

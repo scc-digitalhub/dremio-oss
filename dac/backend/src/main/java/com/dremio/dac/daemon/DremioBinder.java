@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,18 +15,20 @@
  */
 package com.dremio.dac.daemon;
 
+import java.util.function.Supplier;
+
 import javax.inject.Inject;
 import javax.ws.rs.core.SecurityContext;
 
-import org.glassfish.hk2.api.Factory;
-import org.glassfish.hk2.utilities.binding.AbstractBinder;
-import org.glassfish.hk2.utilities.binding.ServiceBindingBuilder;
+import org.glassfish.jersey.internal.inject.AbstractBinder;
+import org.glassfish.jersey.internal.inject.ClassBinding;
 import org.glassfish.jersey.process.internal.RequestScoped;
 
 import com.dremio.dac.explore.QueryExecutor;
 import com.dremio.dac.explore.join.JobsBasedRecommender;
 import com.dremio.dac.explore.join.JoinRecommender;
 import com.dremio.dac.model.sources.FormatTools;
+import com.dremio.dac.server.BufferAllocatorFactory;
 import com.dremio.dac.server.DACSecurityContext;
 import com.dremio.dac.server.test.SampleDataPopulator;
 import com.dremio.dac.service.catalog.CatalogServiceHelper;
@@ -35,10 +37,15 @@ import com.dremio.dac.service.datasets.DatasetVersionMutator;
 import com.dremio.dac.service.reflection.ReflectionServiceHelper;
 import com.dremio.dac.service.source.SourceService;
 import com.dremio.exec.catalog.Catalog;
+import com.dremio.exec.catalog.DatasetCatalog;
+import com.dremio.exec.catalog.EntityExplorer;
+import com.dremio.exec.catalog.MetadataRequestOptions;
+import com.dremio.exec.catalog.SourceCatalog;
 import com.dremio.exec.server.SabotContext;
 import com.dremio.exec.store.CatalogService;
 import com.dremio.exec.store.SchemaConfig;
 import com.dremio.options.OptionManager;
+import com.dremio.service.BinderImpl;
 import com.dremio.service.BinderImpl.Binding;
 import com.dremio.service.BinderImpl.InstanceBinding;
 import com.dremio.service.BinderImpl.SingletonBinding;
@@ -50,9 +57,11 @@ import com.dremio.service.SingletonRegistry;
 public class DremioBinder extends AbstractBinder {
 
   private final SingletonRegistry bindings;
+  private final BufferAllocatorFactory allocatorFactory;
 
-  public DremioBinder(SingletonRegistry bindings) {
+  public DremioBinder(SingletonRegistry bindings, BufferAllocatorFactory allocatorFactory) {
     this.bindings = bindings;
+    this.allocatorFactory = allocatorFactory;
   }
 
   @SuppressWarnings({ "unchecked", "rawtypes" })
@@ -72,6 +81,10 @@ public class DremioBinder extends AbstractBinder {
         SingletonBinding sb = (SingletonBinding) b;
         bind(sb.getSingleton()).to(b.getIface());
         break;
+      case PROVIDER:
+        BinderImpl.ProviderBinding pb = (BinderImpl.ProviderBinding) b;
+        bindFactory(() -> pb.getProvider().get()).to(b.getIface());
+        break;
       default:
         throw new IllegalStateException();
       }
@@ -89,16 +102,20 @@ public class DremioBinder extends AbstractBinder {
     bind(JobsBasedRecommender.class).to(JoinRecommender.class);
     bind(DACSecurityContext.class).in(RequestScoped.class).to(SecurityContext.class);
     bindFactory(CatalogFactory.class).proxy(true).in(RequestScoped.class).to(Catalog.class);
+    bindFactory(CatalogFactory.class).proxy(true).in(RequestScoped.class).to(EntityExplorer.class);
+    bindFactory(CatalogFactory.class).proxy(true).in(RequestScoped.class).to(DatasetCatalog.class);
+    bindFactory(CatalogFactory.class).proxy(true).in(RequestScoped.class).to(SourceCatalog.class);
+    bind(allocatorFactory);
   }
 
-  private <T> ServiceBindingBuilder<T> bindToSelf(Class<T> serviceType) {
+  private <T> ClassBinding<T> bindToSelf(Class<T> serviceType) {
     return bind(serviceType).to(serviceType);
   }
 
   /**
    * Factory for Catalog creation.
    */
-  public static class CatalogFactory implements Factory<Catalog> {
+  public static class CatalogFactory implements Supplier<Catalog> {
     private final CatalogService catalogService;
     private final SecurityContext context;
 
@@ -110,13 +127,10 @@ public class DremioBinder extends AbstractBinder {
     }
 
     @Override
-    @RequestScoped
-    public Catalog provide() {
-      return catalogService.getCatalog(SchemaConfig.newBuilder(context.getUserPrincipal().getName()).build());
-    }
-
-    @Override
-    public void dispose(Catalog catalog) {
+    public Catalog get() {
+      return catalogService.getCatalog(MetadataRequestOptions.of(
+          SchemaConfig.newBuilder(context.getUserPrincipal().getName())
+              .build()));
     }
   }
 
@@ -124,7 +138,7 @@ public class DremioBinder extends AbstractBinder {
    * A factory for OptionManager to be used for DI
    * (and avoid passing directly SabotContext...)
    */
-  public static class OptionManagerFactory implements Factory<OptionManager> {
+  public static class OptionManagerFactory implements Supplier<OptionManager> {
     private final SabotContext context;
 
     @Inject
@@ -133,12 +147,8 @@ public class DremioBinder extends AbstractBinder {
     }
 
     @Override
-    public OptionManager provide() {
+    public OptionManager get() {
       return context.getOptionManager();
-    }
-
-    @Override
-    public void dispose(OptionManager instance) {
     }
   }
 }

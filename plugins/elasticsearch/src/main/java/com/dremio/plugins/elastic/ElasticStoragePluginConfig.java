@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,8 +18,7 @@ package com.dremio.plugins.elastic;
 import java.util.List;
 
 import javax.inject.Provider;
-
-import org.hibernate.validator.constraints.NotEmpty;
+import javax.validation.constraints.NotEmpty;
 
 import com.dremio.exec.catalog.StoragePluginId;
 import com.dremio.exec.catalog.conf.AuthenticationType;
@@ -36,7 +35,7 @@ import io.protostuff.Tag;
 /**
  * Configuration for regular Elasticsearch storage plugin.
  */
-@SourceType(value = "ELASTIC", label = "Elasticsearch")
+@SourceType(value = "ELASTIC", label = "Elasticsearch", uiConfig = "elastic-storage-layout.json")
 public class ElasticStoragePluginConfig extends BaseElasticStoragePluginConfig<ElasticStoragePluginConfig, ElasticsearchStoragePlugin> {
 
   //  repeated Host host = 1; // default port should be 9200

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,14 +16,16 @@
 package com.dremio.provision.service;
 
 import com.dremio.provision.Cluster;
+import com.dremio.provision.ClusterConfig;
 import com.dremio.provision.ClusterEnriched;
 import com.dremio.provision.ClusterType;
+import com.dremio.service.Service;
 
 /**
  * Interface to provide implementations for different Provisioning services
  * to support general APIs to handle Dremio deployment
  */
-public interface ProvisioningServiceDelegate {
+public interface ProvisioningServiceDelegate extends Service {
 
   /**
    * Get clusterType API
@@ -61,4 +63,19 @@ public interface ProvisioningServiceDelegate {
    * @throws Exception
    */
   ClusterEnriched getClusterInfo(Cluster cluster) throws ProvisioningHandlingException;
+
+  @Override
+  default void close() throws Exception {
+  }
+
+  @Override
+  default void start() throws Exception {
+  }
+
+  default void syncCluster(Cluster cluster) {
+  }
+
+  default ClusterConfig defaultCluster() {
+    return null;
+  }
 }

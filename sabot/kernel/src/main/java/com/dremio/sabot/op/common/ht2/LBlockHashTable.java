@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,11 +19,13 @@ import static java.util.Arrays.asList;
 import static java.util.Arrays.copyOfRange;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Formatter;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.arrow.memory.BufferAllocator;
+import org.apache.arrow.memory.util.LargeMemoryUtil;
 
 import com.dremio.common.AutoCloseables;
 import com.dremio.common.AutoCloseables.RollbackCloseable;
@@ -32,10 +34,10 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Stopwatch;
 import com.google.common.base.Throwables;
-import com.google.common.collect.FluentIterable;
-import com.google.common.collect.Iterables;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.ObjectArrays;
+import com.google.common.collect.Streams;
 import com.google.common.primitives.Longs;
 import com.koloboke.collect.hash.HashConfig;
 import com.koloboke.collect.impl.hash.HashConfigWrapper;
@@ -159,6 +161,12 @@ public final class LBlockHashTable implements AutoCloseable {
 
   public int getVariableBlockMaxLength() {
     return variableBlockMaxLength;
+  }
+
+  // Compute the direct memory required for one pivoted variable block.
+  public static int computeVariableBlockMaxLength(final int hashTableBatchSize, final int numVarColumns,
+    final int defaultVariableLengthSize) {
+    return (numVarColumns == 0) ? 0 : (hashTableBatchSize * (((defaultVariableLengthSize + VAR_OFFSET_SIZE) * numVarColumns) + VAR_LENGTH_SIZE));
   }
 
   /**
@@ -477,8 +485,8 @@ public final class LBlockHashTable implements AutoCloseable {
     }
 
     /* bump these stats iff we are going to skip ordinals */
-    final int curFixedBlockWritePos = fixedBlocks[currentChunkIndex].getBufferLength();
-    final int curVarBlockWritePos = variableBlocks[currentChunkIndex].getBufferLength();
+    final long curFixedBlockWritePos = fixedBlocks[currentChunkIndex].getBufferLength();
+    final long curVarBlockWritePos = variableBlocks[currentChunkIndex].getBufferLength();
     unusedForFixedBlocks += fixedBlocks[currentChunkIndex].getCapacity() - curFixedBlockWritePos;
     unusedForVarBlocks += variableBlocks[currentChunkIndex].getCapacity() - curVarBlockWritePos;
 
@@ -594,7 +602,7 @@ public final class LBlockHashTable implements AutoCloseable {
    */
   public int getRecordsInBatch(final int batchIndex) {
     Preconditions.checkArgument(batchIndex < blocks(), "Error: invalid batch index");
-    final int records = (fixedBlocks[batchIndex].getUnderlying().readableBytes())/pivot.getBlockWidth();
+    final int records = LargeMemoryUtil.checkedCastToInt((fixedBlocks[batchIndex].getUnderlying().readableBytes())/pivot.getBlockWidth());
     Preconditions.checkArgument(records <= MAX_VALUES_PER_BATCH, "Error: detected invalid number of records in batch");
     return records;
   }
@@ -897,7 +905,13 @@ public final class LBlockHashTable implements AutoCloseable {
 
   @Override
   public void close() throws Exception {
-    AutoCloseables.close((Iterable<AutoCloseable>) Iterables.concat(FluentIterable.of(controlBlocks).toList(), FluentIterable.of(fixedBlocks).toList(), FluentIterable.of(variableBlocks).toList()));
+    AutoCloseables.close(
+      Streams.concat(
+        Arrays.stream(controlBlocks),
+        Arrays.stream(fixedBlocks),
+        Arrays.stream(variableBlocks)
+      ).collect(ImmutableList.toImmutableList())
+    );
   }
 
   private void tryRehashForExpansion() {
@@ -962,6 +976,18 @@ public final class LBlockHashTable implements AutoCloseable {
     } finally {
       initTimer.stop();
     }
+  }
+
+  // Compute the direct memory required for the one control block.
+  public static int computePreAllocationForControlBlock(final int initialCapacity, final int hashTableBatchSize) {
+    final HashConfigWrapper config = new HashConfigWrapper(HashConfig.getDefault());
+    int capacity = LHashCapacities.capacity(config, initialCapacity, false);
+    Preconditions.checkArgument((capacity & (capacity - 1)) == 0, "hashtable capacity should be a power of 2");
+
+    int maxValuesPerBatch = Numbers.nextPowerOfTwo(hashTableBatchSize);
+    capacity = Math.max(maxValuesPerBatch, capacity);
+    final int blocks = (int) Math.ceil(capacity / (maxValuesPerBatch * 1.0d));
+    return (LBlockHashTable.CONTROL_WIDTH * maxValuesPerBatch * blocks);
   }
 
   public void unpivot(int batchIndex, int count){
@@ -1144,6 +1170,23 @@ public final class LBlockHashTable implements AutoCloseable {
     initControlBlock(tableControlAddresses[0]);
 
     listener.resetToMinimumSize();
+  }
+
+
+  public void releaseBatch(final int batchIdx) throws Exception {
+    if (batchIdx == 0) {
+      controlBlocks[0].reset();
+      fixedBlocks[0].reset();
+      variableBlocks[0].reset();
+      initControlBlock(tableControlAddresses[0]);
+      return;
+    }
+
+    initControlBlock(tableControlAddresses[batchIdx]);
+    AutoCloseables.close(controlBlocks[batchIdx], fixedBlocks[batchIdx], variableBlocks[batchIdx]);
+
+    //release memory from accumulator
+    listener.releaseBatch(batchIdx);
   }
 
   private void initControlBlock(final long controlBlockAddr) {

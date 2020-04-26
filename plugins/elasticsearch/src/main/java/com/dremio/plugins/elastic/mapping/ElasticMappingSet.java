@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -688,6 +689,7 @@ public class ElasticMappingSet implements Iterable<ElasticMappingSet.ElasticInde
     HALF_FLOAT(CompleteType.FLOAT),
     FLOAT(CompleteType.FLOAT),
     DOUBLE(CompleteType.DOUBLE),
+    SCALED_FLOAT(CompleteType.DOUBLE),
     BOOLEAN(CompleteType.BIT),
     BINARY(CompleteType.VARBINARY),
     STRING(CompleteType.VARCHAR),

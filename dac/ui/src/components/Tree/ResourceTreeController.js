@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -96,10 +96,10 @@ export class ResourceTreeController extends Component {
   expandPathToSelectedNode = (path) => {
     const parentsFullPathList = splitFullPath(path);
     const parents = parentsFullPathList
-    .slice(0, parentsFullPathList.length - 1)
-    .map((node, index, curArr) => {
-      return constructFullPath(curArr.slice(0, index + 1));
-    });
+      .slice(0, parentsFullPathList.length - 1)
+      .map((node, index, curArr) => {
+        return constructFullPath(curArr.slice(0, index + 1));
+      });
     this.setState({
       expandedNodes: this.state.expandedNodes.concat(Immutable.fromJS(parents))
     });

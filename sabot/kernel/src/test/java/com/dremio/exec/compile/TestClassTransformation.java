@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ import com.dremio.exec.compile.sig.MappingSet;
 import com.dremio.exec.exception.ClassTransformationException;
 import com.dremio.exec.expr.ClassGenerator;
 import com.dremio.exec.expr.CodeGenerator;
-import com.dremio.exec.server.options.SessionOptionManager;
+import com.dremio.exec.server.options.SessionOptionManagerImpl;
 import com.dremio.options.OptionValue;
 import com.dremio.options.OptionValue.OptionType;
 import com.dremio.sabot.exec.context.CompilationOptions;
@@ -44,14 +44,14 @@ public class TestClassTransformation extends BaseTestQuery {
 
   private static final int ITERATION_COUNT = Integer.valueOf(System.getProperty("TestClassTransformation.iteration", "1"));
 
-  private static SessionOptionManager sessionOptions;
+  private static SessionOptionManagerImpl sessionOptions;
 
   @BeforeClass
   public static void beforeTestClassTransformation() throws Exception {
     final UserSession userSession = UserSession.Builder.newBuilder()
-      .withOptionManager(getSabotContext().getOptionManager())
+      .withSessionOptionManager(new SessionOptionManagerImpl(getSabotContext().getOptionManager()))
       .build();
-    sessionOptions = (SessionOptionManager) userSession.getOptions();
+    sessionOptions = (SessionOptionManagerImpl) userSession.getOptions();
   }
 
   @Test

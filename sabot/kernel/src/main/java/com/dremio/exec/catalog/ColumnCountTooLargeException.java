@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,10 +23,9 @@ package com.dremio.exec.catalog;
 public class ColumnCountTooLargeException extends DatasetMetadataTooLargeException {
   private static final long serialVersionUID = 7765148243332604247L;
 
-  public static final String MESSAGE = "Number of fields in dataset '%s' exceeded the maximum number of fields of %d";
+  public static final String MESSAGE = "Number of fields in dataset exceeded the maximum number of fields of %d.";
 
-  public ColumnCountTooLargeException(String datasetName, int limit) {
-    super(String.format(MESSAGE, datasetName, limit));
+  public ColumnCountTooLargeException(int limit) {
+    super(String.format(MESSAGE, limit));
   }
-
 }

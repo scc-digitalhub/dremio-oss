@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ import { all, put, call, takeEvery, spawn, select, take, fork} from 'redux-saga/
 import invariant from 'invariant';
 import { newUntitledSql, newUntitledSqlAndRun } from 'actions/explore/dataset/new';
 import { PERFORM_TRANSFORM, runTableTransform } from 'actions/explore/dataset/transform';
+import { initializeExploreJobProgress } from '@app/actions/explore/dataset/data';
 import {
   PERFORM_TRANSFORM_AND_RUN,
   runDataset,
@@ -76,6 +77,7 @@ export function* performTransform({
     const didTransform = !!apiAction;
     if (apiAction) {
       yield call(cancelDataLoad);
+      yield put(initializeExploreJobProgress(isRun));
       // response will be not empty. See transformThenNavigate
       const response = yield call(transformThenNavigate, apiAction, viewId, navigateOptions);
       if (!response || response.error) {
@@ -198,9 +200,9 @@ export function* getFetchDatasetMetaAction({
     } else if (finalTransformData) {
       apiAction = yield call(runTableTransform, dataset, finalTransformData, viewId, nextTable);
     } else {
-      // just preview existent dataset
+      // preview existing dataset
       if (forceDataLoad) {
-        apiAction = yield call(loadDataset, dataset, viewId);
+        apiAction = yield call(loadDataset, dataset, viewId, forceDataLoad);
       }
       navigateOptions = { replaceNav: true, preserveTip: true };
     }

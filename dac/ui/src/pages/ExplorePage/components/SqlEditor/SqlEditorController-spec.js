@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -105,14 +105,14 @@ describe('SqlEditorController', () => {
       });
 
       it('should call setQueryContext if old props are empty', () => {
-        commonProps.setQueryContext.reset();
+        commonProps.setQueryContext.resetHistory();
         instance.receiveProps(commonProps, {});
         expect(commonProps.setQueryContext).to.have.been.called;
       });
 
       it('should call setQueryContext if dataset is the same', () => {
         // this is called in constructor, so need to reset
-        commonProps.setQueryContext.reset();
+        commonProps.setQueryContext.resetHistory();
         instance.receiveProps(commonProps, commonProps);
         expect(commonProps.setQueryContext).to.not.have.been.called;
       });

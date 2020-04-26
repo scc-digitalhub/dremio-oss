@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,7 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { Component } from 'react';
+import { Component, Fragment } from 'react';
+import { compose } from 'redux';
 import PropTypes from 'prop-types';
 import Immutable from 'immutable';
 import { connect }   from 'react-redux';
@@ -28,7 +29,7 @@ import { performLoadDataset } from 'actions/explore/dataset/get';
 import { setCurrentSql } from 'actions/explore/view';
 import { resetViewState } from 'actions/resources';
 import { withDatasetChanges } from '@app/pages/ExplorePage/DatasetChanges';
-import { withHookProvider, withRouteLeaveSubscription } from '@app/containers/RouteLeave.js';
+import { withRouteLeaveSubscription, withRouteLeaveEvent } from '@app/containers/RouteLeave.js';
 
 import {
   updateSqlPartSize
@@ -36,9 +37,7 @@ import {
 
 import { showConfirmationDialog } from 'actions/confirmation';
 
-import { setResizeProgressState } from 'actions/explore/ui';
-
-import { updateGridSizes, updateRightTreeVisibility } from 'actions/ui/ui';
+import { updateRightTreeVisibility } from 'actions/ui/ui';
 
 import { hasDatasetChanged } from 'utils/datasetUtils';
 
@@ -62,15 +61,12 @@ export class ExplorePageControllerComponent extends Component {
     history: PropTypes.instanceOf(Immutable.Map),
     rightTreeVisible: PropTypes.bool,
     updateRightTreeVisibility: PropTypes.func,
-    updateGridSizes: PropTypes.func,
-    setResizeProgressState: PropTypes.func,
     isResizeInProgress: PropTypes.bool,
     updateSqlPartSize: PropTypes.func.isRequired,
     exploreViewState: PropTypes.instanceOf(Immutable.Map),
     performLoadDataset: PropTypes.func.isRequired,
     setCurrentSql: PropTypes.func.isRequired,
     resetViewState: PropTypes.func.isRequired,
-    style: PropTypes.object,
     showConfirmationDialog: PropTypes.func,
     router: PropTypes.object,
     addHasChangesHook: PropTypes.func, // (hasChangesCallback[: (nextLocation) => bool]) => void
@@ -218,28 +214,33 @@ export class ExplorePageControllerComponent extends Component {
 
   render() {
     const {
-      pageType
+      pageType,
+      dataset,
+      rightTreeVisible,
+      location,
+      updateSqlPartSize : updateSqlPartSizeFn,
+      sqlState,
+      sqlSize,
+      isResizeInProgress
     } = this.props;
+    const nextPageType = this.isPageTypeValid(pageType) ? pageType : defaultPageType;
+
     return (
-      <div style={this.props.style}>
+      <Fragment>
         <ExplorePage
-          pageType={this.isPageTypeValid(pageType) ? pageType : defaultPageType}
-          dataset={this.props.dataset}
-          history={this.props.history}
-          setResizeProgressState={this.props.setResizeProgressState}
-          rightTreeVisible={this.props.rightTreeVisible}
+          pageType={nextPageType}
+          dataset={dataset}
+          rightTreeVisible={rightTreeVisible}
           toggleRightTree={this.toggleRightTree}
           dragType={this.state.dragType}
-          updateGridSizes={this.props.updateGridSizes}
-          location={this.props.location}
-          updateSqlPartSize={this.props.updateSqlPartSize}
-          sqlState={this.props.sqlState}
-          sqlSize={this.props.sqlSize}
-          style={this.props.style}
-          isResizeInProgress={this.props.isResizeInProgress}
+          location={location}
+          updateSqlPartSize={updateSqlPartSizeFn}
+          sqlState={sqlState}
+          sqlSize={sqlSize}
+          isResizeInProgress={isResizeInProgress}
         />
         <QlikStateModal />
-      </div>
+      </Fragment>
     );
   }
 }
@@ -266,16 +267,18 @@ function mapStateToProps(state, ownProps) {
 
 export const ExplorePageController = withRouter(withRouteLeaveSubscription(ExplorePageControllerComponent));
 
-const Connected = withHookProvider(connect(mapStateToProps, {
-  performLoadDataset,
-  setCurrentSql,
-  resetViewState,
-  updateSqlPartSize,
-  updateGridSizes,
-  setResizeProgressState,
-  updateRightTreeVisibility,
-  showConfirmationDialog
-})(withDatasetChanges(ExplorePageController)));
+const Connected = compose(
+  withRouteLeaveEvent,
+  connect(mapStateToProps, {
+    performLoadDataset,
+    setCurrentSql,
+    resetViewState,
+    updateSqlPartSize,
+    updateRightTreeVisibility,
+    showConfirmationDialog
+  }),
+  withDatasetChanges
+)(ExplorePageController);
 
 export default moduleStateHOC(exploreStateKey, explore)(Connected);
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -65,6 +65,15 @@ public final class FieldSizeLimitExceptionHelper {
       .addContext("size", size)
       .addContext("limit", maxSize)
       .build(logger);
+  }
+
+  public static UserException createReadFieldSizeLimitException(int size, int maxSize) {
+    return UserException
+      .unsupportedError()
+      .message("Attempting to read a too large value for a field. Size was %d but limit was %d.", size, maxSize)
+      .addContext("size", size)
+      .addContext("limit", maxSize)
+      .build();
   }
 
   public static UserException createReadFieldSizeLimitException(int size, int maxSize, int fieldIndex, org.slf4j.Logger logger) {

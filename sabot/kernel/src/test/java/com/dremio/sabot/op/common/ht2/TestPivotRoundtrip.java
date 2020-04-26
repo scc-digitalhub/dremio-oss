@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ import org.junit.Test;
 import com.dremio.common.AutoCloseables;
 import com.dremio.sabot.BaseTestWithAllocator;
 import com.google.common.base.Charsets;
-import com.google.common.collect.FluentIterable;
+import com.google.common.collect.ImmutableList;
 
 import io.netty.buffer.ArrowBuf;
 
@@ -118,8 +118,8 @@ public class TestPivotRoundtrip extends BaseTestWithAllocator {
         unpivotHelper(pivot, fbv, vbv, in, out, 100, 924);
       }
     } finally {
-      AutoCloseables.close(FluentIterable.of(in));
-      AutoCloseables.close(FluentIterable.of(out));
+      AutoCloseables.close(ImmutableList.copyOf(in));
+      AutoCloseables.close(ImmutableList.copyOf(out));
     }
   }
 

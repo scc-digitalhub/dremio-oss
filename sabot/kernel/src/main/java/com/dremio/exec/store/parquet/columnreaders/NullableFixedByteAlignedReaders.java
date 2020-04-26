@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 
+import org.apache.arrow.memory.util.LargeMemoryUtil;
 import org.apache.arrow.vector.BigIntVector;
 import org.apache.arrow.vector.DateMilliVector;
 import org.apache.arrow.vector.DecimalHelper;
@@ -60,7 +61,9 @@ public class NullableFixedByteAlignedReaders {
       this.bytebuf = pageReader.pageData;
 
       // fill in data.
-      vectorData.writeBytes(bytebuf, (int) readStartInBytes, (int) readLength);
+      vectorData.setBytes(vectorData.writerIndex(), bytebuf, (int) readStartInBytes, (int)
+        readLength);
+      vectorData.writerIndex(vectorData.writerIndex() + (int)readLength);
     }
   }
 
@@ -89,8 +92,8 @@ public class NullableFixedByteAlignedReaders {
         // Set the write Index. The next page that gets read might be a page that does not use dictionary encoding
         // and we will go into the else condition below. The readField method of the parent class requires the
         // writer index to be set correctly.
-        int writerIndex = valueVec.getDataBuffer().writerIndex();
-        valueVec.getDataBuffer().setIndex(0, writerIndex + (int)readLength);
+        long writerIndex = valueVec.getDataBuffer().writerIndex();
+        valueVec.getDataBuffer().setInt(0, LargeMemoryUtil.checkedCastToInt(writerIndex + readLength));
       } else {
         super.readField(recordsToReadInThisPass);
         // TODO - replace this with fixed binary type in Dremio

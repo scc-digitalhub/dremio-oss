@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,22 +15,24 @@
  */
 package com.dremio.service.jobs;
 
+import com.dremio.service.job.JobSummary;
+
 /**
  * Informs an interested party about job events.
  */
 public interface ExternalStatusListener {
 
   /**
-   * Called one or more times when a profile is updated (prior to job completion).
+   * Called one or more times when a query makes progress.
    *
-   * @param job updated job
+   * @param jobSummary updated jobsummary
    */
-  void profileUpdated(Job job);
+  default void queryProgressed(JobSummary jobSummary) {}
 
   /**
    * Called when job is completed. Provides final job object.
    *
-   * @param job updated job
+   * @param jobSummary updated jobsummary
    */
-  void queryCompleted(Job job);
+  default void queryCompleted(JobSummary jobSummary) {}
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -83,8 +83,8 @@ public abstract class ColumnReader<V extends ValueVector> {
     this.schemaElement = schemaElement;
     this.valueVec =  v;
     this.pageReader = (parentReader.getSingleStream() != null)?
-      new DeprecatedSingleStreamPageReader(this, parentReader.getSingleStream(), parentReader.getHadoopPath(), columnChunkMetaData) :
-      new PageReader(this, parentReader.getFileSystem(), parentReader.getHadoopPath(), columnChunkMetaData);
+      new DeprecatedSingleStreamPageReader(this, parentReader.getSingleStream(), parentReader.getFsPath(), columnChunkMetaData) :
+      new PageReader(this, parentReader.getFileSystem(), parentReader.getFsPath(), columnChunkMetaData);
 
     if (columnDescriptor.getType() != PrimitiveType.PrimitiveTypeName.BINARY) {
       if (columnDescriptor.getType() == PrimitiveTypeName.FIXED_LEN_BYTE_ARRAY) {

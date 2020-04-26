@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,8 +21,13 @@ import { injectIntl } from 'react-intl';
 import { ModalForm, FormBody, modalFormProps } from 'components/Forms';
 import General from 'components/Forms/General';
 import { connectComplexForm } from 'components/Forms/connectComplexForm';
+import { applyValidators, noDoubleQuotes } from '@app/utils/validation';
 
 const SECTIONS = [General];
+
+function validate(values) {
+  return applyValidators(values, [noDoubleQuotes('name')]);
+}
 
 export class SpaceForm extends Component {
 
@@ -43,7 +48,7 @@ export class SpaceForm extends Component {
     const description = intl.formatMessage({ id: 'Space.AddSpaceModalDescription' });
     return (
       <ModalForm {...modalFormProps(this.props)} onSubmit={handleSubmit(onFormSubmit)}>
-        <FormBody style={{padding: '20px 5px 20px 15px'}}>
+        <FormBody style={{padding: '20px 15px'}}>
           <General
             showAccelerationSection={false}
             fields={fields}
@@ -58,5 +63,6 @@ export class SpaceForm extends Component {
 
 export default injectIntl(connectComplexForm({
   form: 'space',
-  fields: ['version']
+  fields: ['version'],
+  validate
 }, SECTIONS, null, {})(SpaceForm));

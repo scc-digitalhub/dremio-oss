@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,18 +18,15 @@ package com.dremio.dac.homefiles;
 import static java.lang.String.format;
 
 import java.io.IOException;
+import java.nio.file.attribute.PosixFilePermission;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import javax.inject.Provider;
 
-import org.apache.hadoop.fs.FileStatus;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.fs.permission.FsAction;
-import org.apache.hadoop.fs.permission.FsPermission;
-
+import com.dremio.common.exceptions.UserException;
 import com.dremio.common.logical.FormatPluginConfig;
 import com.dremio.common.utils.PathUtils;
 import com.dremio.connector.ConnectorException;
@@ -50,11 +47,14 @@ import com.dremio.exec.store.DatasetRetrievalOptions;
 import com.dremio.exec.store.dfs.FileDatasetHandle;
 import com.dremio.exec.store.dfs.FileSelection;
 import com.dremio.exec.store.dfs.FileSystemPlugin;
-import com.dremio.exec.store.dfs.FileSystemWrapper;
 import com.dremio.exec.store.dfs.FormatPlugin;
 import com.dremio.exec.store.dfs.PhysicalDatasetUtils;
 import com.dremio.exec.store.dfs.PreviousDatasetInfo;
 import com.dremio.exec.store.file.proto.FileProtobuf.FileUpdateKey;
+import com.dremio.io.file.FileAttributes;
+import com.dremio.io.file.FileSystem;
+import com.dremio.io.file.FileSystemUtils;
+import com.dremio.io.file.Path;
 import com.dremio.service.namespace.NamespaceException;
 import com.dremio.service.namespace.NamespaceKey;
 import com.dremio.service.namespace.NamespaceNotFoundException;
@@ -63,6 +63,7 @@ import com.dremio.service.namespace.dataset.proto.DatasetType;
 import com.dremio.service.namespace.file.proto.FileConfig;
 import com.dremio.service.users.SystemUser;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Sets;
 
 /**
  * New storage plugin for home files
@@ -70,18 +71,23 @@ import com.google.common.collect.ImmutableList;
 public class HomeFileSystemStoragePlugin extends FileSystemPlugin<HomeFileConf> {
   private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(HomeFileSystemStoragePlugin.class);
 
-  static final FsPermission DEFAULT_PERMISSIONS = new FsPermission(FsAction.ALL, FsAction.READ, FsAction.EXECUTE);
+  static final Set<PosixFilePermission> DEFAULT_PERMISSIONS = Sets.immutableEnumSet(
+        PosixFilePermission.OWNER_READ,
+        PosixFilePermission.OWNER_WRITE,
+        PosixFilePermission.OWNER_EXECUTE);
+
   public static final String HOME_PLUGIN_NAME = "__home";
   private static final String UPLOADS = "_uploads";
   private static final String STAGING = "_staging";
 
   private final Path stagingDir;
   private final Path uploadsDir;
+  private Object deleteHookKey;
 
   public HomeFileSystemStoragePlugin(final HomeFileConf config, final SabotContext context, final String name, Provider<StoragePluginId> idProvider) {
     super(config, context, name, idProvider);
-    this.stagingDir = new Path(config.getPath(), STAGING + "." + context.getDremioConfig().getThisNode());
-    this.uploadsDir = new Path(config.getPath(), UPLOADS);
+    this.stagingDir = config.getPath().resolve(STAGING + "." + context.getDremioConfig().getThisNode());
+    this.uploadsDir = config.getPath().resolve(UPLOADS);
   }
 
   @Override
@@ -96,7 +102,23 @@ public class HomeFileSystemStoragePlugin extends FileSystemPlugin<HomeFileConf> 
     fs.mkdirs(getConfig().getPath(), DEFAULT_PERMISSIONS);
     fs.mkdirs(stagingDir, DEFAULT_PERMISSIONS);
     fs.mkdirs(uploadsDir, DEFAULT_PERMISSIONS);
-    fs.deleteOnExit(stagingDir);
+    deleteHookKey = FileSystemUtils.deleteOnExit(fs, stagingDir);
+  }
+
+  @Override
+  public void close() {
+    if (deleteHookKey != null) {
+      try {
+        if (getSystemUserFS().exists(stagingDir)) {
+          getSystemUserFS().delete(stagingDir, true);
+          FileSystemUtils.cancelDeleteOnExit(deleteHookKey);
+        }
+      } catch (IOException ex) {
+        logger.warn("Unable to delete staging directory when closing HomeFileSystemPlugin.", ex);
+      }
+      deleteHookKey = null;
+    }
+    super.close();
   }
 
   @Override
@@ -122,11 +144,15 @@ public class HomeFileSystemStoragePlugin extends FileSystemPlugin<HomeFileConf> 
     PreviousDatasetInfo oldConfig = new PreviousDatasetInfo(fileConfig, CurrentSchemaOption.getSchema(options), SortColumnsOption.getSortColumns(options));
     FormatPluginConfig pluginConfig = null;
     try {
-      final FileSystemWrapper fs = getSystemUserFS();
+      final FileSystem fs = getSystemUserFS();
 
       if (fileConfig == null) {
         final DatasetConfig datasetConfig = getContext().getNamespaceService(SystemUser.SYSTEM_USERNAME).getDataset(namespaceKey);
-        fileConfig = datasetConfig.getPhysicalDataset().getFormatSettings();
+        if (datasetConfig.getPhysicalDataset() == null) {
+          throw UserException.validationError().message("not a valid physical dataset").buildSilently();
+        } else {
+          fileConfig = datasetConfig.getPhysicalDataset().getFormatSettings();
+        }
       }
 
       pluginConfig = PhysicalDatasetUtils.toFormatPlugin(fileConfig, Collections.<String>emptyList());
@@ -142,7 +168,7 @@ public class HomeFileSystemStoragePlugin extends FileSystemPlugin<HomeFileConf> 
   @Override
   protected FileDatasetHandle getDatasetWithFormat(NamespaceKey datasetPath, PreviousDatasetInfo oldConfig, FormatPluginConfig formatPluginConfig, DatasetRetrievalOptions retrievalOptions, String user) throws Exception {
     try{
-      final FileSystemWrapper fs = getSystemUserFS();
+      final FileSystem fs = getSystemUserFS();
       final DatasetConfig datasetConfig = getContext().getNamespaceService(SystemUser.SYSTEM_USERNAME).getDataset(datasetPath);
 
       if (!(datasetConfig.getType() == DatasetType.PHYSICAL_DATASET_HOME_FILE || datasetConfig.getType() == DatasetType.PHYSICAL_DATASET_HOME_FOLDER)) {
@@ -158,7 +184,7 @@ public class HomeFileSystemStoragePlugin extends FileSystemPlugin<HomeFileConf> 
         // a home file can only be read from the namespace or using a format options. Without either, it is invalid, return nothing.
         return null;
       }
-      return super.getDatasetWithFormat(new NamespaceKey(relativePath(datasetPath.getPathComponents(), getConfig().getPath())), oldConfig, formatPluginConfig, retrievalOptions, null);
+      return super.getDatasetWithFormat(new NamespaceKey(relativePath(datasetPath.getPathComponents(), getConfig().getPath())), oldConfig, formatPluginConfig, retrievalOptions, SystemUser.SYSTEM_USERNAME);
     }
   }
 
@@ -181,14 +207,14 @@ public class HomeFileSystemStoragePlugin extends FileSystemPlugin<HomeFileConf> 
       NamespaceKey datasetPath,
       PreviousDatasetInfo oldConfig,
       FormatPlugin formatPlugin,
-      FileSystemWrapper fs,
+      FileSystem fs,
       FileConfig fileConfig,
       int maxLeafColumns
   ) throws IOException {
 
     final FileUpdateKey.Builder updateKey = FileUpdateKey.newBuilder();
-    final FileStatus rootStatus = fs.getFileStatus(new Path(fileConfig.getLocation()));
-    final Path combined = new Path("/", PathUtils.removeLeadingSlash(fileConfig.getLocation()));
+    final FileAttributes rootAttributes = fs.getFileAttributes(Path.of(fileConfig.getLocation()));
+    final Path combined = Path.of("/").resolve(PathUtils.removeLeadingSlash(fileConfig.getLocation()));
     final FileSelection fileSelection = FileSelection.create(fs, combined);
 
     if (fileSelection == null) {
@@ -196,17 +222,17 @@ public class HomeFileSystemStoragePlugin extends FileSystemPlugin<HomeFileConf> 
     }
 
     // first entity is always a root
-    if (rootStatus.isDirectory()) {
-      updateKey.addCachedEntities(fromFileStatus(rootStatus));
+    if (rootAttributes.isDirectory()) {
+      updateKey.addCachedEntities(fromFileAttributes(rootAttributes));
     }
 
-    for (FileStatus dirStatus: fileSelection.getAllDirectories()) {
-      updateKey.addCachedEntities(fromFileStatus(dirStatus));
+    for (FileAttributes dirAttributes: fileSelection.getAllDirectories()) {
+      updateKey.addCachedEntities(fromFileAttributes(dirAttributes));
     }
 
     if(updateKey.getCachedEntitiesCount() == 0){
       // this is a single file.
-      updateKey.addCachedEntities(fromFileStatus(rootStatus));
+      updateKey.addCachedEntities(fromFileAttributes(rootAttributes));
     }
     final boolean hasDirectories = fileSelection.containsDirectories();
     // Expand selection by copying it first used to check extensions of files in directory.
@@ -216,7 +242,11 @@ public class HomeFileSystemStoragePlugin extends FileSystemPlugin<HomeFileConf> 
       // no files in the found directory, not a table.
       return null;
     }
-    return formatPlugin.getDatasetAccessor(DatasetType.PHYSICAL_DATASET_HOME_FILE, oldConfig, fs, fileSelectionWithoutDir, this, datasetPath, updateKey.build(), maxLeafColumns);
+
+    FileDatasetHandle.checkMaxFiles(datasetPath.getName(), fileSelectionWithoutDir.getFileAttributesList().size(), getContext(),
+      getConfig().isInternal());
+    return formatPlugin.getDatasetAccessor(DatasetType.PHYSICAL_DATASET_HOME_FILE, oldConfig, fs,
+      fileSelectionWithoutDir, this, datasetPath, updateKey.build(), maxLeafColumns);
   }
 
   private static List<String> relativePath(List<String> tableSchemaPath, Path rootPath) {

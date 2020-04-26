@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ import java.util.Iterator;
 import java.util.List;
 
 import com.dremio.datastore.SearchTypes.SearchQuery;
+import com.dremio.exec.planner.sql.CalciteArrowHelper;
 import com.dremio.exec.record.BatchSchema;
 import com.dremio.exec.store.SplitsKey;
 import com.dremio.exec.store.SplitsPointer;
@@ -138,7 +139,7 @@ public class TableMetadataImpl implements TableMetadata {
   @Override
   public BatchSchema getSchema() {
     if(schema == null){
-      schema = BatchSchema.fromDataset(config);
+      schema = CalciteArrowHelper.fromDataset(config);
     }
 
     return schema;

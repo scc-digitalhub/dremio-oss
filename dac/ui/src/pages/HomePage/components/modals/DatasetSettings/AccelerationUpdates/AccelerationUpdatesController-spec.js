@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ import Immutable from 'immutable';
 
 import ApiUtils from 'utils/apiUtils/apiUtils';
 import DataFreshnessSection from 'components/Forms/DataFreshnessSection';
-import { ALL_TYPES, INCREMENTAL_TYPES } from 'constants/columnTypeGroups';
+import { ALL_TYPES, INCREMENTAL_TYPES } from '@app/constants/columnTypeGroups';
 import { AccelerationUpdatesController } from './AccelerationUpdatesController';
 import AccelerationUpdatesForm from './AccelerationUpdatesForm';
 
@@ -123,7 +123,7 @@ describe('AccelerationUpdatesController', () => {
 
       instance.receiveProps(nextProps, props);
       setTimeout(() => {
-        expect(props.loadDatasetAccelerationSettings).to.have.been.called;
+        expect(instance.loadDataset).to.have.been.called;
         done();
       }, 50);
     });
@@ -131,7 +131,7 @@ describe('AccelerationUpdatesController', () => {
     it('should not load settings when entity did not change', (done) => {
       instance.receiveProps(props, props);
       setTimeout(() => {
-        expect(props.loadDatasetAccelerationSettings).to.have.not.been.called;
+        expect(instance.loadDataset).to.have.not.been.called;
         done();
       }, 50);
     });

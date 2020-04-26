@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,6 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-export CALL_MOCK_API from './CALL_MOCK_API';
-export mockApiMiddleware from './middleware';
+import CALL_MOCK_API from './CALL_MOCK_API';
+import mockApiMiddleware from './middleware';
 
+export {
+  CALL_MOCK_API,
+  mockApiMiddleware
+};

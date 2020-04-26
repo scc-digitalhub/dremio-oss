@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,12 +22,13 @@ import com.beust.jcommander.Parameter;
 import com.beust.jcommander.ParameterException;
 import com.beust.jcommander.Parameters;
 import com.dremio.dac.server.DACConfig;
-import com.dremio.datastore.LocalKVStoreProvider;
+import com.dremio.datastore.api.LegacyKVStoreProvider;
 import com.dremio.service.users.SimpleUserService;
 
 /**
  * Set password for a given user, used by admins.
  */
+@AdminCommand(value = "set-password", description = "Sets passwords for Dremio users (non-LDAP)")
 public class SetPassword {
 
   /**
@@ -71,15 +72,15 @@ public class SetPassword {
   }
 
   public static void resetPassword(DACConfig dacConfig, String userName, String password) throws Exception {
-    Optional<LocalKVStoreProvider> providerOptional = CmdUtils.getKVStoreProvider(dacConfig.getConfig());
+    Optional<LegacyKVStoreProvider> providerOptional = CmdUtils.getLegacyKVStoreProvider(dacConfig.getConfig());
     if (!providerOptional.isPresent()) {
       AdminLogger.log("No KVStore detected.");
       return;
     }
 
-    try(LocalKVStoreProvider kvStoreProvider = providerOptional.get()) {
+    try(LegacyKVStoreProvider kvStoreProvider = providerOptional.get()) {
       kvStoreProvider.start();
-      new SimpleUserService(kvStoreProvider).setPassword(userName, password);
+      new SimpleUserService(() -> kvStoreProvider).setPassword(userName, password);
     }
     AdminLogger.log("Password changed");
   }

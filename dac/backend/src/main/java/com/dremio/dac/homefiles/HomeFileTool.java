@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,23 +19,24 @@ import static java.lang.String.format;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.UUID;
 
 import javax.inject.Inject;
+import javax.ws.rs.core.Context;
+import javax.ws.rs.core.SecurityContext;
 
-import org.apache.hadoop.fs.FSDataOutputStream;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.io.IOUtils;
+import org.apache.commons.io.IOUtils;
 
 import com.dremio.common.exceptions.ExecutionSetupException;
 import com.dremio.common.utils.PathUtils;
-import com.dremio.config.DremioConfig;
+import com.dremio.dac.model.spaces.HomeName;
 import com.dremio.exec.server.SabotContext;
 import com.dremio.exec.store.CatalogService;
 import com.dremio.exec.store.StoragePlugin;
-import com.dremio.exec.store.dfs.FileSystemWrapper;
 import com.dremio.file.FilePath;
+import com.dremio.io.file.FileSystem;
+import com.dremio.io.file.Path;
 import com.dremio.service.namespace.file.FileFormat;
 import com.dremio.service.namespace.file.proto.FileType;
 import com.google.common.annotations.VisibleForTesting;
@@ -49,34 +50,25 @@ public class HomeFileTool {
   private final HomeFileConf config;
   private final FileSystem fs;
   private final String hostname;
+  private final SecurityContext securityContext;
 
   @Inject
-  public HomeFileTool(SabotContext context, CatalogService catalog) throws ExecutionSetupException {
+  public HomeFileTool(SabotContext context, CatalogService catalog, @Context SecurityContext securityContext) throws ExecutionSetupException {
     StoragePlugin plugin = catalog.getSource(HomeFileSystemStoragePlugin.HOME_PLUGIN_NAME);
     Preconditions.checkNotNull(plugin, "Plugin [%s] not found.", HomeFileSystemStoragePlugin.HOME_PLUGIN_NAME);
     HomeFileSystemStoragePlugin homePlugin = (HomeFileSystemStoragePlugin) plugin;
     this.fs = homePlugin.getSystemUserFS();
     this.config = homePlugin.getConfig();
     this.hostname = context.getDremioConfig().getThisNode();
+    this.securityContext = securityContext;
   }
 
   @VisibleForTesting
-  public HomeFileTool(HomeFileConf config, FileSystem fs, String hostname){
+  public HomeFileTool(HomeFileConf config, FileSystem fs, String hostname, SecurityContext securityContext){
     this.config = config;
     this.fs = fs;
     this.hostname = hostname;
-  }
-
-  /**
-   * Constructor to use outside the context of the daemon (specifically for restore).
-   * @param config The Config object to use.
-   * @throws ExecutionSetupException
-   * @throws IOException
-   */
-  public HomeFileTool(DremioConfig config) throws ExecutionSetupException, IOException {
-    this.config = new HomeFileConf(config);
-    this.hostname = config.getThisNode();
-    this.fs = this.config.getFilesystemAndCreatePaths(hostname);
+    this.securityContext = securityContext;
   }
 
   /**
@@ -86,7 +78,8 @@ public class HomeFileTool {
    * @param extension file extension
    * @return location of staging dir where user file is uploaded.
    */
-  private Path getStagingLocation(FilePath filePath, String extension) {
+  @VisibleForTesting
+  public Path getStagingLocation(FilePath filePath, String extension) {
     FilePath uniquePath = filePath.rename(format("%s_%s-%s", filePath.getFileName().toString(), extension, UUID.randomUUID().toString()));
     return Path.mergePaths(config.getStagingPath(hostname), PathUtils.toFSPath(uniquePath.toPathList()));
   }
@@ -103,7 +96,7 @@ public class HomeFileTool {
    * @return
    */
   private Path filePath(Path parent, String fileName) throws IOException {
-    return FileSystemWrapper.canonicalizePath(fs,  new Path(parent, fileName));
+    return fs.canonicalizePath(parent.resolve(fileName));
   }
 
   private Path getUploadLocation(FilePath filePath, String extension) {
@@ -121,13 +114,15 @@ public class HomeFileTool {
   public Path stageFile(FilePath filePath, String extension, InputStream input) throws IOException {
     final Path stagingLocation = getStagingLocation(filePath, extension);
     fs.mkdirs(stagingLocation, HomeFileSystemStoragePlugin.DEFAULT_PERMISSIONS);
-    final FSDataOutputStream output = fs.create(filePath(stagingLocation, format("%s.%s", filePath.getFileName().getName(), extension)), true);
-    IOUtils.copyBytes(input, output, 1024, true);
+    try (final InputStream is = input;
+        final OutputStream output = fs.create(filePath(stagingLocation, format("%s.%s", filePath.getFileName().getName(), extension)), true)) {
+      IOUtils.copy(is, output);
+    }
     return fs.makeQualified(stagingLocation);
   }
 
   public Path saveFile(String stagingLocation, FilePath filePath, FileType fileType) throws IOException {
-    return saveFile(new Path(stagingLocation), filePath, FileFormat.getExtension(fileType));
+    return saveFile(Path.of(stagingLocation), filePath, FileFormat.getExtension(fileType));
   }
 
   /**
@@ -138,6 +133,10 @@ public class HomeFileTool {
    * @throws IOException
    */
   public Path saveFile(Path stagingLocation, FilePath filePath, String extension) throws IOException {
+    if (!validStagingLocation(stagingLocation)) {
+      throw new IllegalArgumentException("Invalid staging location provided");
+    }
+
     final Path uploadLocation = getUploadLocation(filePath, extension);
     fs.mkdirs(uploadLocation.getParent());
     // rename staging dir to uploadPath
@@ -146,12 +145,29 @@ public class HomeFileTool {
   }
 
   /**
+   * Validates that the staging location is valid for the current user.
+   *
+   * @param stagingLocation staging directory where file is uploaded
+   * @return if the location is valid or not
+   */
+  public boolean validStagingLocation(Path stagingLocation) {
+    final Path stagingPath = fs.makeQualified(stagingLocation);
+
+    // the path to validate against should include the username
+    final HomeName userHomePath = HomeName.getUserHomePath(securityContext.getUserPrincipal().getName());
+    final Path validBasePath = fs.makeQualified(config.getStagingPath(hostname).resolve(userHomePath.getName()));
+
+    return stagingPath.toURI().getScheme().equals(validBasePath.toURI().getScheme()) &&
+      PathUtils.checkNoAccessOutsideBase(validBasePath, stagingPath);
+  }
+
+  /**
    * Delete file uploaded by user
    * @throws IOException
    */
   public void deleteFile(String fileLocation) throws IOException {
     if (fileLocation != null) {
-      fs.delete(new Path(fileLocation), true);
+      fs.delete(Path.of(fileLocation), true);
     }
   }
 
@@ -162,7 +178,7 @@ public class HomeFileTool {
    * @throws IOException
    */
   public boolean deleteHomeAndContents(String userHome) throws IOException {
-    final Path homePath = new Path(config.getInnerUploads(), userHome);
+    final Path homePath = config.getInnerUploads().resolve(userHome);
     if (fs.exists(homePath)) {
       return fs.delete(homePath, true);
     }

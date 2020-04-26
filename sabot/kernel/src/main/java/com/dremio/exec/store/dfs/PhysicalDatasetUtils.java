@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,14 +16,11 @@
 package com.dremio.exec.store.dfs;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
-
-import org.apache.hadoop.fs.Path;
 
 import com.dremio.common.logical.FormatPluginConfig;
 import com.dremio.common.utils.PathUtils;
-import com.dremio.exec.store.avro.AvroFormatConfig;
-import com.dremio.exec.store.avro.AvroFormatPlugin;
 import com.dremio.exec.store.easy.arrow.ArrowFormatPlugin;
 import com.dremio.exec.store.easy.arrow.ArrowFormatPluginConfig;
 import com.dremio.exec.store.easy.excel.ExcelFormatPlugin;
@@ -32,17 +29,22 @@ import com.dremio.exec.store.easy.json.JSONFormatPlugin;
 import com.dremio.exec.store.easy.text.TextFormatPlugin;
 import com.dremio.exec.store.easy.text.TextFormatPlugin.TextFormatConfig;
 import com.dremio.exec.store.easy.text.compliant.TextParsingSettings;
+import com.dremio.exec.store.iceberg.IcebergFormatConfig;
+import com.dremio.exec.store.iceberg.IcebergFormatPlugin;
 import com.dremio.exec.store.parquet.ParquetFormatConfig;
 import com.dremio.exec.store.parquet.ParquetFormatPlugin;
+import com.dremio.io.file.Path;
 import com.dremio.service.namespace.NamespaceException;
 import com.dremio.service.namespace.NamespaceKey;
 import com.dremio.service.namespace.NamespaceService;
 import com.dremio.service.namespace.dataset.proto.DatasetConfig;
 import com.dremio.service.namespace.file.FileFormat;
 import com.dremio.service.namespace.file.proto.ArrowFileConfig;
-import com.dremio.service.namespace.file.proto.AvroFileConfig;
 import com.dremio.service.namespace.file.proto.ExcelFileConfig;
 import com.dremio.service.namespace.file.proto.FileConfig;
+import com.dremio.service.namespace.file.proto.FileType;
+import com.dremio.service.namespace.file.proto.IcebergFileConfig;
+import com.dremio.service.namespace.file.proto.IcebergMetaStoreType;
 import com.dremio.service.namespace.file.proto.JsonFileConfig;
 import com.dremio.service.namespace.file.proto.ParquetFileConfig;
 import com.dremio.service.namespace.file.proto.TextFileConfig;
@@ -72,7 +74,7 @@ public class PhysicalDatasetUtils {
     }
 
     final List<String> tableSchemaPath = new ArrayList<>(schemaPath);
-    tableSchemaPath.addAll(PathUtils.toPathComponents(new Path(tableName)));
+    tableSchemaPath.addAll(PathUtils.toPathComponents(Path.of(tableName)));
 
     try {
       final DatasetConfig config = namespaceService.getDataset(new NamespaceKey(tableSchemaPath));
@@ -81,6 +83,12 @@ public class PhysicalDatasetUtils {
       logger.debug("Failed to get physical dataset properties for table {} error {}", PathUtils.constructFullPath(tableSchemaPath), e);
     }
     return null;
+  }
+
+  private static ParquetFormatConfig toParquetFormatConfig(ParquetFileConfig fileConfig) {
+    ParquetFormatConfig parquetFormatConfig = new ParquetFormatConfig();
+    parquetFormatConfig.autoCorrectCorruptDates = fileConfig.getAutoCorrectCorruptDates();
+    return parquetFormatConfig;
   }
 
   /**
@@ -122,11 +130,7 @@ public class PhysicalDatasetUtils {
         return jsonFormatConfig;
       case PARQUET:
         final ParquetFileConfig parquetFileConfig = (ParquetFileConfig)com.dremio.service.namespace.file.FileFormat.getForFile(fileConfig);
-        ParquetFormatConfig parquetFormatConfig = new ParquetFormatConfig();
-        parquetFormatConfig.autoCorrectCorruptDates = parquetFileConfig.getAutoCorrectCorruptDates();
-        return parquetFormatConfig;
-      case AVRO:
-        return new AvroFormatConfig();
+        return toParquetFormatConfig(parquetFileConfig);
       case ARROW:
         return new ArrowFormatPluginConfig();
       case EXCEL: {
@@ -151,10 +155,32 @@ public class PhysicalDatasetUtils {
       }
       case HTTP_LOG:
         break;
+      case ICEBERG:
+        IcebergFileConfig icebergFileConfig = (IcebergFileConfig)com.dremio.service.namespace.file.FileFormat.getForFile(fileConfig);
+        if (icebergFileConfig.getDataFormatTypeList() == null) {
+          // preview sends an empty entry.
+          icebergFileConfig.setMetaStoreType(IcebergMetaStoreType.HDFS);
+          icebergFileConfig.setDataFormatTypeList(Collections.singletonList(FileType.PARQUET));
+          icebergFileConfig.setParquetDataFormat(new ParquetFileConfig());
+        } else if (icebergFileConfig.getDataFormatTypeList().size() != 1 ||
+          icebergFileConfig.getDataFormatTypeList().get(0) != FileType.PARQUET ||
+          icebergFileConfig.getMetaStoreType() != IcebergMetaStoreType.HDFS) {
+          return null;
+        }
+
+        final IcebergFormatConfig icebergFormatConfig = new IcebergFormatConfig();
+        icebergFormatConfig.setDataFormatType(icebergFileConfig.getDataFormatTypeList().get(0));
+        icebergFormatConfig.setMetaStoreType(icebergFileConfig.getMetaStoreType());
+        icebergFormatConfig.setDataFormatConfig(toParquetFormatConfig(icebergFileConfig.getParquetDataFormat()));
+        return icebergFormatConfig;
       default:
         break;
     }
     return null;
+  }
+
+  private static ParquetFileConfig toParquetFileConfig(ParquetFormatConfig formatConfig) {
+    return new ParquetFileConfig().setAutoCorrectCorruptDates(formatConfig.autoCorrectCorruptDates);
   }
 
   /**
@@ -170,7 +196,7 @@ public class PhysicalDatasetUtils {
   public static FileFormat toFileFormat(FormatPlugin formatPlugin) {
     if (formatPlugin instanceof ParquetFormatPlugin) {
       ParquetFormatPlugin parquetFormatPlugin = (ParquetFormatPlugin)formatPlugin;
-      return new ParquetFileConfig().setAutoCorrectCorruptDates(parquetFormatPlugin.getConfig().autoCorrectCorruptDates);
+      return toParquetFileConfig(parquetFormatPlugin.getConfig());
     }
     if (formatPlugin instanceof JSONFormatPlugin) {
       return new JsonFileConfig();
@@ -193,9 +219,6 @@ public class PhysicalDatasetUtils {
       textFileConfig.setTrimHeader(settings.isTrimHeader());
       return textFileConfig;
     }
-    if (formatPlugin instanceof AvroFormatPlugin) {
-      return new AvroFileConfig();
-    }
     if (formatPlugin instanceof ExcelFormatPlugin) {
       final ExcelFormatPluginConfig excelFormatPluginConfig = (ExcelFormatPluginConfig)formatPlugin.getConfig();
       if (excelFormatPluginConfig.xls) {
@@ -211,6 +234,14 @@ public class PhysicalDatasetUtils {
         excelFileConfig.setSheetName(excelFormatPluginConfig.sheet);
         return excelFileConfig;
       }
+    }
+    if (formatPlugin instanceof IcebergFormatPlugin) {
+      IcebergFormatPlugin icebergFormatPlugin = (IcebergFormatPlugin)formatPlugin;
+      IcebergFormatConfig icebergFormatConfig = icebergFormatPlugin.getConfig();
+      return new IcebergFileConfig()
+        .setMetaStoreType(icebergFormatConfig.getMetaStoreType())
+        .setDataFormatTypeList(Collections.singletonList(icebergFormatConfig.getDataFormatType()))
+        .setParquetDataFormat(toParquetFileConfig((ParquetFormatConfig)icebergFormatConfig.getDataFormatConfig()));
     }
     return new UnknownFileConfig();
   }

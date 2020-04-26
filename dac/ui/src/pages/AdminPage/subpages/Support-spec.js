@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@ import { shallow } from 'enzyme';
 import Immutable from 'immutable';
 import { ApiError } from 'redux-api-middleware/lib/errors';
 
-import {Support} from './Support';
+import {Support, RESERVED} from './Support';
 import { LABELS } from './settingsConfig';
 
 describe('Support', () => {
@@ -227,4 +227,10 @@ describe('Support', () => {
     });
   });
 
+});
+
+describe('RESERVED', () => {
+  it('should include only email fields', () => {
+    expect(RESERVED.size).to.equal(2);
+  });
 });

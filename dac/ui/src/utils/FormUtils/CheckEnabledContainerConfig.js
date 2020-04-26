@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -47,7 +47,7 @@ export default class CheckEnabledContainerConfig extends FormElementConfig {
     return [this.getPropName()].concat(super.getConfig().container.getFields());
   }
 
-  addInitValues(initValues, state) {
+  addInitValues(initValues) {
     const elementConfig = super.getConfig();
     initValues = FormUtils.addInitValue(initValues, elementConfig.propName, elementConfig.checkValue);
     return elementConfig.container.addInitValues(initValues);

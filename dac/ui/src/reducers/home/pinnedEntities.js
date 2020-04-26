@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -47,7 +47,7 @@ export const pinnedEntities = (state = localStorageUtils.getPinnedItems(), {
       };
     } else if (state.hasOwnProperty(id)) { // need change the state only ifu id is presented in a state
       const {
-        [id]: toRemove,
+        [id]: toRemove, // eslint-disable-line @typescript-eslint/no-unused-vars
         ...rest
       } = state;
       newState = rest;

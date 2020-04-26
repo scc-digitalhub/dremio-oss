@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ const emptyTable = Immutable.fromJS({
   rows: []
 });
 
-function getJoinTableData(state, props) {
+function getJoinTableData(state) {
   // here data should be mutable for better perfomance
   const { entities } = state.resources;
   const joinVersion = getExploreState(state).join.getIn(['custom', 'joinVersion']);
@@ -55,6 +55,18 @@ export function getColumnFilter(state) {
   return entities.getIn(['tableData', 'columnFilter']) || '';
 }
 
+export function getJobProgress(state) {
+  const { entities } = state.resources;
+  return entities.getIn(['tableData', 'jobProgress']) || null;
+}
+
+export function getJobOutputRecords(state) {
+  const jobProgress = getJobProgress(state);
+  const datasetVersion = jobProgress && jobProgress.datasetVersion;
+  const tableData = getTableDataRaw(state, datasetVersion);
+  return tableData && tableData.get('outputRecords');
+}
+
 export function getPeekData(state, previewVersion) {
   const { entities } = state.resources;
   return entities.getIn(['previewTable', previewVersion])  || emptyTable;
@@ -66,6 +78,19 @@ export function getPaginationUrl(state, datasetVersion) {
   const { entities } = state.resources;
   const paginationUrl = entities.getIn(['fullDataset', datasetVersion, 'paginationUrl']);
   return paginationUrl || datasetVersion;
+}
+
+export function getExploreJobId(state) {
+  // this selector will have to change once we move jobId out of fullDataset and load it prior to metadata
+  const location = getLocation(state);
+  const version = getDatasetVersionFromLocation(location);
+  const fullDataset = getFullDataset(state, version);
+  return fullDataset ? fullDataset.getIn(['jobId', 'id'], '') : '';
+}
+
+export function getPaginationJobId(state, datasetVersion) {
+  const { entities } = state.resources;
+  return entities.getIn(['fullDataset', datasetVersion, 'jobId', 'id']);
 }
 
 export function getApproximate(state, datasetVersion) {
@@ -100,9 +125,9 @@ export const isWikAvailable = (state, location) => {
   const history = getHistoryFromLocation(state, location);
   const lastItemId = history ? history.get('items').last() : null;
   const {
-   query: {
-     version,
-     mode
+    query: {
+      version,
+      mode
     }
   } = location;
 
@@ -158,10 +183,10 @@ const getInitialDataset = (location, viewState) => {
     datasetVersion: version,
     datasetType: viewState.getIn(['error', 'details', 'datasetType']),
     links: {
-      self: location.pathname + '?version=' + version
+      self: location.pathname + '?version=' + encodeURIComponent(version)
     },
     apiLinks: {
-      self: `/dataset/${constructFullPathAndEncode(fullPath)}` + (version ? `/version/${version}` : '')
+      self: `/dataset/${constructFullPathAndEncode(fullPath)}` + (version ? `/version/${encodeURIComponent(version)}` : '')
     },
     needsLoad: true
   });
@@ -186,7 +211,7 @@ export const getExplorePageDataset = state => {
     dataset = getDataset(state, query.version);
     if (dataset) {
       const fullDataset = getEntity(state, query.version, 'fullDataset');
-      dataset = dataset.set('needsLoad', fullDataset && fullDataset.get('error'));
+      dataset = dataset.set('needsLoad', Boolean(fullDataset && fullDataset.get('error')));
     } else {
       dataset = getIntialDatasetFromState(state);
     }
@@ -231,7 +256,7 @@ export const getJoinTable = createSelector(
 export const getTableColumns = createSelector(
   [ getTableData ],
   table => {
-    return table.get('columns');
+    return table.get('columns') || emptyTable.get('columns');
   }
 );
 

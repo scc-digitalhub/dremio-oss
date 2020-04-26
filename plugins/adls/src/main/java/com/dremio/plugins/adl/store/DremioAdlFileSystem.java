@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,36 +16,26 @@
 package com.dremio.plugins.adl.store;
 
 import java.io.IOException;
-import java.net.URI;
 
-import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.adl.AdlFileSystem;
 
-import com.dremio.exec.store.dfs.async.AsyncByteReader;
-import com.microsoft.azure.datalake.store.AdlsAsyncFileReader;
+import com.dremio.exec.hadoop.MayProvideAsyncStream;
+import com.dremio.exec.store.dfs.FileSystemConf;
+import com.dremio.io.AsyncByteReader;
+import com.microsoft.azure.datalake.store.ADLSClient;
 
 /**
  * Specialized Hadoop FileSystem implementation for ADLS gen 1 which adds async reading capabilities.
  */
 @SuppressWarnings("Unchecked")
-public class DremioAdlFileSystem extends AdlFileSystem implements AsyncByteReader.MayProvideAsyncStream {
+public class DremioAdlFileSystem extends AdlFileSystem implements MayProvideAsyncStream {
 
-  static final String SCHEME = "dremioAdl";
-
-  private AsyncHttpClientManager asyncHttpClientManager;
-
-  @Override
-  public void initialize(URI storeUri, Configuration conf) throws IOException {
-    super.initialize(storeUri, conf);
-
-    final AzureDataLakeConf adlsConf = AzureDataLakeConf.fromConfiguration(storeUri, conf);
-    asyncHttpClientManager = new AsyncHttpClientManager("dist-uri-" + getUri().toASCIIString(), adlsConf);
-  }
+  private volatile AsyncHttpClientManager asyncHttpClientManager;
 
   @Override
   public String getScheme() {
-    return SCHEME;
+    return FileSystemConf.CloudFileSystemScheme.ADL_FILE_SYSTEM_SCHEME.getScheme();
   }
 
   @Override
@@ -61,8 +51,19 @@ public class DremioAdlFileSystem extends AdlFileSystem implements AsyncByteReade
   }
 
   @Override
-  public AsyncByteReader getAsyncByteReader(Path hadoopPath) {
-    return new AdlsAsyncFileReader(asyncHttpClientManager.getClient(), asyncHttpClientManager.getAsyncHttpClient(),
-      hadoopPath.toUri().getPath());
+  public AsyncByteReader getAsyncByteReader(Path path, String version) throws IOException {
+    if (asyncHttpClientManager == null) {
+      synchronized (this) {
+        if (asyncHttpClientManager == null) {
+          final AzureDataLakeConf adlsConf = AzureDataLakeConf.fromConfiguration(getUri(), getConf());
+          asyncHttpClientManager = new AsyncHttpClientManager("dist-uri-" + getUri().toASCIIString(), adlsConf);
+        }
+      }
+    }
+
+    return new AdlsAsyncFileReader(
+      new ADLSClient(asyncHttpClientManager.getClient()),
+      asyncHttpClientManager.getAsyncHttpClient(),
+      path.toUri().getPath(), version, this, asyncHttpClientManager.getUtilityThreadPool());
   }
 }

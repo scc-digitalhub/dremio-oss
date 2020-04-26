@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ import org.apache.calcite.util.Pair;
 import com.dremio.common.AutoCloseables;
 import com.dremio.common.util.DremioGetObject;
 import com.dremio.exec.record.BatchSchema;
-import com.dremio.sabot.op.sort.external.RecordBatchData;
+import com.dremio.exec.record.RecordBatchData;
 import com.dremio.service.job.proto.JobId;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableMap;

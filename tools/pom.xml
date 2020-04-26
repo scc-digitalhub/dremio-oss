@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <!--
 
-    Copyright (C) 2017-2018 Dremio Corporation
+    Copyright (C) 2017-2019 Dremio Corporation
 
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@
   <parent>
     <artifactId>dremio-parent</artifactId>
     <groupId>com.dremio</groupId>
-    <version>3.2.1-201905191350330803-1a33f83</version>
+    <version>4.2.2-202004211133290458-b550b6fa</version>
   </parent>
 
   <groupId>com.dremio.tools</groupId>
@@ -33,7 +33,10 @@
   <packaging>pom</packaging>
 
   <modules>
+    <module>attach-tool</module>
     <module>build-tools</module>
     <module>fmpp-maven-plugin</module>
+    <module>mongo-test-runner</module>
+    <module>protostuff-maven-plugin</module>
   </modules>
 </project>

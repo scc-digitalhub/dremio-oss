@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +24,6 @@ import org.apache.arrow.vector.VariableWidthVector;
 import com.dremio.exec.expr.fn.hll.StatisticsAggrFunctions;
 import com.dremio.sabot.exec.context.SlicedBufferManager;
 import com.dremio.sabot.op.common.ht2.LBlockHashTableNoSpill;
-
 import com.yahoo.memory.WritableMemory;
 import com.yahoo.sketches.hll.HllSketch;
 import com.yahoo.sketches.hll.TgtHllType;

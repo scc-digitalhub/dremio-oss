@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,8 +15,8 @@
  */
 package com.dremio.datastore;
 
-import com.dremio.datastore.IndexedStore.FindByCondition;
 import com.dremio.datastore.RemoteDataStoreProtobuf.SearchRequest;
+import com.dremio.datastore.api.LegacyIndexedStore.LegacyFindByCondition;
 
 /**
  * Utilities related to remote invocation of datastore.
@@ -24,13 +24,13 @@ import com.dremio.datastore.RemoteDataStoreProtobuf.SearchRequest;
 public final class RemoteDataStoreUtils {
 
   /**
-   * Converts a {@link SearchRequest} to a {@link FindByCondition}.
+   * Converts a {@link SearchRequest} to a {@link LegacyFindByCondition}.
    *
    * @param searchRequest search request
    * @return find by condition
    */
-  public static FindByCondition getConditionFromRequest(SearchRequest searchRequest) {
-    final FindByCondition findByCondition = new FindByCondition();
+  public static LegacyFindByCondition getConditionFromRequest(SearchRequest searchRequest) {
+    final LegacyFindByCondition findByCondition = new LegacyFindByCondition();
     if (searchRequest.hasLimit()) {
       findByCondition.setLimit(searchRequest.getLimit());
     }
@@ -50,13 +50,13 @@ public final class RemoteDataStoreUtils {
   }
 
   /**
-   * Converts a {@link FindByCondition} to a {@link SearchRequest}.
+   * Converts a {@link LegacyFindByCondition} to a {@link SearchRequest}.
    *
    * @param storeId   store id
    * @param condition find by condition
    * @return search request
    */
-  public static SearchRequest getRequestFromCondition(String storeId, FindByCondition condition) {
+  public static SearchRequest getRequestFromCondition(String storeId, LegacyFindByCondition condition) {
     final SearchRequest.Builder builder = SearchRequest.newBuilder();
     builder.setStoreId(storeId);
     if (condition.getCondition() != null) {

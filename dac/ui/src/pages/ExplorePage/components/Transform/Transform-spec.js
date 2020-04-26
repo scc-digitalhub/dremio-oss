@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
  */
 import { shallow } from 'enzyme';
 import Immutable from 'immutable';
-import { TEXT, MAP, LIST } from 'constants/DataTypes';
+import { TEXT, MAP, LIST } from '@app/constants/DataTypes';
 import TransformView from 'pages/ExplorePage/components/Transform/TransformView';
 
 import { Transform } from './Transform';
@@ -193,7 +193,7 @@ describe('Transform', () => {
       const transform = Immutable.fromJS({
         method: 'Pattern', selection: {cellText: 'sometext', mapPathList: null}, columnType: TEXT});
       wrapper.setProps({transform});
-      instance.props.loadTransformCards.reset(); // called in componentDidMount
+      instance.props.loadTransformCards.resetHistory(); // called in componentDidMount
 
       sinon.stub(instance, 'transformTypeURLMapper');
       instance.loadTransformCards(instance.props);

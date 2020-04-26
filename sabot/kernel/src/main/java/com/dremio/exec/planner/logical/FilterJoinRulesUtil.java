@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -49,19 +49,23 @@ public class FilterJoinRulesUtil {
       List<RelDataTypeField> sysFields = Lists.newArrayList();
       List<Integer> filterNulls = Lists.newArrayList();
 
-      RexNode remaining = RelOptUtil.splitJoinCondition(sysFields, join.getLeft(), join.getRight(),
+      try {
+        RexNode remaining = RelOptUtil.splitJoinCondition(sysFields, join.getLeft(), join.getRight(),
           exp, tmpLeftKeys, tmpRightKeys, filterNulls, null);
 
-      // if the remaining condition can be pushed down (i.e. a = 1), we should not push the condition above
-      ArrayList<RexNode> conditions = new ArrayList<>();
-      ArrayList<RexNode> leftConditions = new ArrayList<>();
-      ArrayList<RexNode> rightConditions = new ArrayList<>();
+        // if the remaining condition can be pushed down (i.e. a = 1), we should not push the condition above
+        ArrayList<RexNode> conditions = new ArrayList<>();
+        ArrayList<RexNode> leftConditions = new ArrayList<>();
+        ArrayList<RexNode> rightConditions = new ArrayList<>();
 
-      conditions.add(remaining);
-      RelOptUtil.classifyFilters(join, conditions, join.getJoinType(), false, true, true, conditions, leftConditions, rightConditions);
+        conditions.add(remaining);
+        RelOptUtil.classifyFilters(join, conditions, join.getJoinType(), false, true, true, conditions, leftConditions, rightConditions);
 
-      // if the conditions list is empty, that means we were able to push the condition below the join
-      return conditions.size() == 0 || remaining.isAlwaysTrue();
+        // if the conditions list is empty, that means we were able to push the condition below the join
+        return conditions.size() == 0 || remaining.isAlwaysTrue();
+      } catch (AssertionError ex) {
+        return false;
+      }
     };
 
   private FilterJoinRulesUtil() {

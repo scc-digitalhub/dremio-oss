@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -79,8 +79,8 @@ export default class FixedWidthForContentCard extends Component {
 
   render() {
     const extraBorder = this.props.index === 2
-        ? { borderBottom: '1px solid #ccc' }
-        : {};
+      ? { borderBottom: '1px solid #ccc' }
+      : {};
     const data = FixedWidthForContentCard.getExampleTextParts(
       this.props.example, this.state.width
     );

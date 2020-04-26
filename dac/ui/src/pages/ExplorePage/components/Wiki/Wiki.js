@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ import { withRouter } from 'react-router';
 import { withRouteLeaveSubscription } from '@app/containers/RouteLeave.js';
 import { TagsView } from '@app/pages/ExplorePage/components/TagsEditor/Tags.js';
 import ViewStateWrapper from '@app/components/ViewStateWrapper';
-import { MarkdownEditorView } from '@app/components/MarkdownEditor';
+import MarkdownEditor from '@app/components/MarkdownEditor';
 import { toolbarHeight as toolbarHeightCssValue } from '@app/components/MarkdownEditor.less';
 import { startSearch as startSearchAction } from 'actions/search';
 import ApiUtils from '@app/utils/apiUtils/apiUtils';
@@ -68,7 +68,7 @@ export class WikiView extends PureComponent {
     isEditAllowed: PropTypes.bool, // indicates weather or not a user has manage tags/wiki permissions
     showConfirmationDialog: PropTypes.func,
     showLoadMask: PropTypes.bool
-  }
+  };
 
   // state and related properties ----------------------------
   state = {
@@ -80,7 +80,7 @@ export class WikiView extends PureComponent {
     // Tags
     ...defaultTagsState,
     tagsViewState: fromJS({})
-  }
+  };
 
   wikiChanged = false;
   isTagsInEditMode = false; // save request in a process
@@ -92,7 +92,7 @@ export class WikiView extends PureComponent {
     } =  this.state;
 
     return (isWikiInEditMode && this.wikiChanged) || this.isTagsInEditMode;
-  }
+  };
 
   initEntity = (entityId) => {
     //reset state
@@ -107,30 +107,30 @@ export class WikiView extends PureComponent {
     });
 
     //load tags and wiki
-    ApiUtils.fetch(`catalog/${entityId}/collaboration/tag`, undefined, 3).then((response) => {
-      return response.json().then(this.setOriginalTags);
-    }, (error) => {
-      if (this.isError(error)) {
-        this.setState({
-          tagsViewState: this.getErrorViewState(la('Tags load failed'))
-        });
-      } else { // init state with default value
-        this.setOriginalTags();
-      }
-    });
+    ApiUtils.fetchJson(`catalog/${entityId}/collaboration/tag`,
+      this.setOriginalTags,
+      error => {
+        if (this.isError(error)) {
+          this.setState({
+            tagsViewState: this.getErrorViewState(la('Failed to load Tags.'))
+          });
+        } else { // init state with default value
+          this.setOriginalTags();
+        }
+      });
 
-    ApiUtils.fetch(`catalog/${entityId}/collaboration/wiki`, undefined, 3).then((response) => {
-      return response.json().then(this.setWiki);
-    }, (error) => {
-      if (this.isError(error)) {
-        this.setState({
-          wikiViewState: this.getErrorViewState(la('Wiki load failed'))
-        });
-      } else { // init state with default value
-        this.setWiki();
-      }
-    });
-  }
+    ApiUtils.fetchJson(`catalog/${entityId}/collaboration/wiki`,
+      this.setWiki,
+      error => {
+        if (this.isError(error)) {
+          this.setState({
+            wikiViewState: this.getErrorViewState(la('Failed to load Wiki.'))
+          });
+        } else { // init state with default value
+          this.setWiki();
+        }
+      });
+  };
 
   setOriginalTags = ({ // API format
     tags = [],
@@ -144,7 +144,7 @@ export class WikiView extends PureComponent {
       tags: new OrderedMap(tags.map(tag => [tagKeyGetter(tag), tag])),
       tagsVersion: version
     });
-  }
+  };
 
   setWiki = ({ // API format
     text = '',
@@ -157,7 +157,7 @@ export class WikiView extends PureComponent {
       wiki: text,
       wikiVersion: version
     });
-  }
+  };
 
   componentWillMount() {
     this.handlePropsChange(undefined, this.props);
@@ -176,7 +176,7 @@ export class WikiView extends PureComponent {
     if (prevEntityId !== entityId && entityId) {
       this.initEntity(entityId);
     }
-  }
+  };
 
   saveTags = () => {
     const {
@@ -197,13 +197,14 @@ export class WikiView extends PureComponent {
           version: tagsVersion
         })
       }, 3).then((response) => {
-        response.json().then(this.setOriginalTags);
-      }, (error) => {
-        this.setState({
-          tagsViewState: this.getErrorViewState(la('Error: Tags are not saved'))
-        });
+      response.json().then(this.setOriginalTags, () => {
+      }); //tags seem to be saved, but response json is not valid; ignore?
+    }, () => {
+      this.setState({
+        tagsViewState: this.getErrorViewState(la('Error: Tags are not saved'))
       });
-  }
+    });
+  };
 
   addTag = tag => {
     this.setState(({ tags }) => {
@@ -216,7 +217,7 @@ export class WikiView extends PureComponent {
         tags: newTags
       };
     }, this.saveTags);
-  }
+  };
 
   removeTag = tag => {
     const dialog = this.props.showConfirmationDialog;
@@ -235,13 +236,13 @@ export class WikiView extends PureComponent {
         cancel: reject
       });
     });
-  }
+  };
 
   editWiki = () => {
     this.setState({
       isWikiInEditMode: true
     });
-  }
+  };
 
   cancelWikiEdit = () => {
     this.setState({
@@ -249,7 +250,7 @@ export class WikiView extends PureComponent {
       wikiViewState: fromJS({}) // reset errors if any
     });
     this.wikiChanged = false;
-  }
+  };
 
   saveWiki = ({
     text,
@@ -261,11 +262,11 @@ export class WikiView extends PureComponent {
       wikiVersion: version
     });
     this.wikiChanged = false;
-  }
+  };
 
   isError = response => {
     return !response.ok && response.status !== 404; // api returns 404 for expected errors, which is weird. But for know I have to check for 404 code.
-  }
+  };
 
   getErrorViewState = (errorMessage = 'Error') => fromJS({
     isFailed: true,
@@ -322,7 +323,7 @@ export class WikiView extends PureComponent {
                 })] : null}
               />
               {
-                wiki ? <MarkdownEditorView
+                wiki ? <MarkdownEditor
                   value={wiki}
                   readMode
                   onChange={this.onChange}

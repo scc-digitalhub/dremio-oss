@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,6 +38,21 @@ public class ExecutionNodeMap {
     for(NodeEndpoint ep : endpoints){
       nodeMap.put(ep.getAddress(), ep);
     }
+  }
+
+  public NodeEndpoint getExactEndpoint(String hostName, long port) {
+    List<NodeEndpoint> endpoints = nodeMap.get(hostName);
+    if (endpoints == null || endpoints.isEmpty()) {
+      return null;
+    }
+
+    for(NodeEndpoint endpoint : endpoints) {
+      if (endpoint.getFabricPort() == port) {
+        return endpoint;
+      }
+    }
+
+    return null;
   }
 
   public NodeEndpoint getEndpoint(String address){

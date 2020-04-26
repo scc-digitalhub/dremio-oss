@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -74,7 +74,7 @@ describe('UpdateDataset', () => {
     it('should call copyDataset with pathFrom', () => {
       instance.copyDataset({ datasetName: 'ds3', selectedEntity: 'Prod-Sample2' });
       expect(commonProps.createDatasetFromExisting)
-            .to.have.been.calledWith(commonProps.item.get('fullPathList'), ['Prod-Sample2', 'ds3'], { name: 'ds3' });
+        .to.have.been.calledWith(commonProps.item.get('fullPathList'), ['Prod-Sample2', 'ds3'], { name: 'ds3' });
     });
 
     it('should call copyDataset w/o selected entity', () => {

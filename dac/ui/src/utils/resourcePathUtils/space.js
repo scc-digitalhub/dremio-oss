@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { HOME_SPACE_NAME } from 'constants/Constants';
+import { HOME_SPACE_NAME } from '@app/constants/Constants';
 
 // history needs current location because its resourcePath is not enough to get client href
 //eg /space/myspace

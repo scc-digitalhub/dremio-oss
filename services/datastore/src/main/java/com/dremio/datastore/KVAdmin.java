@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ public abstract class KVAdmin {
    * @return Number of records indexed.
    * @throws IOException
    */
+  @Deprecated
   public int reindex() throws IOException {
     return 0;
   }
@@ -37,6 +38,7 @@ public abstract class KVAdmin {
    * Compact the keys/values within this store.
    * @throws IOException
    */
+  @Deprecated
   public void compactKeyValues() throws IOException {
   }
 

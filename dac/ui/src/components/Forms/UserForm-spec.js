@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,12 +14,14 @@
  * limitations under the License.
  */
 import { shallow } from 'enzyme';
-import UserForm, { userFormFields } from './UserForm';
+import localStorageUtils from 'utils/storageUtils/localStorageUtils';
+import * as VersionUtils from 'utils/versionUtils';
+import UserForm, { FIELDS } from './UserForm';
 
 describe('UserForm', () => {
   let minimalProps;
   beforeEach(() => {
-    const fields = userFormFields.reduce((acc, key) => {
+    const fields = FIELDS.reduce((acc, key) => {
       acc[key] = {value: ''};
       return acc;
     }, {});
@@ -64,8 +66,30 @@ describe('UserForm', () => {
     });
     it('should be true when editing a user', () => {
       const instance = shallow(<UserForm {...minimalProps} />).instance();
-      instance.props.fields.version.value = 'foo';
+      instance.props.fields.tag.value = 'foo';
       expect(instance.getIsEdit()).to.be.true;
+    });
+  });
+
+  describe('instanceId field', () => {
+    it('should not show instanceId field', () => {
+      sinon.stub(localStorageUtils, 'getInstanceId').returns('iid');
+      const wrapper = shallow(<UserForm {...minimalProps} isReadMode/>);
+      const formLabels = wrapper.find('FieldWithError').map(e => e.prop('label'));
+      expect(formLabels.includes('Instance-id for Authentication')).to.be.false;
+      localStorageUtils.getInstanceId.restore();
+    });
+    it('should show instanceId field', () => {
+      sinon.stub(localStorageUtils, 'getInstanceId').returns(null);
+      sinon.stub(VersionUtils, 'getEditionFromConfig').returns('ME');
+      // global.window.dremioConfig = {edition: 'ME'};
+
+      const wrapper = shallow(<UserForm {...minimalProps} isReadMode/>);
+      const formLabels = wrapper.find('FieldWithError').map(e => e.prop('label'));
+      expect(formLabels.includes('Instance-id for Authentication')).to.be.true;
+
+      localStorageUtils.getInstanceId.restore();
+      VersionUtils.getEditionFromConfig.restore();
     });
   });
 });

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -54,7 +54,7 @@ describe('MarkdownEditor', () => {
       const wrapper = mockInstance(<MarkdownEditorView
         readMode
         onReadModeHasScrollChanged={changeHandler}
-        />);
+      />);
 
       const testChange = (currentValue) => {
         simulateHasScrollChanged(wrapper, currentValue);
@@ -70,7 +70,7 @@ describe('MarkdownEditor', () => {
       // Please fix _updateHasScrollImpl
       const wrapper = mockInstance(<MarkdownEditorView
         readMode
-        />);
+      />);
 
       simulateHasScrollChanged(wrapper, true); // there should not be any errors
     });

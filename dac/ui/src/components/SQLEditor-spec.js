@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -71,7 +71,7 @@ describe('SQLEditor', () => {
       sinon.stub(instance, 'resetValue');
       instance.componentDidMount();
       expect(instance.resetValue).to.be.called;
-      instance.resetValue.reset();
+      instance.resetValue.resetHistory();
 
       wrapper = shallow(<SQLEditor {...commonProps} defaultValue={undefined}/>);
       instance = wrapper.instance();
@@ -91,7 +91,7 @@ describe('SQLEditor', () => {
     it('should resetValue only if defaultValue has changed', () => {
       sinon.stub(instance, 'resetValue');
       instance.componentDidMount();
-      instance.resetValue.reset();
+      instance.resetValue.resetHistory();
 
       instance.componentDidUpdate(commonProps);
       expect(instance.resetValue).to.not.be.called;

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -190,10 +190,10 @@ public class YarnController {
     // note that DremioConfig.LOCAL_WRITE_PATH_STRING is unset; YarnDaemon creates the local write path on startup
     basicJVMOptions.put(DremioConfig.DIST_WRITE_PATH_STRING, yarnConfiguration.get(DremioConfig.DIST_WRITE_PATH_STRING,
       dremioConfig.getString(DremioConfig.DIST_WRITE_PATH_STRING)));
-    basicJVMOptions.put("dremio.classpath.scanning.cache.enabled", "false");
     basicJVMOptions.put(DremioConfig.DEBUG_AUTOPORT_BOOL, "true");
     basicJVMOptions.put(DremioConfig.ENABLE_COORDINATOR_BOOL, "false");
     basicJVMOptions.put(DremioConfig.ENABLE_EXECUTOR_BOOL, "true");
+    basicJVMOptions.put(DremioConfig.YARN_ENABLED_BOOL, "true");
     basicJVMOptions.put(VM.DREMIO_CPU_AVAILABLE_PROPERTY, yarnConfiguration.get(YARN_CPU));
 
     final String kerberosPrincipal = dremioConfig.getString(DremioConfig.KERBEROS_PRINCIPAL);

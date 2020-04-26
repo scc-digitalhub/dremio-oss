@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@
  */
 package com.dremio.exec.store.sys;
 
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 
@@ -47,7 +46,7 @@ public class SystemSubScan extends AbstractSubScan implements OpWithMinorSpecifi
       @JsonProperty("columns") List<SchemaPath> columns,
       @JsonProperty("pluginId") StoragePluginId pluginId
       ) {
-    super(props, table.getRecordSchema(), Arrays.asList("sys", table.getTableName()));
+    super(props, table.getRecordSchema(), table.getDatasetPath().getComponents());
     this.columns = columns;
     this.table = table;
     this.pluginId = pluginId;

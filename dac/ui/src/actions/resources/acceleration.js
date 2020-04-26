@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,15 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { CALL_API } from 'redux-api-middleware';
+import { RSAA } from 'redux-api-middleware';
 import { arrayOf } from 'normalizr';
 
-import { API_URL_V2 } from 'constants/Api';
 import accelerationSchema from 'schemas/acceleration';
 import schemaUtils from 'utils/apiUtils/schemaUtils';
 import { constructFullPathAndEncode } from 'utils/pathUtils';
 import { getDatasetAccelerationRequest } from 'dyn-load/actions/resources/accelerationRequest';
-import {makeUncachebleURL} from 'ie11.js';
+import { APIV2Call } from '@app/core/APICall';
 
 export const LOAD_ACCELERATION_START = 'LOAD_ACCELERATION_START';
 export const LOAD_ACCELERATION_SUCCESS = 'LOAD_ACCELERATION_SUCCESS';
@@ -33,8 +32,11 @@ export const CREATE_ACCELERATION_FAILURE = 'CREATE_ACCELERATION_FAILURE';
 
 const fetchEmptyAcceleration = (dataset, viewId) => {
   const meta = { viewId, dataset };
+
+  const apiCall = new APIV2Call().path('accelerations');
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         {type: CREATE_ACCELERATION_START, meta},
         schemaUtils.getSuccessActionTypeWithSchema(CREATE_ACCELERATION_SUCCESS, accelerationSchema, meta),
@@ -43,7 +45,7 @@ const fetchEmptyAcceleration = (dataset, viewId) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(dataset.get('fullPathList').toJS()),
-      endpoint: `${API_URL_V2}/accelerations`
+      endpoint: apiCall
     }
   };
 };
@@ -58,18 +60,23 @@ export const UPDATE_ACCELERATION_START = 'UPDATE_ACCELERATION_START';
 export const UPDATE_ACCELERATION_SUCCESS = 'UPDATE_ACCELERATION_SUCCESS';
 export const UPDATE_ACCELERATION_FAILURE = 'UPDATE_ACCELERATION_FAILURE';
 
-const fetchUpdateAcceleration = (form, accelerationId) => ({
-  [CALL_API]: {
-    types: [
-      UPDATE_ACCELERATION_START,
-      schemaUtils.getSuccessActionTypeWithSchema(UPDATE_ACCELERATION_SUCCESS, accelerationSchema),
-      UPDATE_ACCELERATION_FAILURE],
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(form),
-    endpoint: `${API_URL_V2}/accelerations/${accelerationId}`
-  }
-});
+const fetchUpdateAcceleration = (form, accelerationId) => {
+  const apiCall = new APIV2Call().paths(`accelerations/${accelerationId}`);
+
+  return {
+    [RSAA]: {
+      types: [
+        UPDATE_ACCELERATION_START,
+        schemaUtils.getSuccessActionTypeWithSchema(UPDATE_ACCELERATION_SUCCESS, accelerationSchema),
+        UPDATE_ACCELERATION_FAILURE
+      ],
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form),
+      endpoint: apiCall
+    }
+  };
+};
 
 export function updateAcceleration(form, accelerationId) {
   return (dispatch) => {
@@ -94,8 +101,14 @@ const fetchAccelerations = (/*config,*/ viewId) => {
   // TODO: implement pagination, we set the limit to 1 million for now
   //const { filter = '', order = '', sort = '', offset = '', limit = '' } = config;
   const meta = {viewId};
+
+  const apiCall = new APIV2Call()
+    .path('accelerations')
+    .params({limit: 1000000})
+    .uncachable();
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         {type: LOAD_ACCELERATIONS_START, meta},
         schemaUtils.getSuccessActionTypeWithSchema(LOAD_ACCELERATIONS_SUCCESS,
@@ -103,7 +116,7 @@ const fetchAccelerations = (/*config,*/ viewId) => {
         {type: LOAD_ACCELERATIONS_FAILURE, meta}
       ],
       method: 'GET',
-      endpoint: makeUncachebleURL(`${API_URL_V2}/accelerations?limit=1000000`)
+      endpoint: apiCall
     }
   };
 };
@@ -116,15 +129,21 @@ export const LOAD_ACCELERATION_BY_ID_FAILURE = 'LOAD_ACCELERATION_BY_ID_FAILURE'
 
 function fetchLoadAccelerationById(accelerationId, viewId) {
   const meta = { viewId };
+
+  const apiCall = new APIV2Call()
+    .path('accelerations')
+    .path(accelerationId)
+    .uncachable();
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         {type: LOAD_ACCELERATION_START, meta},
         schemaUtils.getSuccessActionTypeWithSchema(LOAD_ACCELERATION_SUCCESS, accelerationSchema, meta),
         {type: LOAD_ACCELERATION_FAILURE, meta}
       ],
       method: 'GET',
-      endpoint: makeUncachebleURL(`${API_URL_V2}/accelerations/${encodeURIComponent(accelerationId)}`)
+      endpoint: apiCall
     }
   };
 }
@@ -142,8 +161,14 @@ export const DELETE_ACCELERATION_FAILURE = 'DELETE_ACCELERATION_FAILURE';
 function fetchDeleteAcceleration(accelerationId, viewId) {
   const meta = { viewId, accelerationId };
   const entityRemovePaths = [['acceleration', accelerationId], ['datasetAcceleration', accelerationId]];
+
+  const apiCall = new APIV2Call()
+    .path('accelerations')
+    .path(accelerationId)
+    .uncachable();
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         { type: DELETE_ACCELERATION_START, meta },
         { type: DELETE_ACCELERATION_SUCCESS, meta: { ...meta, success: true, entityRemovePaths } },
@@ -158,7 +183,7 @@ function fetchDeleteAcceleration(accelerationId, viewId) {
         }
       ],
       method: 'DELETE',
-      endpoint: makeUncachebleURL(`${API_URL_V2}/accelerations/${encodeURIComponent(accelerationId)}`)
+      endpoint: apiCall
     }
   };
 }

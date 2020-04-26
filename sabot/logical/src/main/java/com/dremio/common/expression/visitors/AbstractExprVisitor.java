@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import com.dremio.common.expression.IfExpression;
 import com.dremio.common.expression.LogicalExpression;
 import com.dremio.common.expression.NullExpression;
 import com.dremio.common.expression.SchemaPath;
+import com.dremio.common.expression.InputReference;
 import com.dremio.common.expression.TypedNullConstant;
 import com.dremio.common.expression.ValueExpressions.BooleanExpression;
 import com.dremio.common.expression.ValueExpressions.DateExpression;
@@ -81,6 +82,10 @@ public abstract class AbstractExprVisitor<T, VAL, EXCEP extends Exception> imple
     return visitUnknown(intExpr, value);
   }
 
+  @Override
+  public T visitInputReference(InputReference sideExpr, VAL value) throws EXCEP {
+    return visitUnknown(sideExpr, value);
+  }
 
   @Override
   public T visitDecimalConstant(DecimalExpression decExpr, VAL value) throws EXCEP {

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -86,7 +86,7 @@ class AggregateContent extends Component {
         NOT_SUPPORTED_TYPES.has(column.get('type')) ||
         (!canSelectMeasure && columnsInBoth.has(column.get('name'))) ||
         (!canUseFieldAsBothDimensionAndMeasure && columnsInEither.has(column.get('name')))
-      );
+    );
     return Immutable.Set(disabledColumns.map((column) => column.get('name')));
   }
 

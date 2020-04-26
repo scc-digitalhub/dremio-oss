@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,42 +17,66 @@ import { Component } from 'react';
 
 import PropTypes from 'prop-types';
 import classNames from 'classnames';
+import { get } from 'lodash/object';
 
 import FormUtils from 'utils/FormUtils/FormUtils';
 
-import { FieldWithError, TextField, Radio } from 'components/Fields';
+import { FieldWithError, Radio, TextField } from 'components/Fields';
 
 import { rowOfInputsSpacing, rowOfRadio } from '@app/uiTheme/less/forms.less';
 import { flexContainer, flexElementAuto } from '@app/uiTheme/less/layout.less';
 
+const { CONFIG_PROP_NAME, addFormPrefixToPropName } = FormUtils;
+
+const SECRET_URL_FIELD_NAME = 'secretResourceUrl';
 const DEFAULT_TEXT_FIELDS = [
   {propName: 'username', label: 'Username', errMsg: 'Username is required unless you choose no authentication.'},
-  {propName: 'password', label: 'Password', errMsg: 'Password is required unless you choose no authentication.', secure: true}
+  {propName: 'password', label: 'Password', errMsg: 'Password is required unless you choose no authentication.', secure: true},
+  {propName: SECRET_URL_FIELD_NAME, label: 'Secret Resource Url', errMsg: 'Secret Resource Url is required unless you choose no authentication.'}
 ];
 
+const AUTH_TYPE = {anonymous: 'ANONYMOUS', master: 'MASTER', secret: 'SECRET'};
 const DEFAULT_RADIO_OPTIONS = [
-  { label: 'No Authentication', option: 'ANONYMOUS' },
-  { label: 'Master Credentials', option: 'MASTER' }
+  { label: 'No Authentication', option: AUTH_TYPE.anonymous },
+  { label: 'Master Credentials', option: AUTH_TYPE.master }
 ];
+const SECRET_URL_OPTION = { label: 'Secret Resource Url', option: AUTH_TYPE.secret };
+export const AUTHENTICATION_TYPE_FIELD = addFormPrefixToPropName('authenticationType');
+export const USER_NAME_FIELD = addFormPrefixToPropName('username');
+export const PASSWORD_FIELD = addFormPrefixToPropName('password');
+export const SECRET_RESOURCE_URL_FIELD = addFormPrefixToPropName(SECRET_URL_FIELD_NAME);
 
 function validate(values, elementConfig) {
-  let errors = {config: {}};
+  let errors = { [CONFIG_PROP_NAME]: {}};
   const textFields = (elementConfig && elementConfig.textFields) ? elementConfig.textFields : DEFAULT_TEXT_FIELDS;
+  const authTypeValue = get(values, AUTHENTICATION_TYPE_FIELD);
 
+  if (authTypeValue === AUTH_TYPE.anonymous) {
+    return errors;
+  }
+
+  const isMasterAuth = authTypeValue === AUTH_TYPE.master;
+  const isSecretAuth = authTypeValue === AUTH_TYPE.secret;
   errors = textFields.reduce((accumulator, textField) => {
-    if (values.config.authenticationType === 'MASTER' && !values.config[textField.propName]) {
-      accumulator.config[textField.propName] = textField.errMsg || `${textField.label} is required unless you choose no authentication`;
+    if (!values[CONFIG_PROP_NAME][textField.propName]) {
+      if (textField.propName === 'username'
+        || textField.propName === 'password' && isMasterAuth
+        || textField.propName === SECRET_URL_FIELD_NAME && isSecretAuth) {
+        accumulator[CONFIG_PROP_NAME][textField.propName] = textField.errMsg || `${textField.label} is required unless you choose no authentication`;
+      }
     }
     return accumulator;
   }, errors);
   return errors;
 }
 
+// credentials is not configurable via container_selection
+const FIELDS = [AUTHENTICATION_TYPE_FIELD, USER_NAME_FIELD, PASSWORD_FIELD];
+
 export default class Credentials extends Component {
 
   static getFields() {
-    // credentials is not configurable
-    return ['config.authenticationType', 'config.username', 'config.password'];
+    return FIELDS;
   }
 
   static getValidators(elementConfig) {
@@ -70,40 +94,86 @@ export default class Credentials extends Component {
     super(props);
   }
 
+  typeRadioTouched = false;
+
+  onRadioTouch = () => {
+    this.typeRadioTouched = true;
+  };
+
   render() {
-    const {fields, elementConfig} = this.props;
-    const {config: {authenticationType}} = fields;
-    const textFields = (elementConfig && elementConfig.textFields) ? elementConfig.textFields : DEFAULT_TEXT_FIELDS;
-    const radioOptions = (elementConfig && elementConfig.radioOptions) ? elementConfig.radioOptions : DEFAULT_RADIO_OPTIONS;
+    const {fields} = this.props;
+    const authenticationTypeField = get(fields, AUTHENTICATION_TYPE_FIELD);
+    const textFields = this.getTextFields();
+    const radioOptions = this.getRadioOptions();
+    if (!this.typeRadioTouched) {
+      this.setSecretOptionIfSecretIsProvided(authenticationTypeField);
+    }
+
     return (
       <div>
         {radioOptions &&
-          <div className={classNames(rowOfInputsSpacing, rowOfRadio)}>
-            {radioOptions.map((option, index) => {
-              return (
-                <Radio radioValue={option.option}
-                       key={index}
-                       label={option.label}
-                       {...authenticationType}/>
-              );
-            })}
-          </div>
+        <div className={classNames(rowOfInputsSpacing, rowOfRadio)} onClick={this.onRadioTouch}>
+          {radioOptions.map((option, index) => {
+            return (
+              <Radio radioValue={option.option}
+                key={index}
+                label={option.label}
+                {...authenticationTypeField}/>
+            );
+          })}
+        </div>
         }
+        {authenticationTypeField.value !== AUTH_TYPE.anonymous &&
         <div className={classNames(rowOfInputsSpacing, flexContainer)}>
           {
             textFields.map((textField, index) => {
-              const field = FormUtils.getFieldByComplexPropName(fields, `config.${textField.propName}`);
+              const field = FormUtils.getFieldByComplexPropName(fields, addFormPrefixToPropName(textField.propName));
               const type = (textField.secure) ? {type: 'password'} : {};
-              return (
-                <FieldWithError errorPlacement='bottom' label={textField.label} key={index} {...field} className={flexElementAuto}>
-                  <TextField style={{width: '100%'}} {...type} {...field} key={index}
-                             disabled={authenticationType.value !== 'MASTER'} {...field}/>
-                </FieldWithError>
-              );
+              if (
+                (authenticationTypeField.value !== AUTH_TYPE.master || textField.propName !== SECRET_URL_FIELD_NAME) &&
+                (authenticationTypeField.value !== AUTH_TYPE.secret || textField.propName !== 'password')) {
+                return (
+                  <FieldWithError errorPlacement='bottom' label={textField.label} key={index}
+                    {...field} className={flexElementAuto}>
+                    <TextField style={{width: '100%'}} {...type} {...field} key={index} {...field}/>
+                  </FieldWithError>);
+              } else {
+                return null;
+              }
             })
           }
         </div>
+        }
       </div>
     );
   }
+
+  getDefaultTextFields() {
+    const secretField = this.getSecretField();
+    return (secretField) ? DEFAULT_TEXT_FIELDS : DEFAULT_TEXT_FIELDS.filter(field => field.propName !== SECRET_URL_FIELD_NAME);
+  }
+
+  getTextFields() {
+    const {elementConfig} = this.props;
+    return (elementConfig && elementConfig.textFields) ? elementConfig.textFields : this.getDefaultTextFields();
+  }
+
+  getRadioOptions() {
+    const {elementConfig} = this.props;
+    const options = (elementConfig && elementConfig.radioOptions) ? elementConfig.radioOptions : DEFAULT_RADIO_OPTIONS;
+    return (this.getSecretField()) ? [...options, SECRET_URL_OPTION] : options;
+  }
+
+  getSecretField = () => {
+    const {fields} = this.props;
+    return get(fields, SECRET_RESOURCE_URL_FIELD);
+  };
+
+  setSecretOptionIfSecretIsProvided = (authTypeField) => {
+    const secretField = this.getSecretField();
+    if (secretField && secretField.value) {
+      authTypeField.value = AUTH_TYPE.secret;
+    }
+  };
+
 }

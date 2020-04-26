@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,8 @@ export const JobState = {
   CANCELED: 'CANCELED',
   FAILED: 'FAILED',
   CANCELLATION_REQUESTED: 'CANCELLATION_REQUESTED',
-  ENQUEUED: 'ENQUEUED'
+  ENQUEUED: 'ENQUEUED',
+  PLANNING: 'PLANNING'
 };
 
 const RECORD_STEP = 1000;
@@ -40,6 +41,10 @@ class JobsUtils {
         item.get('state').toLowerCase() === JobState.RUNNING).size;
     }
     return 0;
+  }
+
+  isJobRunning(jobState) {
+    return ![JobState.FAILED, JobState.CANCELED, JobState.COMPLETED].includes(jobState);
   }
 
   getFilterOptions(filters) {

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,8 +26,12 @@ public final class TestProfileHelper {
 
   }
 
+  public static void assumeMaprProfile() {
+    Assume.assumeTrue("mapr profile", isMaprProfile());
+  }
+
   public static void assumeNonMaprProfile() {
-    Assume.assumeTrue("non mapr profile", System.getProperty("dremio.mapr.profile")==null);
+    Assume.assumeFalse("non mapr profile", isMaprProfile());
   }
 
   public static boolean isMaprProfile() {

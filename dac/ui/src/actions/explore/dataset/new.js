@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,12 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { CALL_API } from 'redux-api-middleware';
+import { RSAA } from 'redux-api-middleware';
 
-import { API_URL_V2 } from 'constants/Api';
 import schemaUtils from 'utils/apiUtils/schemaUtils';
 import exploreUtils from 'utils/explore/exploreUtils';
 import { datasetWithoutData } from 'schemas/v2/fullDataset';
+import { APIV2Call } from '@app/core/APICall';
 
 export const NEW_UNTITLED_START   = 'NEW_UNTITLED_START';
 export const NEW_UNTITLED_SUCCESS = 'NEW_UNTITLED_SUCCESS';
@@ -31,9 +31,10 @@ function newUntitledFetch(dataset, parentFullPath, viewId) {
   // (only one seems to be sent though)
   const meta = { viewId, entity: dataset };
   const newVersion = exploreUtils.getNewDatasetVersion();
-  const href = exploreUtils.getHrefForUntitledDatasetConfig(parentFullPath, newVersion, true);
+  const apiCall = exploreUtils.getAPICallForUntitledDatasetConfig(parentFullPath, newVersion, true);
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         { type: NEW_UNTITLED_START, meta },
         schemaUtils.getSuccessActionTypeWithSchema(NEW_UNTITLED_SUCCESS, datasetWithoutData, meta),
@@ -41,7 +42,7 @@ function newUntitledFetch(dataset, parentFullPath, viewId) {
       ],
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      endpoint: `${API_URL_V2}${href}`
+      endpoint: apiCall
     }
   };
 }
@@ -75,8 +76,11 @@ export function postNewUntitledSql(href, sql, queryContext, viewId) {
     context: queryContext,
     sql
   };
+
+  const apiCall = new APIV2Call().fullpath(href);
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         { type: NEW_UNTITLED_SQL_START, meta },
         schemaUtils.getSuccessActionTypeWithSchema(NEW_UNTITLED_SQL_SUCCESS, datasetWithoutData, meta),
@@ -85,7 +89,7 @@ export function postNewUntitledSql(href, sql, queryContext, viewId) {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(body),
-      endpoint: `${API_URL_V2}${href}`
+      endpoint: apiCall
     }
   };
 }

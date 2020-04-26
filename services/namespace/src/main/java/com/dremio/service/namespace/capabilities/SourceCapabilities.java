@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,6 +50,7 @@ public final class SourceCapabilities {
   public static final BooleanCapability CORRELATED_SUBQUERY_PUSHDOWN =
     new BooleanCapability("correlated_pushdownable", true);
 
+  public static final BooleanCapability VARCHARS_WITH_WIDTH = new BooleanCapability("varchars_with_width", false);
 
   private final ImmutableMap<Capability<?>, CapabilityValue<?,?>> values;
 

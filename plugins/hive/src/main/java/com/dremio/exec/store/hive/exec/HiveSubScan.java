@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,25 +17,27 @@ package com.dremio.exec.store.hive.exec;
 
 import java.util.List;
 
+import org.pf4j.Extension;
+
 import com.dremio.common.expression.SchemaPath;
 import com.dremio.exec.catalog.StoragePluginId;
 import com.dremio.exec.physical.base.OpProps;
-import com.dremio.exec.physical.base.SubScanWithProjection;
 import com.dremio.exec.planner.fragment.MinorDataReader;
 import com.dremio.exec.planner.fragment.MinorDataWriter;
+import com.dremio.exec.planner.fragment.SplitNormalizer;
 import com.dremio.exec.proto.UserBitShared.CoreOperatorType;
 import com.dremio.exec.record.BatchSchema;
 import com.dremio.exec.store.ScanFilter;
-import com.dremio.service.namespace.dataset.proto.PartitionProtobuf.SplitInfo;
+import com.dremio.exec.store.hive.proxy.HiveProxiedSubScan;
+import com.dremio.exec.store.SplitAndPartitionInfo;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonTypeName;
 import com.google.common.collect.ImmutableList;
 
-@JsonTypeName("hive-sub-scan")
-public class HiveSubScan extends SubScanWithProjection {
-  private static final String SPLITS_ATTRIBUTE_KEY = "hive-sub-scan-splits";
+@Extension
+public class HiveSubScan extends HiveProxiedSubScan {
 
   private final ScanFilter filter;
   private final StoragePluginId pluginId;
@@ -43,11 +45,11 @@ public class HiveSubScan extends SubScanWithProjection {
   private final byte[] extendedProperty;
 
   @JsonIgnore
-  private List<SplitInfo> splits;
+  private List<SplitAndPartitionInfo> splits;
 
   public HiveSubScan(
     OpProps props,
-    List<SplitInfo> splits,
+    List<SplitAndPartitionInfo> splits,
     BatchSchema fullSchema,
     List<String> tablePath,
     ScanFilter filter,
@@ -77,41 +79,54 @@ public class HiveSubScan extends SubScanWithProjection {
     this(props, null, fullSchema, tablePath, filter, pluginId, columns, partitionColumns, extendedProperty);
   }
 
+  @JsonProperty("pluginId")
   public StoragePluginId getPluginId(){
     return pluginId;
   }
 
+  @JsonProperty("filter")
   public ScanFilter getFilter(){
     return filter;
   }
 
-  public List<SplitInfo> getSplits() {
+  @JsonIgnore
+  public List<SplitAndPartitionInfo> getSplits() {
     return splits;
   }
 
+  @JsonProperty("extendedProperty")
   public byte[] getExtendedProperty() { return this.extendedProperty; }
 
+  @JsonProperty("partitionColumns")
   public List<String> getPartitionColumns() {
     return partitionColumns;
   }
 
   @Override
+  @JsonIgnore
   public int getOperatorType() {
     return CoreOperatorType.HIVE_SUB_SCAN_VALUE;
   }
 
   @Override
   public void collectMinorSpecificAttrs(MinorDataWriter writer) {
-    writer.writeSplits(this, SPLITS_ATTRIBUTE_KEY, splits);
+    SplitNormalizer.write(getProps(), writer, splits);
   }
 
   @Override
   public void populateMinorSpecificAttrs(MinorDataReader reader) throws Exception {
-    this.splits = reader.readSplits(this, SPLITS_ATTRIBUTE_KEY);
+    splits = SplitNormalizer.read(getProps(), reader);
   }
 
+  @JsonIgnore
   @Override
   public boolean mayLearnSchema() {
     return false;
+  }
+
+  @Override
+  public HiveProxiedSubScan clone() {
+    return new HiveSubScan(getProps(), null, getFullSchema(), getTableSchemaPath(), filter,
+            pluginId, getColumns(), partitionColumns, extendedProperty);
   }
 }

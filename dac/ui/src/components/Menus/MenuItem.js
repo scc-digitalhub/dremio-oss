@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,8 @@ import MenuItemMaterial from '@material-ui/core/MenuItem';
 import Popper from '@material-ui/core/Popper';
 import Paper from '@material-ui/core/Paper';
 import ClickAwayListener from '@material-ui/core/ClickAwayListener';
+import { PALE_NAVY } from 'uiTheme/radium/colors';
+
 
 import './MenuItem.less';
 
@@ -36,6 +38,8 @@ export default class MenuItem extends Component {
     onClick: PropTypes.func,
     children: PropTypes.node,
     disabled: PropTypes.bool,
+    selected: PropTypes.bool,
+    style: PropTypes.object,
     isInformational: PropTypes.bool // shouldn't look intereactive
   };
 
@@ -51,7 +55,7 @@ export default class MenuItem extends Component {
     }
   };
 
-  delayedCloseTimer = null
+  delayedCloseTimer = null;
 
   shouldClose(evt) {
     const enteredElement = evt.relatedTarget;
@@ -66,29 +70,29 @@ export default class MenuItem extends Component {
   handleMouseOver = () => {
     this.handleRequestOpen();
     clearTimeout(this.delayedCloseTimer);
-  }
+  };
 
   handleMouseLeave = (evt) => {
     if (this.shouldClose(evt)) {
       this.delayedCloseTimer = setTimeout(this.handleRequestClose, CLOSE_SUBMENU_DELAY);
     }
-  }
+  };
 
   handleRequestOpen = () => {
     this.setState({
       open: true
     });
-  }
+  };
 
   handleRequestClose = () => {
     this.setState({
       open: false
     });
-  }
+  };
 
   render() {
-    const { menuItems, rightIcon, onClick, disabled, isInformational } = this.props;
-    const itemStyle = {...styles.menuItem, ...(isInformational && styles.informational)};
+    const { menuItems, rightIcon, onClick, disabled, selected, isInformational, style } = this.props;
+    const itemStyle = {...styles.menuItem, ...(isInformational && styles.informational), ...(selected && styles.selected), ...style};
     const className = classNames({disabled}, 'menu-item-inner');
     return (
       <div>
@@ -139,7 +143,7 @@ export default class MenuItem extends Component {
 
 const styles = {
   resetStyle: {
-    minHeight: 25,
+    minHeight: 24,
     padding: 0,
     margin: 0
   },
@@ -154,5 +158,8 @@ const styles = {
   informational: {
     backgroundColor: '#fff',
     cursor: 'default'
+  },
+  selected: {
+    backgroundColor: PALE_NAVY
   }
 };

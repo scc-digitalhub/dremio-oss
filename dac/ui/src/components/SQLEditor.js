@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ const language = 'dremio-sql';
 
 const staticPropTypes = {
   height: PropTypes.number.isRequired, // pass-thru
-  defaultValue: PropTypes.string, // pass-thru
+  defaultValue: PropTypes.string, // pass-thru; do not update it via onChange, otherwise monaco will throw error.
   onChange: PropTypes.func,
   errors: PropTypes.instanceOf(Immutable.List),
   readOnly: PropTypes.bool,
@@ -51,7 +51,7 @@ const checkHeightAndFitHeightToContentFlags = (props, propName, componentName) =
       return new Error('Height must not be provided if fitHeightToContent property set to true');
     }
   } else {
-    return PropTypes.checkPropTypes(staticPropTypes, props, propName, componentName); // reuse stnadard prop types check
+    return PropTypes.checkPropTypes(staticPropTypes, props, propName, componentName); // reuse standard prop types check
   }
 };
 
@@ -61,7 +61,7 @@ export class SQLEditor extends PureComponent {
     height: checkHeightAndFitHeightToContentFlags // pass-thru
 
     // all others pass thru
-  }
+  };
 
   reseting = false;
   monacoEditorComponent = null;
@@ -73,7 +73,7 @@ export class SQLEditor extends PureComponent {
 
   state = {
     language: 'sql'
-  }
+  };
 
   componentDidMount() {
     if (this.props.defaultValue !== undefined) {
@@ -112,7 +112,7 @@ export class SQLEditor extends PureComponent {
       }
       this.props.onChange(...args);
     }
-  }
+  };
 
   resetValue() {
     if (!this.monacoEditorComponent.editor) return;
@@ -302,11 +302,11 @@ export class SQLEditor extends PureComponent {
     this.addKeyboardShortcuts(editor);
   };
 
-  onKbdPreview = (editor) => {
+  onKbdPreview = () => {
     this.props.previewDatasetSql();
   };
 
-  onKbdRun = (editor) => {
+  onKbdRun = () => {
     this.props.runDatasetSql();
   };
 
@@ -337,37 +337,42 @@ export class SQLEditor extends PureComponent {
 
   render() {
     const {
-      onChange,
-      errors,
+      onChange, errors,  // eslint-disable-line @typescript-eslint/no-unused-vars
       readOnly,
       contextMenu,
-      fitHeightToContent, // here to not pass it in monaco editor, as it does not support it
-       ...monacoProps} = this.props;
+      // monaco does not support fitHeightToContent, so exclude it from monacoProps
+      fitHeightToContent,  // eslint-disable-line @typescript-eslint/no-unused-vars
+      ...monacoProps} = this.props;
 
-    return <MonacoEditor
-      {...monacoProps}
-      onChange={this.handleChange}
-      editorDidMount={this.editorDidMount}
-      ref={(ref) => this.monacoEditorComponent = ref}
-      width='100%'
-      language={this.state.language}
-      theme='vs'
-      options={{
-        wordWrap: 'on',
-        lineNumbersMinChars: 3,
-        scrollBeyondLastLine: false,
-        scrollbar: {vertical: 'visible', useShadows: false},
-        automaticLayout: true,
-        lineDecorationsWidth: 12,
-        minimap: {
-          enabled: false
-        },
-        suggestLineHeight: 25,
-        readOnly,
-        contextmenu: contextMenu // a case is important here
-      }}
-      requireConfig={{url: '/vs/loader.js', paths: {vs: '/vs'}}}
-    />;
+    return (
+      // div wrapper is required for FF and IE. Without it a editor has uncontrolled grow on jobs page.
+      <div>
+        <MonacoEditor
+          {...monacoProps}
+          onChange={this.handleChange}
+          editorDidMount={this.editorDidMount}
+          ref={(ref) => this.monacoEditorComponent = ref}
+          width='100%'
+          language={this.state.language}
+          theme='vs'
+          options={{
+            wordWrap: 'on',
+            lineNumbersMinChars: 3,
+            scrollBeyondLastLine: false,
+            scrollbar: {vertical: 'visible', useShadows: false},
+            automaticLayout: true,
+            lineDecorationsWidth: 12,
+            minimap: {
+              enabled: false
+            },
+            suggestLineHeight: 25,
+            readOnly,
+            contextmenu: contextMenu // a case is important here
+          }}
+          requireConfig={{url: '/vs/loader.js', paths: {vs: '/vs'}}}
+        />
+      </div>
+    );
   }
 }
 

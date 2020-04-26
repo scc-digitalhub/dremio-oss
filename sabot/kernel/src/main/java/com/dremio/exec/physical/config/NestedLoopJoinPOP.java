@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,11 @@ package com.dremio.exec.physical.config;
 
 import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
 
+import org.apache.calcite.rel.core.JoinRelType;
+
+import com.dremio.common.expression.LogicalExpression;
 import com.dremio.exec.physical.base.AbstractBase;
 import com.dremio.exec.physical.base.OpProps;
 import com.dremio.exec.physical.base.PhysicalOperator;
@@ -34,18 +38,35 @@ import com.google.common.collect.Iterators;
 public class NestedLoopJoinPOP extends AbstractBase {
   static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(NestedLoopJoinPOP.class);
 
-
-  private final PhysicalOperator left;
-  private final PhysicalOperator right;
+  private final PhysicalOperator build;
+  private final PhysicalOperator probe;
+  private final JoinRelType joinType;
+  private final LogicalExpression condition;
+  private final boolean vectorized;
+  private final LogicalExpression vectorOp;
+  private final Set<Integer> buildProjected;
+  private final Set<Integer> probeProjected;
 
   @JsonCreator
   public NestedLoopJoinPOP(
       @JsonProperty("props") OpProps props,
-      @JsonProperty("left") PhysicalOperator left,
-      @JsonProperty("right") PhysicalOperator right) {
+      @JsonProperty("probe") PhysicalOperator probe,
+      @JsonProperty("build") PhysicalOperator build,
+      @JsonProperty("joinType") JoinRelType joinType,
+      @JsonProperty("condition") LogicalExpression condition,
+      @JsonProperty("vectorized") boolean vectorized,
+      @JsonProperty("vectorOp") LogicalExpression vectorOp,
+      @JsonProperty("buildProjected") Set<Integer> buildProjected,
+      @JsonProperty("probeProjected") Set<Integer> probeProjected) {
     super(props);
-    this.left = left;
-    this.right = right;
+    this.probe = probe;
+    this.build = build;
+    this.joinType = joinType;
+    this.condition = condition;
+    this.vectorized = vectorized;
+    this.vectorOp = vectorOp;
+    this.buildProjected = buildProjected;
+    this.probeProjected = probeProjected;
   }
 
   @Override
@@ -56,20 +77,44 @@ public class NestedLoopJoinPOP extends AbstractBase {
   @Override
   public PhysicalOperator getNewWithChildren(List<PhysicalOperator> children) {
     Preconditions.checkArgument(children.size() == 2);
-    return new NestedLoopJoinPOP(props, children.get(0), children.get(1));
+    return new NestedLoopJoinPOP(props, children.get(0), children.get(1), joinType, condition, vectorized, vectorOp, buildProjected, probeProjected);
   }
 
   @Override
   public Iterator<PhysicalOperator> iterator() {
-    return Iterators.forArray(left, right);
+    return Iterators.forArray(probe, build);
   }
 
-  public PhysicalOperator getLeft() {
-    return left;
+  public PhysicalOperator getProbe() {
+    return probe;
   }
 
-  public PhysicalOperator getRight() {
-    return right;
+  public PhysicalOperator getBuild() {
+    return build;
+  }
+
+  public JoinRelType getJoinType() {
+    return joinType;
+  }
+
+  public Set<Integer> getBuildProjected() {
+    return buildProjected;
+  }
+
+  public Set<Integer> getProbeProjected() {
+    return probeProjected;
+  }
+
+  public LogicalExpression getCondition() {
+    return condition;
+  }
+
+  public boolean isVectorized() {
+    return vectorized;
+  }
+
+  public LogicalExpression getVectorOp() {
+    return vectorOp;
   }
 
   @Override

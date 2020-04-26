@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -125,7 +125,7 @@ export default class DatasetList extends Component {
     // todo: chris: is this right? `value.get('type')` here, but `value.get('datasetType')` above?
     // denis b: Yes, this is correct. `type` attribute belongs to `parents` item from `/search` response.
     // chris: we should fix that API
-    const parentItems = parents.map((value, key) => {
+    const parentItems = parents.map((value) => {
       if (!value.has('type')) return; // https://dremio.atlassian.net/browse/DX-7233
       return (
         <div style={styles.parentDataset}>

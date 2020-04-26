@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,8 @@
 package com.dremio.exec.work.rpc;
 
 import static com.dremio.exec.rpc.RpcBus.get;
+
+import java.util.Optional;
 
 import org.apache.arrow.memory.BufferAllocator;
 
@@ -36,7 +38,6 @@ import com.dremio.exec.work.protector.ForemenTool;
 import com.dremio.sabot.rpc.Protocols;
 import com.dremio.services.fabric.api.FabricProtocol;
 import com.dremio.services.fabric.api.PhysicalConnection;
-import com.google.common.base.Optional;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.MessageLite;
 

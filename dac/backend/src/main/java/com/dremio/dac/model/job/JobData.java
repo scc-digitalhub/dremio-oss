@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 package com.dremio.dac.model.job;
+
+import org.apache.arrow.memory.BufferAllocator;
 
 import com.dremio.service.job.proto.JobId;
 
@@ -31,17 +33,19 @@ public interface JobData extends AutoCloseable {
    * Create a data object that contains the results in given range. If the range contains no values, a JobData object
    * containing no results is returned.
    *
+   * @param allocator Allocator to accept data
    * @param offset Number of starting row to include in output
    * @param limit Max number of rows starting from offset.
    * @return
    */
-  JobDataFragment range(int offset, int limit);
+  JobDataFragment range(BufferAllocator allocator, int offset, int limit);
 
   /**
    * Create a new data object that truncates the results to at max given rows.
+   * @param allocator Allocator to accept data
    * @param maxRows
    */
-  JobDataFragment truncate(int maxRows);
+  JobDataFragment truncate(BufferAllocator allocator, int maxRows);
 
   /**
    * Get the {@link JobId} of job that produced the results in this object.
@@ -55,13 +59,4 @@ public interface JobData extends AutoCloseable {
    */
   String getJobResultsTable();
 
-  /**
-   * Wait for the job metadata to be collected
-   */
-  void waitForMetadata();
-
-  /**
-   * Load the data
-   */
-  void loadIfNecessary();
 }

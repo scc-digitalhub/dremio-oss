@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -48,7 +48,7 @@ export default class DefaultWizardFooter extends Component {
     this.props.onCancel();
   }
 
-  onButtonClick = (submitType, e) => {
+  onButtonClick = (submitType, e, ...rest) => {
     if (e && e.preventDefault) {
       e.preventDefault();
     }
@@ -57,7 +57,7 @@ export default class DefaultWizardFooter extends Component {
     if (onFormSubmit && handleSubmit) {
       return handleSubmit((values) => {
         return onFormSubmit(values, submitType);
-      })(...Array.from(arguments).slice(1));
+      })(e, ...rest);
     }
     return onFormSubmit(submitType);
   }

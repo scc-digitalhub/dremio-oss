@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,6 +42,7 @@ import com.dremio.exec.catalog.DremioCatalogReader;
 import com.dremio.exec.planner.acceleration.StrippingFactory.StripResult;
 import com.dremio.exec.planner.common.MoreRelOptUtil;
 import com.dremio.exec.planner.serialization.LogicalPlanDeserializer;
+import com.dremio.exec.planner.sql.CalciteArrowHelper;
 import com.dremio.exec.planner.sql.SqlConverter;
 import com.dremio.exec.planner.sql.handlers.RelTransformer;
 import com.dremio.exec.planner.types.JavaTypeFactoryImpl;
@@ -118,8 +119,8 @@ public class MaterializationExpander {
       throw UserException.planError(e)
         .message("Failed to cast table rel row types to the query rel row types for materialization %s.%n" +
           "table schema %s%nquery schema %s", descriptor.getMaterializationId(),
-          BatchSchema.fromCalciteRowType(tableRel.getRowType()),
-          BatchSchema.fromCalciteRowType(strippedQueryRowType))
+          CalciteArrowHelper.fromCalciteRowType(tableRel.getRowType()),
+          CalciteArrowHelper.fromCalciteRowType(strippedQueryRowType))
         .build(logger);
     }
 
@@ -187,7 +188,8 @@ public class MaterializationExpander {
         }
 
         // safely ignore when materialized field is DOUBLE instead of DECIMAL
-        if (type1.getSqlTypeName() == SqlTypeName.DOUBLE && type2.getSqlTypeName() == SqlTypeName.DECIMAL) {
+        if (type1.getSqlTypeName() == SqlTypeName.DOUBLE && type2.getSqlTypeName() == SqlTypeName
+          .DECIMAL || isSumAggOutput(type1, type2)) {
           continue;
         }
 
@@ -195,6 +197,15 @@ public class MaterializationExpander {
       }
 
       return true;
+  }
+
+  private static boolean isSumAggOutput(RelDataType type1, RelDataType type2) {
+    if (type1.getSqlTypeName() == SqlTypeName
+      .DECIMAL && type2.getSqlTypeName() == SqlTypeName.DECIMAL) {
+      // output of sum aggregation is always 38,inputScale
+      return type1.getPrecision() == 38 && type1.getScale() == type2.getScale();
+    }
+    return false;
   }
 
   private RelNode expandSchemaPath(final List<String> path) {

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,6 +40,7 @@ import com.dremio.common.expression.SchemaPath;
 import com.dremio.exec.catalog.StoragePluginId;
 import com.dremio.exec.planner.cost.DremioCost;
 import com.dremio.exec.planner.physical.PrelUtil;
+import com.dremio.exec.planner.sql.CalciteArrowHelper;
 import com.dremio.exec.record.BatchSchema;
 import com.dremio.exec.store.TableMetadata;
 import com.dremio.service.namespace.NamespaceException;
@@ -59,7 +60,7 @@ public abstract class ScanRelBase extends TableScan {
 
   public static final double DEFAULT_COST_ADJUSTMENT = 1.0d;
 
-  protected final ImmutableList<SchemaPath> projectedColumns;
+  private final ImmutableList<SchemaPath> projectedColumns;
   protected final TableMetadata tableMetadata;
   protected final StoragePluginId pluginId;
   protected final double observedRowcountAdjustment;
@@ -259,7 +260,7 @@ public abstract class ScanRelBase extends TableScan {
       final Map<String, RelDataType> fields = new HashMap<>();
       for(Field field : getBatchSchema()){
         if(firstLevelPaths.contains(field.getName())){
-          fields.put(field.getName(), CompleteType.fromField(field).toCalciteType(factory));
+          fields.put(field.getName(), CalciteArrowHelper.wrap(CompleteType.fromField(field)).toCalciteType(factory));
         }
       }
 

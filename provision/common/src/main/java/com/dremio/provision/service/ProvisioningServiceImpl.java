@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,31 +15,41 @@
  */
 package com.dremio.provision.service;
 
-import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.ConcurrentModificationException;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 
 import javax.annotation.Nullable;
 import javax.inject.Provider;
 
+import org.apache.arrow.util.AutoCloseables;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.dremio.common.nodes.NodeProvider;
 import com.dremio.common.scanner.persistence.ScanResult;
 import com.dremio.config.DremioConfig;
-import com.dremio.datastore.KVStore;
-import com.dremio.datastore.KVStoreProvider;
-import com.dremio.datastore.ProtostuffSerializer;
-import com.dremio.datastore.Serializer;
-import com.dremio.datastore.StoreBuildingFactory;
-import com.dremio.datastore.StoreCreationFunction;
 import com.dremio.datastore.VersionExtractor;
+import com.dremio.datastore.api.LegacyKVStore;
+import com.dremio.datastore.api.LegacyKVStoreProvider;
+import com.dremio.datastore.api.LegacyStoreBuildingFactory;
+import com.dremio.datastore.api.LegacyStoreCreationFunction;
+import com.dremio.datastore.format.Format;
+import com.dremio.edition.EditionProvider;
+import com.dremio.exec.rpc.CloseableThreadPool;
+import com.dremio.options.OptionManager;
+import com.dremio.provision.AwsProps;
+import com.dremio.provision.AwsProps.AuthMode;
 import com.dremio.provision.Cluster;
 import com.dremio.provision.ClusterConfig;
 import com.dremio.provision.ClusterEnriched;
@@ -49,6 +59,7 @@ import com.dremio.provision.ClusterState;
 import com.dremio.provision.ClusterType;
 import com.dremio.provision.DistroType;
 import com.dremio.provision.Property;
+import com.dremio.provision.resource.ProvisioningResource;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Function;
 import com.google.common.base.Objects;
@@ -75,19 +86,25 @@ public class ProvisioningServiceImpl implements ProvisioningService, Provisionin
   private final Map<ClusterType, ProvisioningServiceDelegate> concreteServices = Maps.newHashMap();
   private final NodeProvider executionNodeProvider;
   private final ScanResult classpathScan;
-  private final Provider<KVStoreProvider> kvStoreProvider;
+  private final Provider<LegacyKVStoreProvider> kvStoreProvider;
+  private final Provider<OptionManager> optionProvider;
+  private final Provider<EditionProvider> editionProvider;
+  private final CloseableThreadPool pool = new CloseableThreadPool("start-executor");
 
-  private KVStore<ClusterId, Cluster> store;
+  private LegacyKVStore<ClusterId, Cluster> store;
 
   public ProvisioningServiceImpl(
-      final DremioConfig config,
-      final Provider<KVStoreProvider> storeProvider,
-      final NodeProvider executionNodeProvider,
-      ScanResult classpathScan) {
+    final DremioConfig config,
+    final Provider<LegacyKVStoreProvider> storeProvider,
+    final NodeProvider executionNodeProvider,
+    ScanResult classpathScan,
+    Provider<OptionManager> optionProvider, Provider<EditionProvider> editionProvider) {
     this.dremioConfig = config;
     this.kvStoreProvider = Preconditions.checkNotNull(storeProvider, "store provider is required");
     this.executionNodeProvider = executionNodeProvider;
     this.classpathScan = classpathScan;
+    this.optionProvider = optionProvider;
+    this.editionProvider = editionProvider;
   }
 
   @Override
@@ -99,28 +116,53 @@ public class ProvisioningServiceImpl implements ProvisioningService, Provisionin
     for (Class<? extends ProvisioningServiceDelegate> provisioningServiceClass : serviceClasses) {
       try {
         Constructor<? extends ProvisioningServiceDelegate> ctor =
-          provisioningServiceClass.getConstructor(DremioConfig.class, ProvisioningStateListener.class, NodeProvider.class);
-        ProvisioningServiceDelegate provisioningService = ctor.newInstance(dremioConfig, this, executionNodeProvider);
+          provisioningServiceClass.getConstructor(DremioConfig.class, ProvisioningStateListener.class, NodeProvider.class, OptionManager.class,
+            EditionProvider.class);
+        ProvisioningServiceDelegate provisioningService = ctor.newInstance(dremioConfig, this, executionNodeProvider, optionProvider.get(),
+          editionProvider.get());
+        provisioningService.start();
         concreteServices.put(provisioningService.getType(), provisioningService);
+        ClusterConfig defaultClusterConfig = provisioningService.defaultCluster();
+        if (defaultClusterConfig != null && !exists(defaultClusterConfig.getName())) {
+          Cluster cluster = initializeCluster(defaultClusterConfig);
+          //set desired state to STOPPED to avoid starting the cluster automatically
+          cluster.setDesiredState(ClusterState.STOPPED);
+          store.put(cluster.getId(), cluster);
+          stopCluster(cluster.getId());
+        }
       } catch (InstantiationException e) {
         logger.error("Unable to create instance of % class", provisioningServiceClass.getName(), e);
       } catch (IllegalAccessException e) {
         logger.error("Unable to create instance of % class", provisioningServiceClass.getName(), e);
       }
     }
+
+    syncClusters();
+  }
+
+  private void syncClusters() {
+    for (Map.Entry<ClusterId, Cluster> entry : store.find()) {
+      final Cluster cluster = entry.getValue();
+      concreteServices.get(cluster.getClusterConfig().getClusterType()).syncCluster(cluster);
+      store.put(entry.getKey(), cluster);
+    }
+  }
+
+  private boolean exists(String name) {
+    return StreamSupport.stream(store.find().spliterator(), false).anyMatch(e -> name.equals(e.getValue().getClusterConfig().getName()));
   }
 
   /**
    * Cluster Store creator
    */
-  public static class ProvisioningStoreCreator implements StoreCreationFunction<KVStore<ClusterId, Cluster>> {
+  public static class ProvisioningStoreCreator implements LegacyStoreCreationFunction<LegacyKVStore<ClusterId, Cluster>> {
 
     @Override
-    public KVStore<ClusterId, Cluster> build(StoreBuildingFactory factory) {
+    public LegacyKVStore<ClusterId, Cluster> build(LegacyStoreBuildingFactory factory) {
       return factory.<ClusterId, Cluster>newStore()
         .name(TABLE_NAME)
-        .keySerializer(ClusterIdSerializer.class)
-        .valueSerializer(ClusterSerializer.class)
+        .keyFormat(Format.ofProtostuff(ClusterId.class))
+        .valueFormat(Format.ofProtostuff(Cluster.class))
         .versionExtractor(ClusterVersion.class)
         .build();
     }
@@ -134,20 +176,15 @@ public class ProvisioningServiceImpl implements ProvisioningService, Provisionin
   public ClusterEnriched createCluster(ClusterConfig clusterConfig) throws ProvisioningHandlingException {
     // just saves info to KVStore
     // children should do the rest
-    if((clusterConfig.getClusterSpec().getMemoryMBOnHeap() + clusterConfig.getClusterSpec().getMemoryMBOffHeap()) <
+    if(clusterConfig.getClusterType() == ClusterType.YARN &&
+        (clusterConfig.getClusterSpec().getMemoryMBOnHeap() + clusterConfig.getClusterSpec().getMemoryMBOffHeap()) <
     MIN_MEMORY_REQUIRED_MB) {
       throw new ProvisioningHandlingException("Minimum memory required should be greater or equal than: " +
         MIN_MEMORY_REQUIRED_MB + "MB");
     }
 
-    ClusterId clusterId = newRandomClusterId();
-    Cluster cluster = new Cluster();
-    cluster.setId(clusterId);
-    cluster.setState(ClusterState.CREATED);
-    cluster.setDesiredState(ClusterState.RUNNING);
-    cluster.setClusterConfig(clusterConfig);
-
-    store.put(clusterId, cluster);
+    Cluster cluster = initializeCluster(clusterConfig);
+    ClusterId clusterId = cluster.getId();
 
     try {
       return startCluster(clusterId);
@@ -157,8 +194,28 @@ public class ProvisioningServiceImpl implements ProvisioningService, Provisionin
     }
   }
 
+  private Cluster initializeCluster(ClusterConfig clusterConfig) {
+    ClusterId clusterId = newRandomClusterId();
+    Cluster cluster = new Cluster();
+    cluster.setId(clusterId);
+    cluster.setState(ClusterState.CREATED);
+    cluster.setDesiredState(ClusterState.RUNNING);
+    cluster.setClusterConfig(clusterConfig);
+    store.put(clusterId, cluster);
+    return cluster;
+  }
+
   @Override
-  public ClusterEnriched modifyCluster(ClusterId clusterId, ClusterState desiredState, ClusterConfig clusterconfig) throws ProvisioningHandlingException {
+  public void updateCluster(ClusterId clusterId) {
+    Cluster cluster = store.get(clusterId);
+    long ts = System.currentTimeMillis();
+    logger.debug("update cluster idle time at ts: {}", ts);
+    store.put(clusterId, cluster.setIdleTime(ts));
+  }
+
+  @Override
+  public synchronized ClusterEnriched modifyCluster(ClusterId clusterId, ClusterState desiredState, ClusterConfig clusterconfig) throws ProvisioningHandlingException {
+    logger.debug("Modifying cluster {}, desired state: {}", clusterId, desiredState);
     Preconditions.checkNotNull(clusterId, "id is required");
     final Cluster cluster = store.get(clusterId);
     if (cluster == null) {
@@ -168,6 +225,7 @@ public class ProvisioningServiceImpl implements ProvisioningService, Provisionin
     final Cluster modifiedCluster = toCluster(clusterconfig, desiredState, cluster);
 
     Action action = toAction(cluster, modifiedCluster);
+    logger.debug("Action:{}", action);
 
     switch (action) {
       case NONE:
@@ -247,12 +305,15 @@ public class ProvisioningServiceImpl implements ProvisioningService, Provisionin
       throw new ProvisioningHandlingException("Cluster " + clusterId + " is not found. Nothing to stop");
     }
 
+    logger.debug("Stopping cluster {}", cluster.getId().getId());
+
     final ProvisioningServiceDelegate service = concreteServices.get(cluster.getClusterConfig().getClusterType());
     if (service == null) {
       throw new ProvisioningHandlingException("Can not find service implementation for: " + cluster.getClusterConfig().getClusterType());
     }
 
     if (ClusterState.STOPPING == cluster.getState()) {
+      logger.debug("nothing to stop");
       // nothing to stop
       return new ClusterEnriched(cluster);
     }
@@ -260,6 +321,7 @@ public class ProvisioningServiceImpl implements ProvisioningService, Provisionin
       cluster.setDesiredState(ClusterState.STOPPED);
     }
     service.stopCluster(cluster);
+    logger.debug("Storing clusterId: {}, state:{}, desiredState:{}", clusterId, cluster.getState(), cluster.getDesiredState());
     store.put(clusterId, cluster);
     ClusterEnriched updatedCluster = service.getClusterInfo(cluster);
     return updatedCluster;
@@ -267,6 +329,7 @@ public class ProvisioningServiceImpl implements ProvisioningService, Provisionin
 
   @Override
   public ClusterEnriched startCluster(ClusterId clusterId) throws ProvisioningHandlingException {
+    logger.debug("attempting to start cluster: {}", clusterId);
     // get info about cluster
     // children should do the rest
     Preconditions.checkNotNull(clusterId, "id is required");
@@ -285,9 +348,14 @@ public class ProvisioningServiceImpl implements ProvisioningService, Provisionin
     if (ClusterState.STOPPING == cluster.getState()) {
       updatedCluster = new ClusterEnriched(cluster);
     } else {
+      long ts = System.currentTimeMillis();
+      logger.debug("Starting cluster. ts: {}", ts);
+      store.put(clusterId, cluster.setStartTime(ts).setIdleTime(ts));
       updatedCluster = service.startCluster(cluster);
     }
-    store.put(clusterId, updatedCluster.getCluster());
+    long ts = System.currentTimeMillis();
+    logger.debug("Started cluster. ts: {}", ts);
+    store.put(clusterId, updatedCluster.getCluster().setStartTime(ts).setIdleTime(ts));
     return updatedCluster;
   }
 
@@ -364,7 +432,7 @@ public class ProvisioningServiceImpl implements ProvisioningService, Provisionin
 
   @Override
   public void close() throws Exception {
-    // noop
+    AutoCloseables.close(Iterables.concat(Collections.singletonList(pool), concreteServices.values()));
   }
 
   @Override
@@ -396,6 +464,7 @@ public class ProvisioningServiceImpl implements ProvisioningService, Provisionin
       storedCluster.setRunId(cluster.getRunId());
       store.put(storedCluster.getId(), storedCluster);
       if (ClusterState.RUNNING == desiredState &&  ClusterState.FAILED != cluster.getState()) {
+        logger.debug("Starting cluster {} because desired state is running", cluster.getId().getId());
         // start cluster
         startCluster(storedCluster.getId());
       }
@@ -436,9 +505,9 @@ public class ProvisioningServiceImpl implements ProvisioningService, Provisionin
     cluster.setId(storedCluster.getId());
     cluster.setState(Optional.fromNullable(desiredState).or(storedCluster.getState()));
     final ClusterConfig clusterConfig = new ClusterConfig();
-    clusterConfig.setDistroType(Optional.fromNullable(
-      storedCluster.getClusterConfig().getDistroType()).or(DistroType.OTHER));
-    clusterConfig.setIsSecure(Optional.fromNullable(storedCluster.getClusterConfig().getIsSecure()).or(false));
+    clusterConfig.setAllowAutoStart(request.getAllowAutoStart());
+    clusterConfig.setAllowAutoStop(request.getAllowAutoStop());
+    clusterConfig.setShutdownInterval(request.getShutdownInterval());
     clusterConfig.setTag(request.getTag());
     if (storedCluster.getClusterConfig().getName() != null) {
       clusterConfig.setName(Optional.fromNullable(request.getName()).or(
@@ -448,52 +517,176 @@ public class ProvisioningServiceImpl implements ProvisioningService, Provisionin
     }
     clusterConfig.setClusterType(Optional.fromNullable(request.getClusterType()).or(storedCluster.getClusterConfig().getClusterType()));
 
-    // An assumption is that FE will pass full list of properties, otherwise BE does not know if any property was
-    // removed
-    // so if properties from FE is null it will take ones from stored cluster
-    clusterConfig.setSubPropertyList(Optional.fromNullable(request.getSubPropertyList()).or(storedCluster
-      .getClusterConfig().getSubPropertyList()));
-    final ClusterSpec clusterSpec = new ClusterSpec();
-    if (storedCluster.getClusterConfig().getClusterSpec().getQueue() != null) {
-      clusterSpec.setQueue(Optional.fromNullable(request.getClusterSpec().getQueue()).or(storedCluster.getClusterConfig().getClusterSpec
-        ().getQueue()));
-    } else {
-      clusterSpec.setQueue(Optional.fromNullable(request.getClusterSpec().getQueue()).orNull());
-    }
-    clusterSpec.setContainerCount(Optional.fromNullable(request.getClusterSpec().getContainerCount()).or
-      (storedCluster.getClusterConfig().getClusterSpec().getContainerCount()));
-    clusterSpec.setVirtualCoreCount(Optional.fromNullable(request.getClusterSpec().getVirtualCoreCount()).or
-      (storedCluster.getClusterConfig().getClusterSpec().getVirtualCoreCount()));
+    if (clusterConfig.getClusterType() == ClusterType.YARN) {
+      // An assumption is that FE will pass full list of properties, otherwise BE does not know if any property was
+      // removed
+      // so if properties from FE is null it will take ones from stored cluster
 
-    if (request.getClusterSpec().getMemoryMBOnHeap() == null) {
-      if (request.getClusterSpec().getMemoryMBOffHeap() != null) {
-        // only total memory is known
-        final int totalMemory = request.getClusterSpec().getMemoryMBOffHeap();
-        final int onHeap = totalMemory < LARGE_SYSTEMS_MIN_MEMORY_MB ? DEFAULT_HEAP_MEMORY_MB : LARGE_SYSTEMS_DEFAULT_HEAP_MEMORY_MB;
-        clusterSpec.setMemoryMBOnHeap(onHeap);
-        clusterSpec.setMemoryMBOffHeap(totalMemory - onHeap);
+      clusterConfig.setDistroType(Optional.fromNullable(storedCluster.getClusterConfig().getDistroType()).or(DistroType.OTHER));
+      clusterConfig.setIsSecure(Optional.fromNullable(storedCluster.getClusterConfig().getIsSecure()).or(false));
+
+      clusterConfig.setSubPropertyList(Optional.fromNullable(request.getSubPropertyList()).or(storedCluster
+        .getClusterConfig().getSubPropertyList()));
+      final ClusterSpec clusterSpec = new ClusterSpec();
+      if (storedCluster.getClusterConfig().getClusterSpec().getQueue() != null) {
+        clusterSpec.setQueue(Optional.fromNullable(request.getClusterSpec().getQueue()).or(storedCluster.getClusterConfig().getClusterSpec
+          ().getQueue()));
       } else {
-        // means we did not really get it from FE - need to set it from what is stored
-        clusterSpec.setMemoryMBOnHeap(storedCluster.getClusterConfig()
-          .getClusterSpec().getMemoryMBOnHeap());
-        clusterSpec.setMemoryMBOffHeap(storedCluster.getClusterConfig()
-          .getClusterSpec().getMemoryMBOffHeap());
+        clusterSpec.setQueue(Optional.fromNullable(request.getClusterSpec().getQueue()).orNull());
       }
-    } else {
-      clusterSpec.setMemoryMBOnHeap(request.getClusterSpec().getMemoryMBOnHeap());
-      if (request.getClusterSpec().getMemoryMBOffHeap() != null) {
-        clusterSpec.setMemoryMBOffHeap(request.getClusterSpec().getMemoryMBOffHeap());
+      clusterSpec.setContainerCount(Optional
+          .fromNullable(request.getClusterSpec().getContainerCount())
+          .or(storedCluster.getClusterConfig().getClusterSpec().getContainerCount()));
+      clusterSpec.setVirtualCoreCount(Optional
+          .fromNullable(request.getClusterSpec().getVirtualCoreCount())
+          .or(storedCluster.getClusterConfig().getClusterSpec().getVirtualCoreCount()));
+
+      if (request.getClusterSpec().getMemoryMBOnHeap() == null) {
+        if (request.getClusterSpec().getMemoryMBOffHeap() != null) {
+          // only total memory is known
+          final int totalMemory = request.getClusterSpec().getMemoryMBOffHeap();
+          final int onHeap = totalMemory < LARGE_SYSTEMS_MIN_MEMORY_MB ? DEFAULT_HEAP_MEMORY_MB : LARGE_SYSTEMS_DEFAULT_HEAP_MEMORY_MB;
+          clusterSpec.setMemoryMBOnHeap(onHeap);
+          clusterSpec.setMemoryMBOffHeap(totalMemory - onHeap);
+        } else {
+          // means we did not really get it from FE - need to set it from what is stored
+          clusterSpec.setMemoryMBOnHeap(storedCluster.getClusterConfig()
+            .getClusterSpec().getMemoryMBOnHeap());
+          clusterSpec.setMemoryMBOffHeap(storedCluster.getClusterConfig()
+            .getClusterSpec().getMemoryMBOffHeap());
+        }
       } else {
-        clusterSpec.setMemoryMBOffHeap(storedCluster.getClusterConfig()
-          .getClusterSpec().getMemoryMBOffHeap() + storedCluster.getClusterConfig()
-          .getClusterSpec().getMemoryMBOnHeap() - request.getClusterSpec().getMemoryMBOnHeap());
+        clusterSpec.setMemoryMBOnHeap(request.getClusterSpec().getMemoryMBOnHeap());
+        if (request.getClusterSpec().getMemoryMBOffHeap() != null) {
+          clusterSpec.setMemoryMBOffHeap(request.getClusterSpec().getMemoryMBOffHeap());
+        } else {
+          clusterSpec.setMemoryMBOffHeap(storedCluster.getClusterConfig()
+            .getClusterSpec().getMemoryMBOffHeap() + storedCluster.getClusterConfig()
+            .getClusterSpec().getMemoryMBOnHeap() - request.getClusterSpec().getMemoryMBOnHeap());
+        }
+      }
+      clusterConfig.setClusterSpec(clusterSpec);
+    } else if (clusterConfig.getClusterType() == ClusterType.EC2) {
+      final ClusterSpec clusterSpec = new ClusterSpec();
+      clusterSpec.setContainerCount(Optional.fromNullable(request.getClusterSpec().getContainerCount()).or(storedCluster.getClusterConfig().getClusterSpec().getContainerCount()));
+      clusterConfig.setClusterSpec(clusterSpec);
+      AwsProps newProps = request.getAwsProps();
+      clusterConfig.setAwsProps(newProps);
+
+      AwsProps oldProps = storedCluster.getClusterConfig().getAwsProps();
+      if (newProps.getConnectionProps().getAuthMode() == AuthMode.SECRET
+          && ProvisioningResource.USE_EXISTING_SECRET_VALUE.equals(newProps.getConnectionProps().getSecretKey())
+          && oldProps.getConnectionProps().getAuthMode() == AuthMode.SECRET
+          ) {
+        newProps.getConnectionProps().setSecretKey(oldProps.getConnectionProps().getSecretKey());
       }
     }
 
-    clusterConfig.setClusterSpec(clusterSpec);
     cluster.setClusterConfig(clusterConfig);
 
     return cluster;
+  }
+
+  private List<Cluster> findClusters(Optional<Collection<ClusterId>> id, String name) {
+    List<Cluster> clusters = new ArrayList<>();
+
+    if(id.isPresent()) {
+      return store.get(new ArrayList<>(id.get()));
+    } else {
+      for(Entry<ClusterId, Cluster> e : store.find()) {
+        if(name.equals(e.getValue().getClusterConfig().getName())) {
+          clusters.add(e.getValue());
+        }
+      }
+    }
+
+    if(clusters.isEmpty()) {
+      throw new ProvisioningService.NoClusterException();
+    }
+
+    return clusters;
+  }
+
+  private CompletableFuture<Void> doAction(Optional<Collection<ClusterId>> ids, String name, ClusterState desiredState) {
+    try {
+      final List<Cluster> clusters = findClusters(ids, name);
+      return CompletableFuture.allOf(
+          clusters.stream()
+          .map(c -> createFuture(desiredState, c, c.getClusterConfig().getName()))
+          .collect(Collectors.toList())
+          .toArray(new CompletableFuture[0]));
+    } catch (Exception ex) {
+      CompletableFuture<Void> cf = new CompletableFuture<>();
+      cf.completeExceptionally(ex);
+      return cf;
+    }
+  }
+
+  private final CompletableFuture<Void> createFuture(ClusterState desiredState, Cluster initialCluster, String name) {
+    final CompletableFuture<Void> future = new CompletableFuture<Void>();
+
+    pool.submit(() -> {
+      try {
+        Cluster cluster = initialCluster;
+
+        Boolean autoStart = cluster.getClusterConfig().getAllowAutoStart();
+        if(desiredState == ClusterState.RUNNING && (autoStart == null || !autoStart)) {
+          throw new ActionDisallowed();
+        }
+
+        Boolean autoStop = cluster.getClusterConfig().getAllowAutoStop();
+        if(desiredState == ClusterState.STOPPED && (autoStop == null || !autoStop) ) {
+          throw new ActionDisallowed();
+        }
+
+        ClusterId id = cluster.getId();
+
+        logger.info("Applying action {} on cluster '{}'.", desiredState.name(), name);
+        try {
+          modifyCluster(id, desiredState, cluster.getClusterConfig());
+        } catch (ConcurrentModificationException ex) {
+          // could happen if multiple queries try to start the same cluster at the same time. Shouldn't cause us to fail.
+          logger.debug("Autostart failed due to concurrent modification of cluster. Monitoring for desired state anyway.", ex);
+        }
+        int i = 0;
+        while(i < 3600) {
+          cluster = store.get(id);
+          if(cluster.getState() == desiredState) {
+            logger.info("Action {} on cluster '{}' completed.", desiredState.name(), name);
+            future.complete(null);
+            return;
+          }
+
+          if(future.isCancelled()) {
+            break;
+          }
+          Thread.sleep(1000);
+          i++;
+        }
+        logger.info("Failed to {} cluster '{}' within 1 hour.", desiredState.name(), name);
+        future.complete(null);
+      } catch (Throwable ex) {
+        future.completeExceptionally(ex);
+      }
+    });
+    return future;
+  }
+
+  @Override
+  public CompletableFuture<Void> autostartCluster(String name) {
+    return doAction(Optional.absent(), name, ClusterState.RUNNING);
+  }
+
+  @Override
+  public void stopClusters(Collection<ClusterId> clusters) {
+    for (ClusterId id : clusters) {
+      Cluster cluster = store.get(id);
+      try {
+        modifyCluster(id, ClusterState.STOPPED, cluster.getClusterConfig());
+      } catch (ProvisioningHandlingException e) {
+        logger.warn("Failure while stopping cluster {}", cluster.getClusterConfig().getName(), e);
+      }
+    }
   }
 
   @VisibleForTesting
@@ -512,9 +705,14 @@ public class ProvisioningServiceImpl implements ProvisioningService, Provisionin
       throw new IllegalStateException("Cluster in the process of deletion. No modification is allowed");
     }
 
-    if (ClusterState.STOPPING == storedCluster.getState() || ClusterState.STARTING == storedCluster.getState()) {
-      throw new IllegalStateException("Cluster in the process of stopping/restarting. No modification is " +
-        "allowed");
+    if (ClusterState.STARTING == storedCluster.getState()
+    && ClusterState.RUNNING == modifiedCluster.getState()) {
+      return Action.NONE;
+    }
+
+    if((ClusterType.YARN == modifiedCluster.getClusterConfig().getClusterType()) &&
+      (ClusterState.STOPPING == storedCluster.getState())) {
+      throw new IllegalStateException("YARN Cluster in the process of stopping. No modification is allowed");
     }
 
     if (Objects.equal(storedCluster,modifiedCluster)) {
@@ -556,6 +754,11 @@ public class ProvisioningServiceImpl implements ProvisioningService, Provisionin
     tempClusterSpec.setVirtualCoreCount(storedClusterSpec.getVirtualCoreCount());
     tempClusterSpec.setContainerCount(modifiedCluster.getClusterConfig().getClusterSpec().getContainerCount());
 
+    if(modifiedCluster.getClusterConfig().getClusterType() == ClusterType.EC2) {
+      // don't check for a resize for ec2 since it doesn't support resizing.
+      return Action.RESTART;
+    }
+
     if (tempClusterSpec.getContainerCount() != storedClusterSpec.getContainerCount() &&
       Objects.equal(modifiedCluster.getClusterConfig().getClusterSpec(),tempClusterSpec) &&
       (ClusterState.RUNNING == storedCluster.getState() && ClusterState.RUNNING == modifiedCluster.getState())) {
@@ -569,6 +772,17 @@ public class ProvisioningServiceImpl implements ProvisioningService, Provisionin
 
   @VisibleForTesting
   static boolean equals(List<Property> list1, List<Property> list2) {
+    if((list1 == null || list1.isEmpty()) && (list2 == null || list2.isEmpty())) {
+      return true;
+    }
+    if(list1 == null || list1.isEmpty()) {
+      return false;
+    }
+
+    if(list2 == null || list2.isEmpty()) {
+      return false;
+    }
+
     if (list1.size() != list2.size()) {
       return false;
     }
@@ -583,55 +797,6 @@ public class ProvisioningServiceImpl implements ProvisioningService, Provisionin
   @VisibleForTesting
   Map<ClusterType, ProvisioningServiceDelegate> getConcreteServices() {
     return concreteServices;
-  }
-
-  private static final class ClusterSerializer extends Serializer<Cluster> {
-    private final Serializer<Cluster> serializer = ProtostuffSerializer.of(Cluster.getSchema());
-
-    @Override
-    public byte[] convert(final Cluster v) {
-      return serializer.convert(v);
-    }
-
-    @Override
-    public Cluster revert(final byte[] data) {
-      return serializer.revert(data);
-    }
-
-    @Override
-    public String toJson(final Cluster v) throws IOException {
-      return serializer.toJson(v);
-    }
-
-    @Override
-    public Cluster fromJson(final String v) throws IOException {
-      return serializer.fromJson(v);
-    }
-  }
-
-  private static final class ClusterIdSerializer extends Serializer<ClusterId> {
-    private final Serializer<ClusterId> serializer = ProtostuffSerializer.of(ClusterId.getSchema());
-
-    @Override
-    public byte[] convert(final ClusterId id) {
-      return serializer.convert(id);
-    }
-
-    @Override
-    public ClusterId revert(final byte[] data) {
-      return serializer.revert(data);
-    }
-
-    @Override
-    public String toJson(final ClusterId v) throws IOException {
-      return serializer.toJson(v);
-    }
-
-    @Override
-    public ClusterId fromJson(final String v) throws IOException {
-      return serializer.fromJson(v);
-    }
-
   }
 
   private static final class ClusterVersion implements VersionExtractor<Cluster> {
@@ -655,5 +820,28 @@ public class ProvisioningServiceImpl implements ProvisioningService, Provisionin
     public void setTag(final Cluster value, final String tag) {
       value.getClusterConfig().setTag(tag);
     }
+  }
+
+  @Override
+  public List<ClusterId> getRunningStoppableClustersByName(String name) {
+    List<ClusterId> ids = new ArrayList<>();
+    logger.debug("Finding clusters with name {}", name);
+    for(Entry<ClusterId, Cluster> c : store.find()) {
+      Cluster cluster = c.getValue();
+      logger.debug("Found cluster with clusterId {}", c.getKey());
+      if(!name.equals(cluster.getClusterConfig().getName())) {
+        continue;
+      }
+
+      Boolean allowAutoStop = cluster.getClusterConfig().getAllowAutoStop();
+      if(allowAutoStop == null || !allowAutoStop) {
+        continue;
+      }
+      if(cluster.getState() == ClusterState.RUNNING) {
+        logger.debug("Adding {} to be stopped", c.getKey());
+        ids.add(c.getKey());
+      }
+    }
+    return ids;
   }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -54,20 +54,4 @@ describe('TableControlsView', () => {
     expect(wrapper).to.have.length(1);
   });
 
-  describe('#renderPreviewWarning', () => {
-    it('should render SampleDataMessage if approximate prop equals true', () => {
-      const wrapper = shallow(<TableControlsView {...commonProps}/>, {context});
-      expect(wrapper.find('SampleDataMessage')).to.have.length(1);
-    });
-
-    it('should not render SampleDataMessage if approximate prop equals false', () => {
-      const props = {
-        ...commonProps,
-        approximate: false
-      };
-
-      const wrapper = shallow(<TableControlsView {...props}/>, {context});
-      expect(wrapper.find('SampleDataMessage')).to.have.length(0);
-    });
-  });
 });

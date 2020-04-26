@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -193,29 +193,25 @@ describe('FormUtils', () => {
     });
 
     it('should return selected tab if it has errors', () => {
-      const getTabFieldsFromConfigStub = sinon.stub(FormUtils, 'getTabFieldsFromConfig');
-      getTabFieldsFromConfigStub.returns([]);
       const tabHasErrorStub = sinon.stub(FormUtils, 'tabFieldsIncludeErrorFields');
       tabHasErrorStub.returns(true);
 
       expect(FormUtils.findTabWithError(formconfig, ['a', 'b'], 'tabB').getName()).to.equal('tabB');
-
-      getTabFieldsFromConfigStub.restore();
       tabHasErrorStub.restore();
     });
 
     it('should return first tab with errors if selected has no errors', () => {
       formconfig = new FormConfig({tabs: [
-          {name: 'tabA', sections: [], elements: [{propName: 'a'}]},
-          {name: 'tabB', sections: []}
+        {name: 'tabA', sections: [], elements: [{propName: 'a'}]},
+        {name: 'tabB', sections: []}
       ]});
       expect(FormUtils.findTabWithError(formconfig, ['a', 'b'], 'tabB').getName()).to.equal('tabA');
     });
 
     it('should return selected tab, if error fields provided are not found in tabs', () => {
       formconfig = new FormConfig({tabs: [
-          {name: 'tabA', sections: [], elements: [{propName: 'c'}]},
-          {name: 'tabB', sections: []}
+        {name: 'tabA', sections: [], elements: [{propName: 'c'}]},
+        {name: 'tabB', sections: []}
       ]});
       expect(FormUtils.findTabWithError(formconfig, ['a', 'b'], 'tabB').getName()).to.equal('tabB');
     });
@@ -227,8 +223,8 @@ describe('FormUtils', () => {
     });
     it('should add default fields', () => {
       formConfig = new FormConfig({tabs: [
-          {name: 'tabA', sections: []},
-          {name: 'tabB', sections: []}
+        {name: 'tabA', sections: []},
+        {name: 'tabB', sections: []}
       ]});
       const fields = FormUtils.getFieldsFromConfig({form: formConfig}, []);
       expect(fields.includes('id')).to.equal(true);
@@ -237,8 +233,8 @@ describe('FormUtils', () => {
 
     it('should call form getFields', () => {
       formConfig = new FormConfig({tabs: [
-          {name: 'tabA', sections: []},
-          {name: 'tabB', sections: []}
+        {name: 'tabA', sections: []},
+        {name: 'tabB', sections: []}
       ]});
       const spy = sinon.spy(formConfig, 'getFields');
       FormUtils.getFieldsFromConfig({form: formConfig});
@@ -364,8 +360,8 @@ describe('FormUtils', () => {
     let formConfig;
     beforeEach(() => {
       formConfig = new FormConfig({tabs: [
-          {name: 'tabA', sections: []},
-          {name: 'tabB', sections: []}
+        {name: 'tabA', sections: []},
+        {name: 'tabB', sections: []}
       ]});
     });
     it('should call form addValidators', () => {

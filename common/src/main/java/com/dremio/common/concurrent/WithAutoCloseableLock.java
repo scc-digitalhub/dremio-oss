@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,6 +37,14 @@ public class WithAutoCloseableLock<T> implements Closeable {
   @Override
   public void close() {
     acl.close();
+  }
+
+  /**
+   * Get the lock that this exposes as an autocloseable.
+   * @return
+   */
+  public AutoCloseableLock getLock() {
+    return acl;
   }
 
   /**

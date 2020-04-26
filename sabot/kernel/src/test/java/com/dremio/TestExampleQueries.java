@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,22 +23,26 @@ import java.io.File;
 import java.io.PrintStream;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.regex.Pattern;
 
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Ignore;
+import org.junit.Rule;
 import org.junit.Test;
 
 import com.dremio.common.types.TypeProtos.MinorType;
 import com.dremio.common.util.FileUtils;
 import com.dremio.common.util.TestTools;
+import com.dremio.config.DremioConfig;
 import com.dremio.exec.ExecConstants;
+import com.dremio.exec.catalog.CatalogServiceImpl;
 import com.dremio.exec.planner.physical.PlannerSettings;
 import com.dremio.exec.store.CatalogService;
-import com.dremio.exec.store.CatalogService.UpdateType;
 import com.dremio.sabot.rpc.user.QueryDataBatch;
 import com.dremio.service.namespace.NamespaceKey;
+import com.dremio.test.TemporarySystemProperties;
 
 public class TestExampleQueries extends PlanTestBase {
   private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(TestExampleQueries.class);
@@ -46,14 +50,30 @@ public class TestExampleQueries extends PlanTestBase {
   final String WORKING_PATH = TestTools.getWorkingPath();
   final String TEST_RES_PATH = WORKING_PATH + "/src/test/resources";
 
+  @Rule
+  public TemporarySystemProperties properties = new TemporarySystemProperties();
+
   @Before
   public void setupOptions() throws Exception {
     testNoResult("ALTER SESSION SET \"%s\" = true", ExecConstants.ENABLE_VERBOSE_ERRORS.getOptionName());
+    properties.set(DremioConfig.LEGACY_STORE_VIEWS_ENABLED, "true");
   }
 
   @After
   public void resetOptions() throws Exception {
     testNoResult("ALTER SESSION RESET ALL");
+  }
+
+
+  @Test
+  public void nullBinaryLiteral() throws Exception {
+    String sql = "select cast(null as varbinary(10)) as a";
+    testBuilder()
+      .sqlQuery(sql)
+      .unOrdered()
+      .baselineColumns("a")
+      .baselineValues(null)
+      .go();
   }
 
   @Test
@@ -75,6 +95,76 @@ public class TestExampleQueries extends PlanTestBase {
       .baselineColumns("A", "B")
       .baselineValues(0, "No")
       .go();
+  }
+
+  // See DX-17817
+  @Test
+  public void testCorrectConstantHandlingInNLJE() throws Exception {
+    try(AutoCloseable c = withOption(PlannerSettings.NLJOIN_FOR_SCALAR, false) ) {
+      testBuilder()
+        .sqlQuery("SELECT l_orderkey "
+            + "FROM "
+            + "cp.\"tpch/lineitem.parquet\" lineitem  left join  cp.\"tpch/orders.parquet\" on  (TO_DATE(o_orderdate, 'yyyy-mm-dd') > (TO_DATE(L_SHIPDATE, 'yyyy-mm-dd'))) "
+            + "limit 5")
+        .unOrdered()
+        .baselineColumns("l_orderkey")
+        .baselineValues(1)
+        .baselineValues(1)
+        .baselineValues(1)
+        .baselineValues(1)
+        .baselineValues(1)
+        .go();
+    }
+  }
+
+  // See DX-17818
+  @Test
+  public void leftJoinInequality() throws Exception {
+    try(AutoCloseable c = withOption(PlannerSettings.NLJOIN_FOR_SCALAR, false);
+        AutoCloseable c2 = withOption(PlannerSettings.ENABLE_JOIN_OPTIMIZATION, false)) {
+      String q = "SELECT l_orderkey "
+          + "FROM "
+          + "cp.\"tpch/orders.parquet\" left join cp.\"tpch/lineitem.parquet\"  on (L_orderkey = O_orderkey) and TO_DATE(o_orderdate, 'yyyy-mm-dd') between o_orderdate and l_shipdate "
+          + "LIMIT 5";
+      testBuilder()
+      .sqlQuery(q)
+      .unOrdered()
+      .baselineColumns("l_orderkey")
+      .baselineValues(1)
+      .baselineValues(1)
+      .baselineValues(1)
+      .baselineValues(1)
+      .baselineValues(1)
+      .go();
+      // check swaps the declared right to a left.
+      testPlanOneExpectedPattern(q, Pattern.quote("joinType=[left]"));
+    }
+  }
+
+  // See DX-17818
+  @Test
+  public void rightJoinInequality() throws Exception {
+    try(AutoCloseable c = withOption(PlannerSettings.NLJOIN_FOR_SCALAR, false);
+        AutoCloseable c2 = withOption(PlannerSettings.ENABLE_JOIN_OPTIMIZATION, false)) {
+
+      String q = "SELECT l_orderkey "
+          + "FROM "
+          + "cp.\"tpch/orders.parquet\" right join cp.\"tpch/lineitem.parquet\"  on (L_orderkey = O_orderkey) and TO_DATE(o_orderdate, 'yyyy-mm-dd') between o_orderdate and l_shipdate "
+          + "LIMIT 5";
+      testBuilder()
+        .sqlQuery(q)
+        .unOrdered()
+        .baselineColumns("l_orderkey")
+        .baselineValues(1)
+        .baselineValues(1)
+        .baselineValues(1)
+        .baselineValues(1)
+        .baselineValues(1)
+        .go();
+
+      // check swaps the declared right to a left.
+      testPlanOneExpectedPattern(q, Pattern.quote("joinType=[left]"));
+    }
   }
 
   @Test
@@ -261,7 +351,7 @@ public class TestExampleQueries extends PlanTestBase {
     file2.println("{\"a\":1,\"b\":[\"b\"]}");
     file2.close();
     // TODO(AH) force refresh schema
-    getSabotContext().getCatalogService().refreshSource(new NamespaceKey("dfs_test"), CatalogService.REFRESH_EVERYTHING_NOW, UpdateType.FULL);
+    ((CatalogServiceImpl) getSabotContext().getCatalogService()).refreshSource(new NamespaceKey("dfs_test"), CatalogService.REFRESH_EVERYTHING_NOW, CatalogServiceImpl.UpdateType.FULL);
     try {
       test("select * from dfs_test.emptyList");
     } catch (Exception e) {
@@ -385,9 +475,31 @@ public class TestExampleQueries extends PlanTestBase {
         + "from cp.\"customer.json\" group by customer_region_id, fname) as sq(x, y, z) where coalesce(x, 100) = 10";
     testPlanMatchingPatterns(query, new String[] {
         "Filter\\(condition=\\[CASE\\(IS NOT NULL\\(\\$1\\), =\\(\\$1, 10\\), false\\)\\]\\)",
-        "Agg\\(group=\\[\\{0, 1\\}\\], agg\\#0=\\[\\SUM\\(\\$2\\)\\], agg\\#1=\\[COUNT\\(\\$2\\)\\]\\)",
-        "Project\\(customer_region_id=\\[\\$0\\], fname=\\[\\$1\\], EXPR\\$2=\\[\\/\\(CAST\\(\\$2\\):DOUBLE, \\$3\\)\\]\\)" },
+        "Agg\\(group=\\[\\{0, 1\\}\\], agg\\#0=\\[.?SUM.?\\(\\$2\\)\\], agg\\#1=\\[COUNT\\(\\$2\\)\\]\\)",
+        "Project\\(customer_region_id=\\[\\$0\\], fname=\\[\\$1\\], EXPR\\$2=(?:\\[\\/\\(CAST\\(\\$2\\):DOUBLE, \\$3\\)\\]|\\[\\/\\(CAST\\(CASE\\(\\=\\(\\$3, 0\\), null, \\$2\\)\\)\\:DOUBLE, \\$3\\)\\])\\)" },
         null);
+  }
+
+  @Test
+  public void testLocate() throws Exception {
+    try {
+      test("use dfs_test");
+      test("create view locateview as (select * from cp.\"customer.json\" where customer_id < 5);");
+
+
+      testBuilder()
+        .sqlQuery("select locate('Spence', lname, 1) as A from locateview")
+        .ordered()
+        .baselineColumns("A")
+        .baselineValues(0)
+        .baselineValues(0)
+        .baselineValues(0)
+        .baselineValues(1)
+        .build().run();
+
+    } finally {
+      test("drop view locateview;");
+    }
   }
 
   @Test // see DRILL-2328
@@ -1691,5 +1803,81 @@ public class TestExampleQueries extends PlanTestBase {
       .baselineValues(1L)
       .build().
       run();
+  }
+
+  /**
+   * This test case tickled a scenario where we failed to support a join because of an issue where we were failing to
+   * introduce the correct abstract converters. Changes to make it work were done as an ordered enhancement to Prule.
+   *
+   * See DX-17835 for further details
+   */
+  @Test
+  public void ensureThatStackedConversionsWork() throws Exception {
+    try (AutoCloseable c = withOption(PlannerSettings.NLJOIN_FOR_SCALAR, false)) {
+
+      test(
+        "create table dfs_test.zip as " +
+          "select city, loc, pop, state, CAST(\"_id\" as INT) as \"id\"\n" +
+          "FROM (\n" +
+          "   select * from cp.\"/sample/samples-samples-dremio-com-zips-json.json\" limit 10\n" +
+          ") nested_0");
+
+      test(
+        "create table dfs_test.lookup as " +
+          "select\n" +
+          "   case\n" +
+          "       when A='id' then 0\n" +
+          "       when A='A' then 0\n" +
+          "       else CAST(A as INT)\n" +
+          "   end as id,\n" +
+          "   B, C, D\n" +
+          "FROM (\n" +
+          "   select columns[0] as A, columns[1] as B, columns[2] as C, columns[3] as D from cp.\"/sample/samples-samples-dremio-com-zip_lookup-csv.csv\" limit 10\n" +
+          ") nested_0");
+
+      // test preview query
+      testNoResult("set planner.leaf_limit_enable = true");
+
+      // allow parallelization
+      testNoResult("set planner.width.max_per_node = 10");
+      testNoResult("set planner.width.max_per_query = 10");
+      testNoResult("set planner.slice_target = 1");
+
+      test(
+        "SELECT nested_2.city AS city, nested_2.pop AS pop, nested_2.state AS state, nested_2.Count_Star AS Count_Star, nested_2.Sum_pop AS Sum_pop, nested_2.newID AS newID, join_lookup.id AS id, join_lookup.B AS B, join_lookup.C AS C, join_lookup.D AS D\n" +
+          "FROM (\n" +
+          "SELECT newID, city, pop, state, COUNT(*) AS Count_Star, SUM(pop) AS Sum_pop\n" +
+          "FROM (\n" +
+          "SELECT city, loc, pop, state, \"id\" AS newID\n" +
+          "FROM (\n" +
+          "SELECT city, loc, pop, state, id\n" +
+          "FROM dfs_test.zip\n" +
+          ") nested_0\n" +
+          ") nested_1\n" +
+          "GROUP BY newID, city, pop, state\n" +
+          ") nested_2\n" +
+          "INNER JOIN dfs_test.lookup AS join_lookup ON nested_2.newID < join_lookup.id\n"
+      );
+    }
+  }
+
+  @Test
+  public void testLeftJoinNoAlias() throws Exception {
+    test(
+      "select * \n" +
+      "  from cp.\"tpch/lineitem.parquet\" \n" +
+      "    left outer join cp.\"tpch/customer.parquet\" c \n" +
+      "      on \"tpch/lineitem.parquet\".l_orderkey = c.c_custkey\n");
+  }
+
+  @Test
+  public void testLeftSubstring() throws Exception {
+    testBuilder()
+      .sqlQuery("select left('1234', 2) as l")
+      .unOrdered()
+      .baselineColumns("l")
+      .baselineValues("12")
+      .build()
+      .run();
   }
 }

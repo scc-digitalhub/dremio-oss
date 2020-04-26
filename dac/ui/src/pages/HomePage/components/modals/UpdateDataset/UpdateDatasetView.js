@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -205,7 +205,7 @@ export class UpdateDatasetView extends Component {
           {this.renderFormBody()}
           {this.renderLocationBlock()}
         </div>
-        <ModalFooter styles={style.footerStyle}>
+        <ModalFooter>
           {this.renderButtons()}
         </ModalFooter>
       </div>
@@ -223,9 +223,3 @@ export default connectComplexForm({
   fields: ['datasetName', 'selectedEntity'],
   validate
 }, [], mapStateToProps)(UpdateDatasetView);
-
-const style = {
-  footerStyle: {
-    position: 'absolute'
-  }
-};

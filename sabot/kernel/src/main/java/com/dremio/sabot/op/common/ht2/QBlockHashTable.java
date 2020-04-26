@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ package com.dremio.sabot.op.common.ht2;
 
 import static com.koloboke.collect.impl.hash.QHashCapacities.nearestGreaterCapacity;
 
+import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.arrow.memory.BufferAllocator;
@@ -25,9 +26,9 @@ import com.dremio.common.AutoCloseables;
 import com.dremio.common.AutoCloseables.RollbackCloseable;
 import com.google.common.base.Stopwatch;
 import com.google.common.base.Throwables;
-import com.google.common.collect.FluentIterable;
-import com.google.common.collect.Iterables;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ObjectArrays;
+import com.google.common.collect.Streams;
 import com.google.common.primitives.Longs;
 import com.koloboke.collect.hash.HashConfig;
 import com.koloboke.collect.impl.hash.HashConfigWrapper;
@@ -476,7 +477,13 @@ public final class QBlockHashTable implements AutoCloseable {
 
   @Override
   public void close() throws Exception {
-    AutoCloseables.close((Iterable<AutoCloseable>) Iterables.concat(FluentIterable.of(controlBlocks).toList(), FluentIterable.of(fixedBlocks).toList(), FluentIterable.of(variableBlocks).toList()));
+    AutoCloseables.close(
+      Streams.concat(
+        Arrays.stream(controlBlocks),
+        Arrays.stream(fixedBlocks),
+        Arrays.stream(variableBlocks)
+      ).collect(ImmutableList.toImmutableList())
+    );
   }
 
   private boolean tryRehashForExpansion() {

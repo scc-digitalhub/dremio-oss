@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,12 +42,13 @@ import com.dremio.exec.server.MaterializationDescriptorProvider;
 import com.dremio.exec.server.SabotContext;
 import com.dremio.exec.server.options.QueryOptionManager;
 import com.dremio.exec.server.options.SessionOptionManager;
+import com.dremio.exec.server.options.SessionOptionManagerImpl;
 import com.dremio.exec.store.CatalogService;
 import com.dremio.exec.testing.ExecutionControls;
-import com.dremio.metrics.Metrics;
 import com.dremio.options.OptionManager;
 import com.dremio.sabot.rpc.user.UserRPCServer.UserClientConnection;
 import com.dremio.sabot.rpc.user.UserSession;
+import com.dremio.telemetry.api.metrics.Metrics;
 import com.dremio.test.DremioTest;
 import com.google.common.collect.ImmutableList;
 
@@ -104,8 +105,12 @@ public class ExecTest extends DremioTest {
   }
 
   protected QueryContext mockQueryContext(SabotContext dbContext) throws Exception {
-    final UserSession userSession = UserSession.Builder.newBuilder().withOptionManager(dbContext.getOptionManager()).build();
-    final SessionOptionManager sessionOptions = (SessionOptionManager) userSession.getOptions();
+    final SessionOptionManager sessionOptionManager = new SessionOptionManagerImpl(dbContext.getOptionManager());
+
+    final UserSession userSession = UserSession.Builder.newBuilder()
+      .withSessionOptionManager(sessionOptionManager)
+      .build();
+    final SessionOptionManagerImpl sessionOptions = (SessionOptionManagerImpl) userSession.getOptions();
     final QueryOptionManager queryOptions = new QueryOptionManager(sessionOptions);
     final ExecutionControls executionControls = new ExecutionControls(queryOptions, NodeEndpoint.getDefaultInstance());
     FunctionImplementationRegistry functions = queryOptions.getOption(PlannerSettings
@@ -119,7 +124,9 @@ public class ExecTest extends DremioTest {
     when(context.getLpPersistence()).thenReturn(lp);
     when(context.getCatalogService()).thenReturn(registry);
     when(context.getFunctionRegistry()).thenReturn(functions);
-    when(context.getSession()).thenReturn(UserSession.Builder.newBuilder().setSupportComplexTypes(true).build());
+    when(context.getSession()).thenReturn(UserSession.Builder.newBuilder()
+      .withSessionOptionManager(sessionOptionManager)
+      .setSupportComplexTypes(true).build());
     when(context.getCurrentEndpoint()).thenReturn(NodeEndpoint.getDefaultInstance());
     when(context.getActiveEndpoints()).thenReturn(ImmutableList.of(NodeEndpoint.getDefaultInstance()));
     when(context.getPlannerSettings()).thenReturn(new PlannerSettings(dbContext.getConfig(), queryOptions, dbContext.getClusterResourceInformation()));

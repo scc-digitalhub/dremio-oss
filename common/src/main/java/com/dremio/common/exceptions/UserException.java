@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -106,9 +106,35 @@ public class UserException extends RuntimeException {
   }
 
   /**
+   * Creates a new RESOURCE_TIMEOUT exception builder.
+   *
+   * @see com.dremio.exec.proto.UserBitShared.DremioPBError.ErrorType#RESOURCE_TIMEOUT
+   * @return user exception builder
+   */
+  public static Builder resourceTimeoutError() {
+    return resourceTimeoutError(null);
+  }
+
+  /**
+   * Wraps the passed exception inside a resource timeout error.
+   * <p>The cause message will be used unless {@link Builder#message(String, Object...)} is called.
+   * <p>If the wrapped exception is, or wraps, a user exception it will be returned by {@link Builder#build(Logger)}
+   * instead of creating a new exception. Any added context will be added to the user exception as well.
+   *
+   * @see com.dremio.exec.proto.UserBitShared.DremioPBError.ErrorType#RESOURCE_TIMEOUT
+   *
+   * @param cause exception we want the user exception to wrap. If cause is, or wrap, a user exception it will be
+   *              returned by the builder instead of creating a new user exception
+   * @return user exception builder
+   */
+  public static Builder resourceTimeoutError(final Throwable cause) {
+    return builder(DremioPBError.ErrorType.RESOURCE_TIMEOUT, cause);
+  }
+
+  /**
    * Creates a new JSON_FIELD_CHANGE exception builder.
    *
-   * @see com.dremio.exec.proto.UserBitShared.DremioPBError.ErrorType#FIELD_CHANGE
+   * @see com.dremio.exec.proto.UserBitShared.DremioPBError.ErrorType#JSON_FIELD_CHANGE
    * @return user exception builder
    */
   public static Builder jsonFieldChangeError() {
@@ -631,7 +657,7 @@ public class UserException extends RuntimeException {
      * @return this builder
      */
     public Builder addContext(final String value) {
-      context.add(value);
+      context.add(String.valueOf(value));
       return this;
     }
 
@@ -688,7 +714,7 @@ public class UserException extends RuntimeException {
      * @return this builder
      */
     public Builder pushContext(final String value) {
-      context.push(value);
+      context.push(String.valueOf(value));
       return this;
     }
 
@@ -746,7 +772,10 @@ public class UserException extends RuntimeException {
      *
      * @param logger the logger to write to, if null call won't log
      * @return user exception
+     * @deprecated we are no longer required to log UserExceptions whenever we build them. The user will see the exception
+     * in the query profile, and the caller can always chose to log the exception if really needed.
      */
+    @Deprecated
     public UserException build(final Logger logger) {
       if (uex != null) {
         return uex;

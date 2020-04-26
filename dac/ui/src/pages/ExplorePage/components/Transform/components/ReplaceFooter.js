@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ import DateInput from 'components/Fields/DateInput';
 import actionUtils from 'utils/actionUtils/actionUtils';
 import { applyValidators, isRequiredIfAnotherPropertyEqual} from 'utils/validation';
 import { formLabel } from 'uiTheme/radium/typography';
-import { isDateType, BOOLEAN } from 'constants/DataTypes';
+import { isDateType, BOOLEAN } from '@app/constants/DataTypes';
 import BooleanSelect from './BooleanSelect';
 import {
   base,

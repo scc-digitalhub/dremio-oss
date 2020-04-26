@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 package com.dremio.exec.store.dfs.easy;
 
 import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
@@ -33,17 +34,18 @@ import com.dremio.exec.ExecConstants;
 import com.dremio.exec.planner.acceleration.IncrementalUpdateUtils;
 import com.dremio.exec.record.BatchSchema;
 import com.dremio.exec.store.RecordReader;
+import com.dremio.exec.store.SplitAndPartitionInfo;
 import com.dremio.exec.store.dfs.FileSystemPlugin;
-import com.dremio.exec.store.dfs.FileSystemWrapper;
 import com.dremio.exec.store.dfs.PhysicalDatasetUtils;
 import com.dremio.exec.store.dfs.implicit.CompositeReaderConfig;
 import com.dremio.exec.util.ColumnUtils;
+import com.dremio.io.file.FileSystem;
+import com.dremio.io.file.Path;
 import com.dremio.sabot.exec.context.OperatorContext;
 import com.dremio.sabot.exec.fragment.FragmentExecutionContext;
 import com.dremio.sabot.exec.store.easy.proto.EasyProtobuf.EasyDatasetSplitXAttr;
 import com.dremio.sabot.op.scan.ScanOperator;
 import com.dremio.sabot.op.spi.ProducerOperator;
-import com.dremio.service.namespace.dataset.proto.PartitionProtobuf.SplitInfo;
 import com.google.common.base.Function;
 import com.google.common.base.Predicate;
 import com.google.common.collect.FluentIterable;
@@ -74,38 +76,45 @@ public class EasyScanOperatorCreator implements ProducerOperator.Creator<EasySub
   };
 
   private static class SplitAndExtended {
-    private final SplitInfo split;
+    private final SplitAndPartitionInfo split;
     private final EasyDatasetSplitXAttr extended;
-    public SplitAndExtended(SplitInfo split) {
+    public SplitAndExtended(SplitAndPartitionInfo split) {
       super();
       this.split = split;
       try {
-        this.extended = LegacyProtobufSerializer.parseFrom(EasyDatasetSplitXAttr.PARSER, split.getSplitExtendedProperty());
+        this.extended = LegacyProtobufSerializer.parseFrom(EasyDatasetSplitXAttr.PARSER,
+          split.getDatasetSplitInfo().getExtendedProperty());
       } catch (InvalidProtocolBufferException e) {
         throw new RuntimeException("Could not deserialize split info", e);
       }
     }
-    public SplitInfo getSplit() {
+
+    public SplitAndPartitionInfo getSplit() {
       return split;
     }
+
     public EasyDatasetSplitXAttr getExtended() {
       return extended;
     }
-
   }
 
   @Override
   public ProducerOperator create(FragmentExecutionContext fragmentExecContext, final OperatorContext context, EasySubScan config) throws ExecutionSetupException {
-    final FileSystemPlugin plugin = fragmentExecContext.getStoragePlugin(config.getPluginId());
+    final FileSystemPlugin<?> plugin = fragmentExecContext.getStoragePlugin(config.getPluginId());
 
-    final FileSystemWrapper fs = plugin.createFs(config.getProps().getUserName(), context);
+    FileSystem fs;
+    try {
+      fs = plugin.createFS(config.getProps().getUserName(), context);
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
     final FormatPluginConfig formatConfig = PhysicalDatasetUtils.toFormatPlugin(config.getFileConfig(), Collections.<String>emptyList());
     final EasyFormatPlugin<?> formatPlugin = (EasyFormatPlugin<?>) plugin.getFormatPlugin(formatConfig);
 
     FluentIterable<SplitAndExtended> unorderedWork = FluentIterable.from(config.getSplits())
-      .transform(new Function<SplitInfo, SplitAndExtended>() {
+      .transform(new Function<SplitAndPartitionInfo, SplitAndExtended>() {
         @Override
-        public SplitAndExtended apply(SplitInfo split) {
+        public SplitAndExtended apply(SplitAndPartitionInfo split) {
           return new SplitAndExtended(split);
         }
       });
@@ -124,7 +133,7 @@ public class EasyScanOperatorCreator implements ProducerOperator.Creator<EasySub
                   public RecordReader apply(SplitAndExtended input) {
                     try {
                       // If a file source scheme has changed, then trigger a refresh to update the metadata.
-                      if (!fs.isValidFS(input.getExtended().getPath())) {
+                      if (!fs.supportsPath(Path.of(input.getExtended().getPath()))) {
                         throw UserException.invalidMetadataError()
                           .addContext(String.format("%s: Invalid FS for file '%s'", fs.getScheme(), input.getExtended().getPath()))
                           .addContext("File", input.getExtended().getPath())

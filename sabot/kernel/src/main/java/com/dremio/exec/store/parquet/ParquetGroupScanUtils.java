@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,12 +23,10 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileStatus;
 import org.apache.parquet.schema.OriginalType;
 import org.apache.parquet.schema.PrimitiveType.PrimitiveTypeName;
 
@@ -51,7 +49,6 @@ import com.dremio.exec.server.options.SystemOptionManager;
 import com.dremio.exec.store.dfs.CompleteFileWork.FileWorkImpl;
 import com.dremio.exec.store.dfs.FileSelection;
 import com.dremio.exec.store.dfs.FileSystemPlugin;
-import com.dremio.exec.store.dfs.FileSystemWrapper;
 import com.dremio.exec.store.parquet.Metadata.ColumnMetadata;
 import com.dremio.exec.store.parquet.Metadata.ParquetFileMetadata;
 import com.dremio.exec.store.parquet.Metadata.ParquetTableMetadata;
@@ -59,30 +56,30 @@ import com.dremio.exec.store.parquet.Metadata.RowGroupMetadata;
 import com.dremio.exec.store.schedule.CompleteWork;
 import com.dremio.exec.store.schedule.EndpointByteMap;
 import com.dremio.exec.store.schedule.EndpointByteMapImpl;
-import com.dremio.exec.util.ImpersonationUtil;
+import com.dremio.io.file.FileAttributes;
+import com.dremio.io.file.FileSystem;
 import com.dremio.options.OptionManager;
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.google.common.base.Function;
 import com.google.common.base.Objects;
 import com.google.common.base.Stopwatch;
-import com.google.common.collect.FluentIterable;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
-import com.google.common.collect.ListMultimap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
+import com.google.common.net.HostAndPort;
 
 public class ParquetGroupScanUtils {
   static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ParquetGroupScanUtils.class);
 
-  private final FileSystemPlugin plugin;
+  private final FileSystemPlugin<?> plugin;
   private final ParquetFormatPlugin formatPlugin;
   private String selectionRoot;
   private List<SchemaPath> columns;
   private List<RowGroupInfo> rowGroupInfos;
   private List<ParquetFilterCondition> conditions;
-  private final List<FileStatus> entries;
-  private final FileSystemWrapper fs;
+  private final List<FileAttributes> entries;
+  private final FileSystem fs;
   private final Map<String, GlobalDictionaryFieldInfo> globalDictionaryColumns;
   private ParquetTableMetadata parquetTableMetadata = null;
 
@@ -91,7 +88,7 @@ public class ParquetGroupScanUtils {
    */
   private Map<SchemaPath, Long> columnValueCounts;
   // Map from file names to maps of column name to partition value mappings
-  private Map<FileStatus, Map<SchemaPath, Object>> partitionValueMap = Maps.newHashMap();
+  private Map<FileAttributes, Map<SchemaPath, Object>> partitionValueMap = Maps.newHashMap();
   // Preserve order of insertion, need it to prune the map later if it goes above threshold.
   private Map<SchemaPath, MajorType> columnTypeMap = Maps.newLinkedHashMap();
 
@@ -106,7 +103,7 @@ public class ParquetGroupScanUtils {
   public ParquetGroupScanUtils(
     String userName,
     FileSelection selection,
-    FileSystemPlugin plugin,
+    FileSystemPlugin<?> plugin,
     ParquetFormatPlugin formatPlugin,
     String selectionRoot,
     List<SchemaPath> columns,
@@ -118,17 +115,17 @@ public class ParquetGroupScanUtils {
     this.formatPlugin = formatPlugin;
     this.conditions = conditions;
     this.columns = columns;
-    this.fs = ImpersonationUtil.createFileSystem(userName, plugin.getFsConf(), false);
     this.plugin = plugin;
+    this.fs = plugin.createFS(userName, null, true);
     this.selectionRoot = selectionRoot;
-    this.entries = selection.getStatuses();
+    this.entries = selection.getFileAttributesList();
 
     this.globalDictionaryColumns = (globalDictionaryColumns == null)? Collections.<String, GlobalDictionaryFieldInfo>emptyMap() : globalDictionaryColumns;
     this.optionManager = optionManager;
     init();
   }
 
-  public List<FileStatus> getEntries() {
+  public List<FileAttributes> getEntries() {
     return entries;
   }
 
@@ -136,7 +133,7 @@ public class ParquetGroupScanUtils {
     return this.formatPlugin.getConfig();
   }
 
-  public FileSystemPlugin getPlugin() {
+  public FileSystemPlugin<?> getPlugin() {
     return plugin;
   }
 
@@ -144,16 +141,12 @@ public class ParquetGroupScanUtils {
     return selectionRoot;
   }
 
-  public Map<FileStatus, Map<SchemaPath, Object>> getPartitionValueMap() {
+  public Map<FileAttributes, Map<SchemaPath, Object>> getPartitionValueMap() {
     return partitionValueMap;
   }
 
   public Map<SchemaPath, MajorType> getColumnTypeMap() {
     return columnTypeMap;
-  }
-
-  public Configuration getFsConf() {
-    return plugin.getFsConf();
   }
 
   public Map<String, GlobalDictionaryFieldInfo> getGlobalDictionaryColumns() {
@@ -278,8 +271,8 @@ public class ParquetGroupScanUtils {
     private List<EndpointAffinity> affinities;
     private Map<SchemaPath, Long> columnValueCounts;
 
-    public RowGroupInfo(FileStatus status, long start, long length, int rowGroupIndex, long rowCount, Map<SchemaPath, Long> columnValueCounts) {
-      super(start, length, status);
+    public RowGroupInfo(FileAttributes fileAttributes, long start, long length, int rowGroupIndex, long rowCount, Map<SchemaPath, Long> columnValueCounts) {
+      super(start, length, fileAttributes);
       this.rowGroupIndex = rowGroupIndex;
       this.rowCount = rowCount;
       this.columnValueCounts = columnValueCounts == null? Collections.<SchemaPath, Long>emptyMap() : columnValueCounts;
@@ -289,6 +282,7 @@ public class ParquetGroupScanUtils {
       return this.rowGroupIndex;
     }
 
+    @Override
     public int compareTo(CompleteWork o) {
       return Long.compare(getTotalBytes(), o.getTotalBytes());
     }
@@ -298,6 +292,7 @@ public class ParquetGroupScanUtils {
       return affinities;
     }
 
+    @Override
     public long getTotalBytes() {
       return this.getLength();
     }
@@ -313,10 +308,10 @@ public class ParquetGroupScanUtils {
     public void setEndpointByteMap(EndpointByteMap byteMap) {
       this.byteMap = byteMap;
       this.affinities = Lists.newArrayList();
-      final Iterator<ObjectLongCursor<NodeEndpoint>> nodeEndpointIterator = byteMap.iterator();
-      while (nodeEndpointIterator.hasNext()) {
-        ObjectLongCursor<NodeEndpoint> nodeEndPoint = nodeEndpointIterator.next();
-        affinities.add(new EndpointAffinity(nodeEndPoint.key, nodeEndPoint.value));
+      final Iterator<ObjectLongCursor<HostAndPort>> hostPortIterator = byteMap.iterator();
+      while (hostPortIterator.hasNext()) {
+        ObjectLongCursor<HostAndPort> nodeEndPoint = hostPortIterator.next();
+        affinities.add(EndpointAffinity.fromHostAndPort(nodeEndPoint.key, nodeEndPoint.value));
       }
     }
 
@@ -349,21 +344,21 @@ public class ParquetGroupScanUtils {
   private void init() throws IOException {
     final Stopwatch watch = Stopwatch.createStarted();
     columnTypeMap.put(SchemaPath.getSimplePath(UPDATE_COLUMN), Types.optional(MinorType.BIGINT));
-
+    long maxFooterLength = plugin.getContext().getOptionManager().getOption(ExecConstants.PARQUET_MAX_FOOTER_LEN_VALIDATOR);
     // TODO: do we need this code path?
+    final long maxSplits = optionManager.getOption(Metadata.DFS_MAX_SPLITS);
     if (entries.size() == 1) {
-      parquetTableMetadata = Metadata.getParquetTableMetadata(entries.get(0), fs, formatPlugin.getConfig(), plugin);
+      parquetTableMetadata = Metadata.getParquetTableMetadata(entries.get(0), fs, formatPlugin.getConfig(), maxFooterLength, maxSplits);
     } else {
-      parquetTableMetadata = Metadata.getParquetTableMetadata(entries, formatPlugin.getConfig(), plugin);
+      parquetTableMetadata = Metadata.getParquetTableMetadata(entries, fs, formatPlugin.getConfig(), maxFooterLength, maxSplits);
     }
 
-    ListMultimap<String, NodeEndpoint> hostEndpointMap = FluentIterable.from(plugin.getContext().getExecutors())
-      .index(new Function<NodeEndpoint, String>() {
-        @Override
-        public String apply(NodeEndpoint endpoint) {
-          return endpoint.getAddress();
-        }
-      });
+    Set<HostAndPort> hostEndpointMap = Sets.newHashSet();
+    Set<HostAndPort> hostPortEndpointMap = Sets.newHashSet();
+    for (NodeEndpoint endpoint : plugin.getContext().getExecutors()) {
+      hostEndpointMap.add(HostAndPort.fromHost(endpoint.getAddress()));
+      hostPortEndpointMap.add(HostAndPort.fromParts(endpoint.getAddress(), endpoint.getFabricPort()));
+    }
 
     rowGroupInfos = Lists.newArrayList();
     for (ParquetFileMetadata file : parquetTableMetadata.getFiles()) {
@@ -378,15 +373,10 @@ public class ParquetGroupScanUtils {
             rowGroupColumnValueCounts.put(schemaPath, rowCount - column.getNulls());
           }
         }
-        RowGroupInfo rowGroupInfo = new RowGroupInfo(file.getStatus(), rg.getStart(), rg.getLength(), rgIndex, rg.getRowCount(), rowGroupColumnValueCounts);
+        RowGroupInfo rowGroupInfo = new RowGroupInfo(file.getFileAttributes(), rg.getStart(), rg.getLength(), rgIndex, rg.getRowCount(), rowGroupColumnValueCounts);
 
-        EndpointByteMap endpointByteMap = new EndpointByteMapImpl();
-        for (String host : rg.getHostAffinity().keySet()) {
-          if (hostEndpointMap.containsKey(host)) {
-            endpointByteMap
-                .add(getRandom(hostEndpointMap.get(host)), (long) (rg.getHostAffinity().get(host) * rg.getLength()));
-          }
-        }
+        EndpointByteMap endpointByteMap = buildEndpointByteMap(hostEndpointMap, hostPortEndpointMap, rg.getHostAffinity(),
+          rg.getLength());
         rowGroupInfo.setEndpointByteMap(endpointByteMap);
         rgIndex++;
         rowGroupInfos.add(rowGroupInfo);
@@ -427,10 +417,10 @@ public class ParquetGroupScanUtils {
           }
           boolean partitionColumn = checkForPartitionColumn(file, rowGroupIdx, column, first, rowCount);
           if (partitionColumn) {
-            Map<SchemaPath, Object> map = partitionValueMap.get(file.getStatus());
+            Map<SchemaPath, Object> map = partitionValueMap.get(file.getFileAttributes());
             if (map == null) {
               map = Maps.newHashMap();
-              partitionValueMap.put(file.getStatus(), map);
+              partitionValueMap.put(file.getFileAttributes(), map);
 
             }
             Object value = map.get(schemaPath);
@@ -468,18 +458,44 @@ public class ParquetGroupScanUtils {
         continue;
       }
 
-      Map<SchemaPath, Object> map = partitionValueMap.get(file.getStatus());
+      Map<SchemaPath, Object> map = partitionValueMap.get(file.getFileAttributes());
       if (map == null) {
         map = Maps.newHashMap();
-        partitionValueMap.put(file.getStatus(), map);
+        partitionValueMap.put(file.getFileAttributes(), map);
       }
-      map.put(SchemaPath.getSimplePath(UPDATE_COLUMN), file.getStatus().getModificationTime());
+      map.put(SchemaPath.getSimplePath(UPDATE_COLUMN), file.getFileAttributes().lastModifiedTime().toMillis());
     }
 
     eliminateSomePartitionColumns();
 
     logger.debug("Table: {}, partition columns {}", selectionRoot, columnTypeMap.keySet());
     logger.debug("Took {} ms to gather Parquet table metadata.", watch.elapsed(TimeUnit.MILLISECONDS));
+  }
+
+  public static EndpointByteMap buildEndpointByteMap(
+    Set<HostAndPort> activeHostMap, Set<HostAndPort> activeHostPortMap,
+    Map<com.google.common.net.HostAndPort, Float> affinities, long totalLength) {
+
+    EndpointByteMap endpointByteMap = new EndpointByteMapImpl();
+    for (HostAndPort host : affinities.keySet()) {
+      HostAndPort endpoint = null;
+      if (!host.hasPort()) {
+        if (activeHostMap.contains(host)) {
+          endpoint = host;
+        }
+      } else {
+        // multi executor deployment and affinity provider is sensitive to the port
+        // picking the map late as it allows a source that contains files in HDFS and S3
+        if (activeHostPortMap.contains(host)) {
+          endpoint = host;
+        }
+      }
+
+      if (endpoint != null) {
+        endpointByteMap.add(endpoint, (long) (affinities.get(host) * totalLength));
+      }
+    }
+    return endpointByteMap;
   }
 
   private void eliminateSomePartitionColumns() {
@@ -517,13 +533,6 @@ public class ParquetGroupScanUtils {
       }
       columnTypeMap = prunedColumnTypeMap;
     }
-  }
-
-  private <T> T getRandom(List<T> list) {
-    if (list == null || list.size() == 0) {
-      return null;
-    }
-    return list.get(ThreadLocalRandom.current().nextInt(0, list.size()));
   }
 
   public int getMaxParallelizationWidth() {
@@ -565,6 +574,7 @@ public class ParquetGroupScanUtils {
     return toString();
   }
 
+  @Override
   public String toString() {
     return "ParquetGroupScanUtils [entries=" + entries
         + ", selectionRoot=" + selectionRoot

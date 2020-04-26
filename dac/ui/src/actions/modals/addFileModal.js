@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,9 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { CALL_API } from 'redux-api-middleware';
-
-import { API_URL_V2 } from 'constants/Api';
+import { RSAA } from 'redux-api-middleware';
 
 import fileSchema from 'schemas/file';
 import fileFormatSchema from 'schemas/fileFormat';
@@ -23,12 +21,16 @@ import fileFormatSchema from 'schemas/fileFormat';
 import schemaUtils from 'utils/apiUtils/schemaUtils';
 import addFileModalMapper from 'utils/mappers/addFileModalMapper';
 import apiUtils from '@app/utils/apiUtils/apiUtils';
+import { getHomeEntity } from '@app/selectors/home';
+import { APIV2Call } from '@app/core/APICall';
 
 export const UPLOAD_FILE_REQUEST = 'UPLOAD_FILE_REQUEST';
 export const UPLOAD_FILE_SUCCESS = 'UPLOAD_FILE_SUCCESS';
 export const UPLOAD_FILE_FAILURE = 'UPLOAD_FILE_FAILURE';
 
-function postUploadToPath(parentEntity, file, fileConfig, extension, viewId) {
+export const uploadFileToPath = (file, fileConfig, extension, viewId) => (dispatch, getState) => {
+  const state = getState();
+  const parentEntity = getHomeEntity(state);
   const formData = new FormData();
   // use specific filename or just name of file
   const uploadFileName = fileConfig.name || file.name;
@@ -37,8 +39,14 @@ function postUploadToPath(parentEntity, file, fileConfig, extension, viewId) {
   formData.append('fileName', uploadFileName);
   const parentPath = parentEntity.getIn(['links', 'upload_start']);
   const meta = {viewId};
-  return {
-    [CALL_API]: {
+
+  const apiCall = new APIV2Call()
+    .paths(parentPath)
+    .params({extension});
+
+  return dispatch({
+    isFileUpload: true, // see headerMiddleware.js
+    [RSAA]: {
       types: [
         {type: UPLOAD_FILE_REQUEST, meta},
         schemaUtils.getSuccessActionTypeWithSchema(UPLOAD_FILE_SUCCESS, fileSchema, meta),
@@ -46,55 +54,22 @@ function postUploadToPath(parentEntity, file, fileConfig, extension, viewId) {
       ],
       method: 'POST',
       body: formData,
-      endpoint: `${API_URL_V2}${parentPath}/?extension=${extension}`
+      endpoint: apiCall
     }
-  };
-}
-
-export function uploadFileToPath(parentEntity, file, fileConfig, extension, viewId) {
-  return (dispatch) => {
-    return dispatch(postUploadToPath(parentEntity, file, fileConfig, extension, viewId));
-  };
-}
-
-export const LOAD_FILE_FORMAT_REQUEST = 'LOAD_FILE_FORMAT_REQUEST';
-export const LOAD_FILE_FORMAT_SUCCESS = 'LOAD_FILE_FORMAT_SUCCESS';
-export const LOAD_FILE_FORMAT_FAILURE = 'LOAD_FILE_FORMAT_FAILURE';
-
-function fetchFileFormat(file, viewId) {
-  const meta = {
-    parentEntityId: file.get('entityType'),
-    parentEntityType: file.get('entityType'),
-    viewId
-  };
-  return {
-    [CALL_API]: {
-      types: [
-        {type: LOAD_FILE_FORMAT_REQUEST, meta},
-        schemaUtils.getSuccessActionTypeWithSchema(LOAD_FILE_FORMAT_SUCCESS, fileFormatSchema, meta),
-        {type: LOAD_FILE_FORMAT_FAILURE, meta}],
-      method: 'GET',
-      endpoint: `${API_URL_V2}${file.getIn(['links', 'format'])}`
-    }
-  };
-}
-
-export function loadFileFormat(file, viewId) {
-  return (dispatch) => {
-    return dispatch(fetchFileFormat(file, viewId));
-  };
-}
-
-
+  });
+};
 
 export const FILE_FORMAT_PREVIEW_REQUEST = 'FILE_FORMAT_PREVIEW_REQUEST';
 export const FILE_FORMAT_PREVIEW_SUCCESS = 'FILE_FORMAT_PREVIEW_SUCCESS';
 export const FILE_FORMAT_PREVIEW_FAILURE = 'FILE_FORMAT_PREVIEW_FAILURE';
 
-function fetchFileFormatPreview(urlPath, values, viewId) {
+export function loadFilePreview(urlPath, values, viewId) {
   const meta = {viewId};
+
+  const apiCall = new APIV2Call().paths(urlPath);
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         {type: FILE_FORMAT_PREVIEW_REQUEST, meta},
         {type: FILE_FORMAT_PREVIEW_SUCCESS, meta},
@@ -106,14 +81,8 @@ function fetchFileFormatPreview(urlPath, values, viewId) {
         'Content-Type': 'application/json',
         ...apiUtils.getJobDataNumbersAsStringsHeader()
       },
-      endpoint: `${API_URL_V2}${urlPath}`
+      endpoint: apiCall
     }
-  };
-}
-
-export function loadFilePreview(file, values, viewId) {
-  return (dispatch) => {
-    return dispatch(fetchFileFormatPreview(file.getIn(['links', 'format_preview']), values, viewId));
   };
 }
 
@@ -122,38 +91,75 @@ export function resetFileFormatPreview() {
   return {type: RESET_FILE_FORMAT_PREVIEW};
 }
 
+
+//=== Load and Save file format group of cancellable actions
+// _SAVE_REQUEST can cancel _LOAD_REQUEST
+// save is not cancellable and blocks the UI until it completes
+
+const loadAndSaveGroupName = 'FILE_FORMAT_LOAD_AND_SAVE_GROUP';
+
+export const FILE_FORMAT_LOAD_REQUEST = 'FILE_FORMAT_LOAD_REQUEST';
+export const FILE_FORMAT_LOAD_SUCCESS = 'FILE_FORMAT_LOAD_SUCCESS';
+export const FILE_FORMAT_LOAD_FAILURE = 'FILE_FORMAT_LOAD_FAILURE';
+
+export function loadFileFormat(formatUrl, viewId) {
+  const abortController = new AbortController(); // eslint-disable-line no-undef
+  const meta = {
+    viewId
+  };
+  const abortInfo = apiUtils.getAbortInfo(loadAndSaveGroupName);
+  const nonAbortableMeta = {...meta, abortInfo};
+  // if AbortController is supported by browser/polyfill, then use it in meta and add options signal to fetch
+  const abortableMeta = { ...meta, abortInfo: {...abortInfo, abortController}};
+
+  const apiCall = new APIV2Call().paths(formatUrl);
+
+  const rsaa = {
+    types: [
+      {type: FILE_FORMAT_LOAD_REQUEST, meta: abortableMeta},
+      schemaUtils.getSuccessActionTypeWithSchema(FILE_FORMAT_LOAD_SUCCESS, fileFormatSchema, nonAbortableMeta),
+      {type: FILE_FORMAT_LOAD_FAILURE, meta: nonAbortableMeta}],
+    method: 'GET',
+    endpoint: apiCall
+  };
+  if (abortController) {
+    rsaa.options = {signal: abortController.signal};
+  }
+
+  return {
+    [RSAA]: rsaa
+  };
+}
+
 export const FILE_FORMAT_SAVE_REQUEST = 'FILE_FORMAT_SAVE_REQUEST';
 export const FILE_FORMAT_SAVE_SUCCESS = 'FILE_FORMAT_SAVE_SUCCESS';
 export const FILE_FORMAT_SAVE_FAILURE = 'FILE_FORMAT_SAVE_FAILURE';
 
-function postFileFormat(fileFormat, values, viewId) {
-  const resourcePath = fileFormat.getIn(['links', 'self']);
+export function saveFileFormat(resourcePath, values, viewId) {
   const meta = {
     viewId,
     invalidateViewIds: ['HomeContents']
   };
+  const abortInfo = apiUtils.getAbortInfo(loadAndSaveGroupName);
+  const nonAbortableMeta = {...meta, abortInfo};
+
+  const apiCall = new APIV2Call().paths(resourcePath);
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
-        {type: FILE_FORMAT_SAVE_REQUEST, meta},
+        {type: FILE_FORMAT_SAVE_REQUEST, meta: nonAbortableMeta},
         {type: FILE_FORMAT_SAVE_SUCCESS, meta},
         {type: FILE_FORMAT_SAVE_FAILURE, meta}
       ],
       method: 'PUT',
       body: addFileModalMapper.unescapeFilePayload(values),
       headers: {'Content-Type': 'application/json'},
-      endpoint: `${API_URL_V2}${resourcePath}`
+      endpoint: apiCall
     }
   };
 }
-
-export function saveFileFormat(fileFormat, values, viewId) {
-  return (dispatch) => {
-    return dispatch(postFileFormat(fileFormat, values, viewId));
-  };
-}
-
-
+//=== end of Load and Save file format group
 
 export const UPLOAD_FINISH_REQUEST = 'UPLOAD_FINISH_REQUEST';
 export const UPLOAD_FINISH_SUCCESS = 'UPLOAD_FINISH_SUCCESS';
@@ -165,8 +171,11 @@ function postUploadFinish(file, values, viewId) {
     viewId,
     invalidateViewIds: ['HomeContents']
   };
+
+  const apiCall = new APIV2Call().fullpath(resourcePath);
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         {type: UPLOAD_FINISH_REQUEST, meta},
         {type: UPLOAD_FINISH_SUCCESS, meta},
@@ -175,7 +184,7 @@ function postUploadFinish(file, values, viewId) {
       method: 'POST',
       body: addFileModalMapper.unescapeFilePayload(values),
       headers: {'Content-Type': 'application/json'},
-      endpoint: `${API_URL_V2}${resourcePath}`
+      endpoint: apiCall
     }
   };
 }
@@ -192,8 +201,11 @@ export const UPLOAD_CANCEL_FAILURE = 'UPLOAD_CANCEL_FAILURE';
 
 function postUploadCancel(file) {
   const resourcePath = file.getIn(['links', 'upload_cancel']);
+
+  const apiCall = new APIV2Call().fullpath(resourcePath);
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         {type: UPLOAD_CANCEL_REQUEST},
         {type: UPLOAD_CANCEL_SUCCESS},
@@ -202,7 +214,7 @@ function postUploadCancel(file) {
       method: 'POST',
       body: addFileModalMapper.unescapeFilePayload(file.get('fileFormat').toJS()),
       headers: {'Content-Type': 'application/json'},
-      endpoint: `${API_URL_V2}${resourcePath}`
+      endpoint: apiCall
     }
   };
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -53,7 +53,6 @@ public class AzureDataLakeStoragePlugin extends FileSystemPlugin<AzureDataLakeCo
     // configure hadoop fs implementation
     properties.add(new Property("fs.dremioAdl.impl", DremioAdlFileSystem.class.getName()));
     properties.add(new Property("fs.AbstractFileSystem.dremioAdl.impl", DremioAdl.class.getName()));
-    properties.add(new Property("fs.adl.impl.disable.cache", "true"));
 
     // configure azure properties.
     properties.add(new Property("dfs.adls.oauth2.client.id", config.clientId));

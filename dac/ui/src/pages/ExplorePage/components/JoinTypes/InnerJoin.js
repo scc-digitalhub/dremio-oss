@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ import Select from 'components/Fields/Select';
 import { bodySmall, formDefault } from 'uiTheme/radium/typography';
 import { PALE_BLUE, PALE_GREY } from 'uiTheme/radium/colors';
 import { LINE_CENTER_CENTER } from 'uiTheme/radium/flexStyle';
-import { MAP, LIST, OTHER, GEO, MIXED, ANY } from 'constants/DataTypes';
+import { MAP, LIST, OTHER, GEO, MIXED, ANY } from '@app/constants/DataTypes';
 import JoinColumnMenu from './components/JoinColumnMenu';
 import JoinDragArea from './components/JoinDragArea';
 import {

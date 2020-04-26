@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ import com.dremio.QueryTestUtil;
 import com.dremio.dac.explore.model.DatasetPath;
 import com.dremio.exec.ExecConstants;
 import com.dremio.exec.catalog.DremioTable;
+import com.dremio.exec.catalog.MetadataRequestOptions;
 import com.dremio.exec.store.CatalogService;
 import com.dremio.exec.store.SchemaConfig;
 import com.dremio.service.namespace.NamespaceService;
@@ -96,10 +97,9 @@ public class TestParquetPartitionColumns extends BaseTestServer {
 
     DatasetConfig config = addDataSet(parquet);
 
-    DremioTable table = p(CatalogService.class).get().getCatalog(SchemaConfig.newBuilder
-      (DEFAULT_USERNAME)
-      .build())
-      .getTable(config.getId().getId());
+    DremioTable table = p(CatalogService.class).get()
+        .getCatalog(MetadataRequestOptions.of(SchemaConfig.newBuilder(DEFAULT_USERNAME).build()))
+        .getTable(config.getId().getId());
 
     return table.getDatasetConfig().getReadDefinition()
       .getPartitionColumnsList();

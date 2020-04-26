@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,19 +25,16 @@ public class CommitInfo {
   private final String hash;
   private final String builder;
   private final long time;
-  private final String message;
 
   @JsonCreator
   public CommitInfo(
       @JsonProperty("hash") String hash,
       @JsonProperty("builder") String builder,
-      @JsonProperty("time") long time,
-      @JsonProperty("message") String message) {
+      @JsonProperty("time") long time) {
     super();
     this.hash = hash;
     this.builder = builder;
     this.time = time;
-    this.message = message;
   }
   public String getHash() {
     return hash;
@@ -47,8 +44,5 @@ public class CommitInfo {
   }
   public long getTime() {
     return time;
-  }
-  public String getMessage() {
-    return message;
   }
 }

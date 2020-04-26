@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,11 +28,11 @@
  */
 package io.airlift.tpch;
 
-import static com.google.common.base.CharMatcher.WHITESPACE;
 import static com.google.common.base.Preconditions.checkNotNull;
 
 import java.util.List;
 
+import com.google.common.base.CharMatcher;
 import com.google.common.base.Splitter;
 
 public class TextPoolGenerator {
@@ -214,7 +214,7 @@ public class TextPoolGenerator {
       bonusText = new String[distribution.size()];
       for (int i = 0; i < distribution.size(); i++) {
 
-        List<String> tokens = Splitter.on(WHITESPACE).splitToList(distribution.getValue(i));
+        List<String> tokens = Splitter.on(CharMatcher.whitespace()).splitToList(distribution.getValue(i));
 
         parsedDistribution[i] = new char[tokens.size()];
         for (int j = 0; j < parsedDistribution[i].length; j++) {

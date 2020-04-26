@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,17 +29,18 @@ import com.dremio.exec.ops.QueryContext;
 import com.dremio.exec.proto.UserBitShared.QueryId;
 import com.dremio.exec.proto.UserBitShared.UserCredentials;
 import com.dremio.exec.proto.UserProtos.UserProperties;
+import com.dremio.exec.server.options.SessionOptionManagerImpl;
 import com.dremio.sabot.rpc.user.UserSession;
 import com.dremio.service.Pointer;
 
 public class TestCountDownLatchInjection extends BaseTestQuery {
 
   private static final UserSession session = UserSession.Builder.newBuilder()
+    .withSessionOptionManager(new SessionOptionManagerImpl(nodes[0].getContext().getOptionManager()))
     .withCredentials(UserCredentials.newBuilder()
       .setUserName("foo")
       .build())
     .withUserProperties(UserProperties.getDefaultInstance())
-    .withOptionManager(nodes[0].getContext().getOptionManager())
     .build();
 
   /**

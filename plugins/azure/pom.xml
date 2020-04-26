@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <!--
 
-    Copyright (C) 2017-2018 Dremio Corporation
+    Copyright (C) 2017-2019 Dremio Corporation
 
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@
   <parent>
     <groupId>com.dremio.plugins</groupId>
     <artifactId>dremio-plugin-parent</artifactId>
-    <version>3.2.1-201905191350330803-1a33f83</version>
+    <version>4.2.2-202004211133290458-b550b6fa</version>
   </parent>
 
   <artifactId>dremio-azure-storage-plugin</artifactId>
@@ -41,45 +41,41 @@
       <artifactId>dremio-s3-plugin</artifactId>
       <version>${project.version}</version>
     </dependency>
-    <dependency>
-      <groupId>com.microsoft.rest.v2</groupId>
-      <artifactId>client-runtime</artifactId>
-      <version>2.0.2</version>
-    </dependency>
-    <dependency>
-      <groupId>io.reactivex.rxjava2</groupId>
-      <artifactId>rxjava</artifactId>
-      <version>2.2.0</version>
-    </dependency>
-    <dependency>
-      <!-- Override default for azure-storage since the ajax decoders aren't compatible between 9.3.19 and 9.3.25 -->
-      <groupId>org.eclipse.jetty</groupId>
-      <artifactId>jetty-util-ajax</artifactId>
-    </dependency>       
+
     <dependency>
       <groupId>com.microsoft.azure</groupId>
-      <artifactId>azure-storage</artifactId>
-      <version>8.0.0</version>
-      <scope>compile</scope>
+      <artifactId>adal4j</artifactId>
+    </dependency>
+
+    <!-- SDK V12: Needed only for Shared secret key based authz header -->
+    <dependency>
+      <groupId>com.azure</groupId>
+      <artifactId>azure-storage-common</artifactId>
+      <version>12.1.0</version>
       <exclusions>
         <exclusion>
           <groupId>org.apache.commons</groupId>
           <artifactId>commons-lang3</artifactId>
         </exclusion>
+        <exclusion>
+          <groupId>io.projectreactor</groupId>
+          <artifactId>*</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>io.projectreactor.netty</groupId>
+          <artifactId>*</artifactId>
+        </exclusion>
+
       </exclusions>
     </dependency>
+    <!-- SDK V12: End -->
+
     <dependency>
-      <groupId>com.microsoft.azure</groupId>
-      <artifactId>azure-storage-blob</artifactId>
-      <version>10.4.0-dremio-r0</version>
-      <exclusions>
-        <exclusion>
-          <groupId>org.apache.commons</groupId>
-          <artifactId>commons-lang3</artifactId>
-        </exclusion>
-      </exclusions>
-    </dependency>    
-           
+      <groupId>org.asynchttpclient</groupId>
+      <artifactId>async-http-client</artifactId>
+      <version>2.7.0</version>
+    </dependency>
+
     <dependency>
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-azure</artifactId>
@@ -100,6 +96,27 @@
       <groupId>com.dremio</groupId>
       <artifactId>dremio-common</artifactId>
       <classifier>tests</classifier>
+      <scope>test</scope>
+    </dependency>
+
+
+    <!-- https://mvnrepository.com/artifact/org.mockito/mockito-core -->
+    <dependency>
+      <groupId>org.mockito</groupId>
+      <artifactId>mockito-core</artifactId>
+      <version>3.2.4</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.powermock</groupId>
+      <artifactId>powermock-module-junit4</artifactId>
+      <version>2.0.5</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.powermock</groupId>
+      <artifactId>powermock-api-mockito2</artifactId>
+      <version>2.0.5</version>
       <scope>test</scope>
     </dependency>
 

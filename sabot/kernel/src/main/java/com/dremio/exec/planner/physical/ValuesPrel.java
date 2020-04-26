@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,6 +33,7 @@ import com.dremio.exec.physical.base.PhysicalOperator;
 import com.dremio.exec.physical.config.Values;
 import com.dremio.exec.planner.fragment.DistributionAffinity;
 import com.dremio.exec.planner.physical.visitor.PrelVisitor;
+import com.dremio.exec.planner.sql.CalciteArrowHelper;
 import com.dremio.exec.record.BatchSchema;
 import com.dremio.exec.record.BatchSchema.SelectionVectorMode;
 import com.dremio.options.Options;
@@ -79,7 +80,7 @@ public class ValuesPrel extends AbstractRelNode implements LeafPrel {
 
   @Override
   public PhysicalOperator getPhysicalOperator(PhysicalPlanCreator creator) throws IOException {
-    BatchSchema schema = BatchSchema.fromCalciteRowTypeJson(this.getRowType());
+    BatchSchema schema = CalciteArrowHelper.fromCalciteRowTypeJson(this.getRowType());
     return new Values(
         creator.props(this, null, schema, RESERVE, LIMIT),
         schema,

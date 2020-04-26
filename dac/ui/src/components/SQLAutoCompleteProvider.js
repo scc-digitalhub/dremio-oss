@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 import debounce from 'lodash/debounce';
 import ApiUtils from 'utils/apiUtils/apiUtils';
 
-const errorHandler = (error) => {
+const errorHandler = () => {
   //add loggin here if it is needed
 };
 
@@ -37,7 +37,7 @@ const getItems = (monaco, sqlContextGetter) => {
     KEYWORD: CompletionItemKind.Keyword
   };
 
-  return (document, position, cancellationToken, context) => {
+  return (document, position) => {
     const delimiter = '\n';
     const content = document.getLinesContent();
 
@@ -57,21 +57,21 @@ const getItems = (monaco, sqlContextGetter) => {
         method: 'POST',
         body: JSON.stringify(request)
       }, 2).then((data) => {
-        const contentType = data.headers.get('content-type');
-        if (contentType && contentType.indexOf('application/json') !== -1) {
-          return data.json().then(({ suggestions }) => {
-            return suggestions.map(({
-              name,
-              type
-            }) => ({
-              label: name,
-              kind: typeMap[type],
-              detail: type
-            }));
-          });
-        }
-        return [];
-      }, errorHandler);
+      const contentType = data.headers.get('content-type');
+      if (contentType && contentType.indexOf('application/json') !== -1) {
+        return data.json().then(({ suggestions }) => {
+          return suggestions.map(({
+            name,
+            type
+          }) => ({
+            label: name,
+            kind: typeMap[type],
+            detail: type
+          }));
+        }, errorHandler);
+      }
+      return [];
+    }, errorHandler);
   };
 };
 

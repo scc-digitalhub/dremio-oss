@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ import Radium from 'radium';
 import PropTypes from 'prop-types';
 import { Popover } from '@app/components/Popover';
 import Immutable from 'immutable';
-import { MAP, TEXT, LIST, MIXED, BINARY } from 'constants/DataTypes';
+import { MAP, TEXT, LIST, MIXED, BINARY } from '@app/constants/DataTypes';
 import Menu from 'components/Menus/Menu';
 import MenuItemLink from 'components/Menus/MenuItemLink';
 import MenuItem from 'components/Menus/MenuItem';

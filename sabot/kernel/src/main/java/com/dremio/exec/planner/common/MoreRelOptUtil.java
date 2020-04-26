@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ import java.util.function.Predicate;
 import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptUtil;
+import org.apache.calcite.plan.hep.HepRelVertex;
 import org.apache.calcite.plan.volcano.RelSubset;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelShuttleImpl;
@@ -58,6 +59,8 @@ import org.apache.calcite.rex.RexSubQuery;
 import org.apache.calcite.rex.RexUtil;
 import org.apache.calcite.rex.RexVisitorImpl;
 import org.apache.calcite.sql.SqlKind;
+import org.apache.calcite.sql.SqlOperator;
+import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.validate.SqlValidatorUtil;
 import org.apache.calcite.util.ImmutableBitSet;
@@ -118,13 +121,31 @@ public final class MoreRelOptUtil {
     return minDepth + 1;
   }
 
-  // Similar to RelOptUtil.areRowTypesEqual() with the additional check for allowSubstring
+
+
+  public static boolean areRowTypesCompatibleForInsert(
+    RelDataType rowType1,
+    RelDataType rowType2,
+    boolean compareNames,
+    boolean allowSubstring) {
+    return checkRowTypesCompatiblity(rowType1, rowType2, compareNames, allowSubstring, true);
+  }
+
   public static boolean areRowTypesCompatible(
+    RelDataType rowType1,
+    RelDataType rowType2,
+    boolean compareNames,
+    boolean allowSubstring) {
+    return checkRowTypesCompatiblity(rowType1, rowType2, compareNames, allowSubstring, false);
+  }
+
+  // Similar to RelOptUtil.areRowTypesEqual() with the additional check for allowSubstring
+  private static boolean checkRowTypesCompatiblity(
       RelDataType rowType1,
       RelDataType rowType2,
       boolean compareNames,
       boolean allowSubstring,
-      boolean isDecimalV2Enabled) {
+      boolean insertOp) {
     if (rowType1 == rowType2) {
       return true;
     }
@@ -146,19 +167,32 @@ public final class MoreRelOptUtil {
         || type2.getSqlTypeName() == SqlTypeName.ANY) {
         continue;
       }
-      if (type1.getSqlTypeName() != type2.getSqlTypeName()) {
+      if (!(type1.toString().equals(type2.toString()))) {
         if (allowSubstring
             && (type1.getSqlTypeName() == SqlTypeName.CHAR && type2.getSqlTypeName() == SqlTypeName.CHAR)
             && (type1.getPrecision() <= type2.getPrecision())) {
-          return true;
+          continue;
         }
 
         // Check if Dremio implicit casting can resolve the incompatibility
         List<TypeProtos.MinorType> types = Lists.newArrayListWithCapacity(2);
-        types.add(Types.getMinorTypeFromName(type1.getSqlTypeName().getName()));
-        types.add(Types.getMinorTypeFromName(type2.getSqlTypeName().getName()));
-        if(TypeCastRules.getLeastRestrictiveType(types, isDecimalV2Enabled) != null) {
-          return true;
+        TypeProtos.MinorType minorType1 = Types.getMinorTypeFromName(type1.getSqlTypeName().getName());
+        TypeProtos.MinorType minorType2 = Types.getMinorTypeFromName(type2.getSqlTypeName().getName());
+        types.add(minorType1);
+        types.add(minorType2);
+        if (insertOp) {
+          // Insert is more strict than normal select in terms of implicit casts
+          // Return false if TypeCastRules do not allow implicit cast
+          if (TypeCastRules.isCastable(minorType1, minorType2, true) &&
+            TypeCastRules.getLeastRestrictiveTypeForInsert(types) != null) {
+            if (TypeCastRules.isCastSafeFromDataTruncation(type1, type2)) {
+              continue;
+            }
+          }
+        } else {
+          if (TypeCastRules.getLeastRestrictiveType(types) != null) {
+            continue;
+          }
         }
 
         return false;
@@ -172,10 +206,12 @@ public final class MoreRelOptUtil {
    * Does not compare nullability.
    * Differs from RelOptUtil implementation by not defining types as equal if one is of type ANY.
    *
-   * @param rowType1        row type for comparison
-   * @param rowType2        row type for comparison
+   * @param rowType1           row type for comparison
+   * @param rowType2           row type for comparison
+   * @param compareNames       boolean for name match
+   * @param compareNullability boolean for nullability match
    *
-   * @return boolean indicating that rel data types are equivalent
+   * @return boolean indicating that row types are equivalent
    */
   public static boolean areRowTypesEqual(
     RelDataType rowType1,
@@ -189,21 +225,15 @@ public final class MoreRelOptUtil {
     if (rowType2.getFieldCount() != rowType1.getFieldCount()) {
       return false;
     }
+
     final List<RelDataTypeField> f1 = rowType1.getFieldList();
     final List<RelDataTypeField> f2 = rowType2.getFieldList();
     for (Pair<RelDataTypeField, RelDataTypeField> pair : Pair.zip(f1, f2)) {
       final RelDataType type1 = pair.left.getType();
       final RelDataType type2 = pair.right.getType();
 
-      if (compareNullability) {
-        if (!type1.equals(type2)) {
-          return false;
-        }
-      } else {
-        // Compare row type names.
-        if (!type1.getSqlTypeName().equals(type2.getSqlTypeName())) {
-          return false;
-        }
+      if (!areDataTypesEqual(type1, type2, !compareNullability)) {
+        return false;
       }
 
       if (compareNames) {
@@ -213,6 +243,25 @@ public final class MoreRelOptUtil {
       }
     }
     return true;
+  }
+
+
+  /**
+   * Verifies that two data types match.
+   * @param dataType1          data type for comparison
+   * @param dataType2          data type for comparison
+   * @param sqlTypeNameOnly    boolean for only SqlTypeName match
+   *
+   * @return boolean indicating that data types are equivalent
+   */
+  public static boolean areDataTypesEqual(
+    RelDataType dataType1,
+    RelDataType dataType2,
+    boolean sqlTypeNameOnly) {
+    if (sqlTypeNameOnly) {
+      return dataType1.getSqlTypeName().equals(dataType2.getSqlTypeName());
+    }
+    return dataType1.equals(dataType2);
   }
 
   /**
@@ -358,6 +407,18 @@ public final class MoreRelOptUtil {
       }
     }
     return true;
+  }
+
+  public static class VertexRemover extends StatelessRelShuttleImpl {
+
+    @Override
+    public RelNode visit(RelNode other) {
+      if (other instanceof HepRelVertex) {
+        return super.visit(((HepRelVertex) other).getCurrentRel());
+      } else {
+        return super.visit(other);
+      }
+    }
   }
 
   public static class SubsetRemover extends StatelessRelShuttleImpl {
@@ -704,10 +765,6 @@ public final class MoreRelOptUtil {
 
     Preconditions.checkState(found.value);
 
-    if (!found.value) {
-      return ImmutableList.of(-1);
-    }
-
     return result;
   }
 
@@ -741,6 +798,55 @@ public final class MoreRelOptUtil {
 
     Preconditions.checkNotNull(node);
     return node;
+  }
+
+  public static List<RexNode> identityProjects(RelDataType type, ImmutableBitSet selectedColumns) {
+    List<RexNode> projects = new ArrayList<>();
+    if (selectedColumns == null) {
+      selectedColumns = ImmutableBitSet.range(type.getFieldCount());
+    }
+    for (Pair<Integer,RelDataTypeField> pair : Pair.zip(selectedColumns, type.getFieldList())) {
+      projects.add(new RexInputRef(pair.left, pair.right.getType()));
+    }
+    return projects;
+  }
+
+  public static boolean isNegative(RexLiteral literal) {
+    Double d = literal.getValueAs(Double.class);
+    return d < 0;
+  }
+
+  public static SqlOperator op(SqlKind kind) {
+    switch (kind) {
+    case IS_FALSE:
+      return SqlStdOperatorTable.IS_FALSE;
+    case IS_TRUE:
+      return SqlStdOperatorTable.IS_TRUE;
+    case IS_UNKNOWN:
+      return SqlStdOperatorTable.IS_UNKNOWN;
+    case IS_NULL:
+      return SqlStdOperatorTable.IS_NULL;
+    case IS_NOT_FALSE:
+      return SqlStdOperatorTable.IS_NOT_FALSE;
+    case IS_NOT_TRUE:
+      return SqlStdOperatorTable.IS_NOT_TRUE;
+    case IS_NOT_NULL:
+      return SqlStdOperatorTable.IS_NOT_NULL;
+    case EQUALS:
+      return SqlStdOperatorTable.EQUALS;
+    case NOT_EQUALS:
+      return SqlStdOperatorTable.NOT_EQUALS;
+    case LESS_THAN:
+      return SqlStdOperatorTable.LESS_THAN;
+    case GREATER_THAN:
+      return SqlStdOperatorTable.GREATER_THAN;
+    case LESS_THAN_OR_EQUAL:
+      return SqlStdOperatorTable.LESS_THAN_OR_EQUAL;
+    case GREATER_THAN_OR_EQUAL:
+      return SqlStdOperatorTable.GREATER_THAN_OR_EQUAL;
+    default:
+      throw new AssertionError(kind);
+    }
   }
 
   /**

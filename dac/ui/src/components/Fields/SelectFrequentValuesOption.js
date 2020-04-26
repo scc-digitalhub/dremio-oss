@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -47,8 +47,8 @@ export default class SelectFrequentValuesOption extends Component {
     const correctText = dataFormatUtils.formatValue(option.value);
     // note: some APIs don't express null correctly (instead they drop the field)
     const correctTextStyle = option.value === undefined || option.value === null || option.value === ''
-       ? styles.emptyTextWrap
-       : {};
+      ? styles.emptyTextWrap
+      : {};
     return <EllipsedText text={correctText} style={{ ...correctTextStyle, marginLeft: 10 }} />;
   }
 

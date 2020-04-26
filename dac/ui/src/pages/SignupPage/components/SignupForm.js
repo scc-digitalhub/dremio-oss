@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,11 +26,12 @@ import ViewStateWrapper from 'components/ViewStateWrapper';
 import { createFirstUser } from 'actions/admin';
 import { noUsersError } from 'actions/account';
 import { getViewState } from 'selectors/resources';
-import { InnerComplexForm, connectComplexForm } from 'components/Forms/connectComplexForm.js';
+import { connectComplexForm, InnerComplexForm } from 'components/Forms/connectComplexForm.js';
 import { divider, formRow } from 'uiTheme/radium/forms';
 import { Link } from 'react-router';
+import localStorageUtils from 'utils/storageUtils/localStorageUtils';
 
-import UserForm, { userFormFields, userFormValidate } from 'components/Forms/UserForm';
+import UserForm from 'components/Forms/UserForm';
 
 import SignupTitle from './SignupTitle';
 
@@ -52,13 +53,15 @@ export class SignupForm extends Component {
   }
 
   submit = (form) => {
+    const instanceId = localStorageUtils.getInstanceId();
     const mappedValues = {
       'userName' : form.userName,
       'firstName' : form.firstName,
       'lastName' : form.lastName,
       'email' : form.email,
       'createdAt' : new Date().getTime(),
-      'password': form.password
+      'password': form.password,
+      'extra': form.extra || instanceId
     };
     const viewId = SIGNUP_FORM_VIEW_ID;
     return this.props.createFirstUser(mappedValues, {viewId});
@@ -129,7 +132,5 @@ function mapToFormState(state) {
 }
 
 export default connectComplexForm({
-  form: 'signup',
-  fields: userFormFields,
-  validate: userFormValidate
-}, [], mapToFormState, { createFirstUser, noUsersError })(SignupForm);
+  form: 'signup'
+}, [UserForm], mapToFormState, { createFirstUser, noUsersError })(SignupForm);

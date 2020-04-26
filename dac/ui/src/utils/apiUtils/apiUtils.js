@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,50 +15,47 @@
  */
 import uuid from 'uuid';
 import Immutable from 'immutable';
-import { API_URL_V2, API_URL_V3 } from 'constants/Api';
-import { InvalidRSAA, InternalError, RequestError, ApiError } from 'redux-api-middleware/lib/errors';
-import localStorageUtils from 'utils/storageUtils/localStorageUtils';
+
+import { API_URL_V2, API_URL_V3 } from '@app/constants/Api';
+import localStorageUtils from '@app/utils/storageUtils/localStorageUtils';
+
+/**
+ * Error names from api middleware.
+ * see {@link https://github.com/agraboso/redux-api-middleware}
+ * {@code instanceof} does not work in babel environment for errors, so we have to use names
+ */
+export const ApiMiddlewareErrors = {
+  InvalidRSAA: 'InvalidRSAA',
+  InternalError: 'InternalError',
+  RequestError: 'RequestError',
+  ApiError: 'ApiError'
+};
 
 class ApiUtils {
   isApiError(error) {
-    return error instanceof InvalidRSAA ||
-      error instanceof InternalError ||
-      error instanceof RequestError ||
-      error instanceof ApiError;
+    return error instanceof Error &&
+      (error.name === ApiMiddlewareErrors.InvalidRSAA
+        || error.name === ApiMiddlewareErrors.InternalError
+        || error.name === ApiMiddlewareErrors.RequestError
+        || error.name === ApiMiddlewareErrors.ApiError
+      );
+  }
+
+  /**
+   * Make abortGroup object to be used by reducers/index.js to cancel API requests
+   * startTime is added for logging
+   * @param groupName
+   * @return {{startTime: number, actionGroup: *}}
+   */
+  getAbortInfo(groupName) {
+    return {
+      actionGroup: groupName,
+      startTime: Date.now()
+    };
   }
 
   getEntityFromResponse(entityType, response) {
     return response.payload.getIn(['entities', entityType, response.payload.get('result')]);
-  }
-
-  loadDatasetInfo(resourceId, tableId) {
-    return $.ajax({
-      url: `${API_URL_V2}/dataset/${resourceId}.${tableId}?view=explore`,
-      type: 'GET',
-      error: (error) => {
-        console.error('LOADING ROWS REQUEST FAILED', error);
-      }
-    });
-  }
-
-  createFormAsyncValidate(path, mapper) {
-    return function(values) {
-      return fetch(`${API_URL_V2}${path}`, {
-        method: 'POST',
-        body: JSON.stringify(mapper(values))
-      }).then((response) => {
-        if (response.ok) {
-          return response;
-        }
-        throw {_error: response.statusText};
-      }).then(
-        (response) => response.json()
-      ).then((data) => {
-        if (data.validationError) {
-          throw data.validationError;
-        }
-      });
-    };
   }
 
   parseErrorsToObject(response) {
@@ -101,7 +98,12 @@ class ApiUtils {
       throw error.meta.validationError;
     }
     if (error.statusText) { // chris asks: how would this be possible? (fetch API rejects with TypeError)
-      throw {_error: 'Request Error: ' + error.statusText}; // todo: loc
+      throw {
+        _error: {
+          message: 'Request Error: ' + error.statusText,
+          id: uuid.v4()
+        }
+      }; // todo: loc
     }
     throw error;
   };
@@ -111,11 +113,24 @@ class ApiUtils {
 
     const headers = new Headers({
       'Content-Type': 'application/json',
-      ...options.headers,
-      'Authorization': localStorageUtils.getAuthToken()
+      'Authorization': localStorageUtils.getAuthToken(),
+      ...options.headers
     }); // protect against older chrome browsers
 
-    return fetch(`${apiVersion}/${endpoint}`, { ...options, headers }).then(response => response.ok ? response : Promise.reject(response));
+    const url = endpoint.startsWith('/') ? `${apiVersion}${endpoint}` : `${apiVersion}/${endpoint}`;
+
+    return fetch(url, {...options, headers})
+      .then(response => response.ok ? response : Promise.reject(response));
+  }
+
+  fetchJson(endpoint, jsonHandler, errorHandler, options = {}, version = 3) {
+    return this.fetch(endpoint, options, version)
+      .then(response => { // handle ok response
+        return response.json()
+          .then(json => jsonHandler(json)) // handle json from response
+          .catch(e => errorHandler(e));
+      })
+      .catch(error => errorHandler(error));
   }
 
   /**

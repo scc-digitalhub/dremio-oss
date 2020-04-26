@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -298,7 +298,7 @@ public class ReflectionExpander {
   }
 
   private RelDataTypeField getField(final String name) {
-    return Preconditions.checkNotNull(mappings.get(name), String.format("unable to find field %s in the view", name));
+    return Preconditions.checkNotNull(mappings.get(name), String.format("Unable to find column %s in the virtual dataset.", name));
   }
 
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,7 +28,6 @@ import javax.ws.rs.core.Response;
 
 import org.junit.Test;
 
-import com.dremio.dac.model.sources.SourcePath;
 import com.dremio.dac.server.BaseTestServer;
 import com.dremio.dac.service.APrivateSource;
 import com.dremio.exec.catalog.ConnectionReader;
@@ -68,7 +67,7 @@ public class TestSourceResource extends BaseTestServer {
     assertEquals(source.getName(), newSource.getName());
     assertNotNull(source.getState());
 
-    newNamespaceService().deleteSource(new SourcePath(source.getName()).toNamespaceKey(), source.getTag());
+    deleteSource(source.getName());
   }
 
   @Test
@@ -104,11 +103,10 @@ public class TestSourceResource extends BaseTestServer {
 
     SourceResource.SourceDeprecated source = expectSuccess(getBuilder(getPublicAPI(3).path(SOURCES_PATH).path(createdSourceConfig.getId().getId())).buildPut(Entity.entity(updatedSource, JSON)), SourceResource.SourceDeprecated.class);
 
-    assertEquals(source.getDescription(), "Desc");
-    assertEquals(source.getTag(), "1");
+    assertEquals("Desc", source.getDescription());
     assertNotNull(source.getState());
-
-    newNamespaceService().deleteSource(new SourcePath(source.getName()).toNamespaceKey(), source.getTag());
+    assertNotNull(source.getTag());
+    deleteSource(source.getName());
   }
 
   @Test
@@ -136,7 +134,7 @@ public class TestSourceResource extends BaseTestServer {
     updatedSource.setTag("badtag");
     expectStatus(Response.Status.CONFLICT, getBuilder(getPublicAPI(3).path(SOURCES_PATH).path(createdSourceConfig.getId().getId())).buildPut(Entity.entity(updatedSource, JSON)));
 
-    newNamespaceService().deleteSource(new SourcePath(updatedSource.getName()).toNamespaceKey(), createdSourceConfig.getTag());
+    deleteSource(updatedSource.getName());
   }
 
   @Test
@@ -174,7 +172,7 @@ public class TestSourceResource extends BaseTestServer {
     assertEquals(source.getMetadataPolicy().getDatasetRefreshAfterMs(), updatedSource.getMetadataPolicy().getDatasetRefreshAfterMs());
     assertEquals(source.getMetadataPolicy().getNamesRefreshMs(), updatedSource.getMetadataPolicy().getNamesRefreshMs());
 
-    newNamespaceService().deleteSource(new SourcePath(createdSourceConfig.getName()).toNamespaceKey(), source.getTag());
+    deleteSource(createdSourceConfig.getName());
   }
 
   @Test
@@ -364,7 +362,7 @@ public class TestSourceResource extends BaseTestServer {
 
       expectStatus(Response.Status.BAD_REQUEST, getBuilder(getPublicAPI(3).path(SOURCES_PATH).path(createdSourceConfig.getId().getId())).buildPut(Entity.entity(updatedSource, JSON)));
     } finally {
-      newNamespaceService().deleteSource(new SourcePath(createdSourceConfig.getName()).toNamespaceKey(), "1");
+      deleteSource(createdSourceConfig.getName());
     }
   }
 }

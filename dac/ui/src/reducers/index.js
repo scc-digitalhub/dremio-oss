@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,21 +16,19 @@
 import { routerReducer } from 'react-router-redux';
 import { combineReducers } from 'redux';
 import { reducer as formReducer } from 'redux-form';
+import { get } from 'lodash';
 
-import { LOGOUT_USER_START, LOGIN_USER_SUCCESS, NO_USERS_ERROR } from 'actions/account';
-import { APP_BOOT } from 'actions/app';
-import localStorageUtils from 'utils/storageUtils/localStorageUtils';
-import intercomUtils from 'utils/intercomUtils';
-import socket from 'utils/socket';
+import { LOGOUT_USER_START, NO_USERS_ERROR } from 'actions/account';
 import developmentOptions from 'dyn-load/reducers/developmentOptions';
+import admin from 'dyn-load/reducers/admin';
 import { getExploreState } from '@app/selectors/explore';
+import { log } from '@app/utils/logger';
 
 import search from './search';
 
 import home from './home/home';
 import ui from './ui/ui';
 import account from './account';
-import admin from './admin';
 
 import jobs from './jobs/index';
 import modals from './modals/index';
@@ -62,7 +60,53 @@ const appReducers = combineReducers({
   modulesState
 });
 
-export default function rootReducer(state, action) {
+const actionCancelGroups = {};
+
+const cancelAction = reducer => (state, action) => {
+  const {
+    actionGroup, // group name
+    abortController, // if abortController is provided, the action is abortable/cancellable
+    startTime
+  } = get(action, 'meta.abortInfo', {});
+
+  if (actionGroup) {
+    log('==> ActionCancelGroup: ', actionGroup);
+    const group = actionCancelGroups[actionGroup];
+    const groupAbortController = get(group, 'abortController');
+    const { message: payloadMessage } = get(action, 'payload') || {};
+
+    // to ignore an aborted request the proper way is to catch promise error:
+    // fetch....then(....)
+    // .catch(error => {
+    //         if (error.name === 'AbortError') return; // expected, this is the abort, so just return
+    //         throw error; // must be some other error, handle however you normally would
+    //       }
+    // but since the fetch is buried deep in layers of 3rd party middleware libraries,
+    // we check the abort message here with 'Aborted' for IE and Edge and longer message fro Chrome family
+    if (payloadMessage === 'The user aborted a request.' || payloadMessage === 'Aborted') {
+      return state;
+    }
+
+    if (groupAbortController) { // cancellation is needed for previous action
+      log(`==> Action ${JSON.stringify(group.action, null, 2)} was cancelled by action ${JSON.stringify(action, null, 2)}`);
+      groupAbortController.abort(); // abort fetch request which throws 'AbortError'
+    }
+    if (abortController) { // new action is abortable -> update saved cancel group
+      actionCancelGroups[actionGroup] = {
+        action,  // used here only for logging and debugging
+        abortController,
+        startTime
+      };
+    } else {
+      actionCancelGroups[actionGroup] = null; // remove previous abortable action from the groups
+    }
+  }
+
+  return reducer(state, action);
+};
+
+
+export default cancelAction(function rootReducer(state, action) {
   let nextState = state;
   // we only needed to keep the user info around long enough to prep the /logout
   // so once we get LOGOUT_USER_START we are safe to clear things out without waiting any more
@@ -73,27 +117,11 @@ export default function rootReducer(state, action) {
     // (this needs to happen before other reducers so that they go back to their initial state - thus why this is in this file)
     const { routing } = state || {};
     nextState = { routing };
-
-    localStorageUtils.clearUserData();
-    intercomUtils.shutdown();
-    socket.close();
-  }
-
-  if (action.type === LOGIN_USER_SUCCESS || action.type === APP_BOOT) {
-    if (action.type === LOGIN_USER_SUCCESS) {
-      localStorageUtils.setUserData(action.payload);
-    }
-
-    // also on boot, optimistically try to start intercom and open socket for cases where a user is already logged in
-    intercomUtils.boot();
-    socket.open();
-
-    // note: account.user state saved in ./account reducer
   }
 
   const result = appReducers(nextState, action);
   return result;
-}
+});
 
 export const getIsExplorePreviewMode = state => {
   const exploreState = getExploreState(state);

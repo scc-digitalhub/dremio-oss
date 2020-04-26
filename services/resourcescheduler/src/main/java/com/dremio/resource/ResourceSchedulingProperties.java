@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,10 +15,6 @@
  */
 package com.dremio.resource;
 
-import java.util.Map;
-
-import com.dremio.exec.proto.CoordinationProtos;
-
 /**
  * Basic ResourceScheduling Properties
  */
@@ -29,9 +25,8 @@ public class ResourceSchedulingProperties {
   private Double queryCost;
   private String clientType;
   private String queryType;
-  private String queueName;
-  private String tag;
-  private Map<Integer, Map<CoordinationProtos.NodeEndpoint, Integer>> resourceData;
+  private String routingQueue;
+  private String routingTag;
 
   public ResourceSchedulingProperties() {
 
@@ -82,30 +77,21 @@ public class ResourceSchedulingProperties {
     return this;
   }
 
-  public String getQueueName() {
-    return queueName;
+  public String getRoutingQueue() {
+    return routingQueue;
   }
 
-  public ResourceSchedulingProperties setQueueName(String queueName) {
-    this.queueName = queueName;
+  public ResourceSchedulingProperties setRoutingQueue(String queueName) {
+    this.routingQueue = queueName;
     return this;
   }
 
-  public String getTag() {
-    return tag;
+  public String getRoutingTag() {
+    return routingTag;
   }
 
-  public ResourceSchedulingProperties setTag(String tag) {
-    this.tag = tag;
-    return this;
-  }
-
-  public Map<Integer, Map<CoordinationProtos.NodeEndpoint, Integer>> getResourceData() {
-    return resourceData;
-  }
-
-  public ResourceSchedulingProperties setResourceData(Map<Integer, Map<CoordinationProtos.NodeEndpoint, Integer>> resourceData) {
-    this.resourceData = resourceData;
+  public ResourceSchedulingProperties setRoutingTag(String tag) {
+    this.routingTag = tag;
     return this;
   }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -104,6 +104,11 @@ public class TestSSLServer extends BaseClientUtils {
   @Test
   public void basic() throws Exception {
     expectSuccess(apiV2.path("server_status").request(MediaType.APPLICATION_JSON_TYPE).buildGet());
+  }
+
+  @Test
+  public void ensureServerIsAwareSSLIsEnabled() throws Exception {
+    expectSuccess(apiV2.path("test").path("isSecure").request(MediaType.APPLICATION_JSON_TYPE).buildGet());
   }
 
   @AfterClass

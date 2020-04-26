@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,11 +21,10 @@ import org.apache.arrow.memory.BufferAllocator;
 
 import com.dremio.common.AutoCloseables;
 import com.dremio.common.config.SabotConfig;
-import com.dremio.exec.server.BootStrapContext;
+import com.dremio.config.DremioConfig;
 import com.dremio.sabot.task.AsyncTaskWrapper;
 import com.dremio.sabot.task.GroupManager;
 import com.dremio.sabot.task.TaskPool;
-import com.dremio.service.BindingCreator;
 import com.dremio.service.Service;
 import com.google.common.annotations.VisibleForTesting;
 
@@ -33,26 +32,23 @@ import com.google.common.annotations.VisibleForTesting;
  * Service that creates the {@link WorkloadTicketDepot} singleton when started, and provides it through the registry
  */
 public class WorkloadTicketDepotService implements Service {
-  private final BootStrapContext context;
-  private final BindingCreator bindingCreator;
 
+  private final Provider<BufferAllocator> allocator;
   private final Provider<TaskPool> taskPool;
+  private final Provider<DremioConfig> dremioConfig;
 
   private WorkloadTicketDepot ticketDepot;
 
-  public WorkloadTicketDepotService(final BootStrapContext context,
-                                    final BindingCreator bindingCreator,
-                                    final Provider<TaskPool> taskPool
-                                    ) {
-    this.context = context;
-    this.bindingCreator = bindingCreator;
+  public WorkloadTicketDepotService(final Provider<BufferAllocator> allocator, final Provider<TaskPool> taskPool,
+                                    final Provider<DremioConfig> dremioConfig) {
+    this.allocator = allocator;
     this.taskPool = taskPool;
+    this.dremioConfig = dremioConfig;
     ticketDepot = null;
   }
 
   public void start() throws Exception {
-    ticketDepot = newTicketDepot(context.getAllocator(), context.getConfig());
-    bindingCreator.bind(WorkloadTicketDepot.class, ticketDepot);
+    ticketDepot = newTicketDepot(allocator.get(), dremioConfig.get().getSabotConfig());
   }
 
   public void close() throws Exception {
@@ -70,9 +66,5 @@ public class WorkloadTicketDepotService implements Service {
 
   protected WorkloadTicketDepot newTicketDepot(BufferAllocator parentAllocator, SabotConfig config) {
     return new WorkloadTicketDepot(parentAllocator, config, getGroupManager());
-  }
-
-  protected BindingCreator getBindingCreator() {
-    return bindingCreator;
   }
 }

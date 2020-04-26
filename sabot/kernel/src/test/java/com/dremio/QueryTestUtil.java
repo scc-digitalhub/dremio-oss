@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -72,6 +72,25 @@ public class QueryTestUtil {
     for (QueryDataBatch queryDataBatch : results) {
       queryDataBatch.release();
     }
+
+    return dremioClient;
+  }
+  /**
+   * Create a DremioClient that can be used to query a dremio cluster.
+   * The only distinction between this function and createClient is that
+   * the latter runs a query to alter the default parsing behavior to double quotes.
+   *
+   * @param config
+   * @param remoteServiceSet remote service set
+   * @param props Connection properties contains properties such as "user", "password", "schema" etc
+   * @return the newly created client
+   * @throws RpcException if there is a problem setting up the client
+   */
+  public static DremioClient createCleanClient(final SabotConfig config, final ClusterCoordinator clusterCoordinator,
+     final Properties props) throws RpcException, OutOfMemoryException {
+
+    final DremioClient dremioClient = new DremioClient(config, clusterCoordinator);
+    dremioClient.connect(props);
 
     return dremioClient;
   }

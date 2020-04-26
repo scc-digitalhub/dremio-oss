@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,7 +37,6 @@ describe('ExplorePageController', () => {
       sqlState: true,
       updateSqlPartSize: sinon.spy(),
       hideUnsavedChangesModal: sinon.spy(),
-      updateGridSizes: sinon.spy(),
       performLoadDataset: sinon.spy(),
       setCurrentSql: sinon.spy(),
       resetViewState: sinon.spy(),
@@ -124,11 +123,11 @@ describe('ExplorePageController', () => {
 
     it('should load when needsLoad has changed to true', () => {
       wrapper.setProps(props);
-      commonProps.performLoadDataset.reset();
+      commonProps.performLoadDataset.resetHistory();
       wrapper.setProps({...props, dataset: props.dataset.merge({needsLoad: true})});
       expect(commonProps.performLoadDataset).to.be.called;
 
-      commonProps.performLoadDataset.reset();
+      commonProps.performLoadDataset.resetHistory();
       wrapper.setProps({...props, dataset: props.dataset.merge({datasetVersion: undefined, needsLoad: false})});
       expect(commonProps.performLoadDataset).to.not.be.called;
 
@@ -142,11 +141,11 @@ describe('ExplorePageController', () => {
       wrapper.setProps({...props, dataset: props.dataset.merge({datasetVersion: '00', needsLoad: true})});
       expect(commonProps.performLoadDataset).to.be.called;
 
-      commonProps.performLoadDataset.reset();
+      commonProps.performLoadDataset.resetHistory();
       wrapper.setProps({...props, dataset: props.dataset.merge({datasetVersion: '01', needsLoad: true})});
       expect(commonProps.performLoadDataset).to.be.called;
 
-      commonProps.performLoadDataset.reset();
+      commonProps.performLoadDataset.resetHistory();
       wrapper.setProps({...props, dataset: props.dataset.merge({datasetVersion: '02', needsLoad: false})});
       expect(commonProps.performLoadDataset).to.not.be.called;
     });

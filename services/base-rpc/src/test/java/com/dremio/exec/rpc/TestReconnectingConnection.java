@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -61,7 +61,7 @@ public class TestReconnectingConnection {
 
   @Test
   public void ensureTimeoutFailAndRecover() {
-    TestReConnection c = conn(200,1,1,
+    TestReConnection c = conn(200,100,1,
         r -> {
           wt(100);
           r.connectionFailed(FailureType.CONNECTION, new IllegalStateException());
@@ -116,7 +116,7 @@ public class TestReconnectingConnection {
   public void ensureFirstFailsWaiting() throws InterruptedException, ExecutionException {
     CountDownLatch latch = new CountDownLatch(1);
     TestReConnection c = conn(
-        100000, 1, 1,
+        100000, 100, 100,
         r -> {
           try {
             latch.await();

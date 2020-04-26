@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,12 +37,20 @@ public class Job {
   private final JobId jobId;
   private final List<JobAttempt> attempts = new CopyOnWriteArrayList<>();
   private final JobResultsStore resultsStore;
+  private volatile long recordCount;
+  private volatile boolean isInternal;
 
   private JobData data;
+  /**
+   * true when all attempts complete.
+   * This is necessary as we cant' just rely on the last attempt's state in case the query reattempts
+   */
+  private boolean completed;
 
   public Job(JobId jobId, JobAttempt jobAttempt) {
     this.jobId = jobId;
     this.resultsStore = null;
+    this.completed = false;
     attempts.add( checkNotNull(jobAttempt, "jobAttempt is null"));
   }
 
@@ -57,6 +65,15 @@ public class Job {
     this.jobId = jobId;
     this.attempts.addAll(jobResult.getAttemptsList());
     this.resultsStore = checkNotNull(resultsStore);
+    this.completed = jobResult.getCompleted();
+  }
+
+  void setRecordCount(long recordCount) {
+    this.recordCount = recordCount;
+  }
+
+  long getRecordCount() {
+    return this.recordCount;
   }
 
   public JobId getJobId() {
@@ -100,13 +117,33 @@ public class Job {
     this.data = data;
   }
 
+  public boolean isCompleted() {
+    return completed;
+  }
+
+  void setCompleted(boolean completed) {
+    this.completed = completed;
+  }
+
+  /**
+   * Check if this Job has results. Job results may exist for FAILED jobs. Users
+   * should be aware and check JobState if necessary.
+   */
   public boolean hasResults() {
     return resultsStore != null && resultsStore.jobOutputDirectoryExists(jobId);
   }
 
+  void setIsInternal(boolean isInternal) {
+    this.isInternal = isInternal;
+  }
+
+  boolean isInternal() {
+    return isInternal;
+  }
+
   @Override
   public int hashCode() {
-    return Objects.hashCode(jobId, attempts);
+    return Objects.hashCode(jobId, attempts, completed);
   }
 
   @Override
@@ -114,10 +151,17 @@ public class Job {
     if (obj != null) {
       if (obj instanceof Job) {
         Job other = (Job) obj;
-        return Objects.equal(jobId, other.jobId) && Objects.equal(attempts, other.attempts);
+        return Objects.equal(jobId, other.jobId) && Objects.equal(attempts, other.attempts) && Objects.equal(completed, other.completed);
       }
     }
     return false;
   }
+
+  JobResult toJobResult(Job job) {
+    return new JobResult()
+      .setCompleted(completed)
+      .setAttemptsList(job.getAttempts());
+  }
+
 }
 

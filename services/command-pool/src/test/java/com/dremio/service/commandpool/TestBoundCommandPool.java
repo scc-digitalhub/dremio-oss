@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,12 +25,18 @@ import org.junit.Test;
 
 import com.google.common.util.concurrent.Futures;
 
+import io.opentracing.noop.NoopTracerFactory;
+
 /**
  * Tests for {@link BoundCommandPool}
  */
 public class TestBoundCommandPool {
 
   private final AtomicInteger counter = new AtomicInteger();
+
+  private CommandPool newTestCommandPool() {
+    return new BoundCommandPool(1, NoopTracerFactory.create());
+  }
 
   @Before
   public void resetCounter() {
@@ -40,17 +46,17 @@ public class TestBoundCommandPool {
   @Test
   public void testSamePrioritySuppliers() throws Exception {
     // single threaded pool to have a deterministic ordering of execution
-    final CommandPool pool = new BoundCommandPool(1);
+    final CommandPool pool = newTestCommandPool();
 
     final BlockingCommand blocking = new BlockingCommand();
-    pool.submit(CommandPool.Priority.HIGH, "test", blocking);
+    pool.submit(CommandPool.Priority.HIGH, "test", blocking, false);
 
     // submitting multiple suppliers with the same priority should be executed in their submitted order
-    Future<Integer> future1 = pool.submit(CommandPool.Priority.HIGH, "test", (waitInMillis) -> counter.getAndIncrement());
+    Future<Integer> future1 = pool.submit(CommandPool.Priority.HIGH, "test", (waitInMillis) -> counter.getAndIncrement(), false);
     Thread.sleep(5);
-    Future<Integer> future2 = pool.submit(CommandPool.Priority.HIGH, "test", (waitInMillis) -> counter.getAndIncrement());
+    Future<Integer> future2 = pool.submit(CommandPool.Priority.HIGH, "test", (waitInMillis) -> counter.getAndIncrement(), false);
     Thread.sleep(5);
-    Future<Integer> future3 = pool.submit(CommandPool.Priority.HIGH, "test", (waitInMillis) -> counter.getAndIncrement());
+    Future<Integer> future3 = pool.submit(CommandPool.Priority.HIGH, "test", (waitInMillis) -> counter.getAndIncrement(), false);
 
     blocking.unblock();
     Assert.assertEquals(0, (int) Futures.getUnchecked(future1));
@@ -61,15 +67,15 @@ public class TestBoundCommandPool {
   @Test
   public void testDifferentPrioritySuppliers() {
     // single threaded pool to have a deterministic ordering of execution
-    final CommandPool pool = new BoundCommandPool(1);
+    final CommandPool pool = newTestCommandPool();
 
     final BlockingCommand blocking = new BlockingCommand();
-    pool.submit(CommandPool.Priority.HIGH, "test", blocking);
+    pool.submit(CommandPool.Priority.HIGH, "test", blocking, false);
 
     // submitting multiple suppliers with different priorities, to a single thread pool, should be executed according to their priority
-    Future<Integer> future1 = pool.submit(CommandPool.Priority.LOW, "test", (waitInMillis) -> counter.getAndIncrement());
-    Future<Integer> future2 = pool.submit(CommandPool.Priority.MEDIUM, "test", (waitInMillis) -> counter.getAndIncrement());
-    Future<Integer> future3 = pool.submit(CommandPool.Priority.HIGH, "test", (waitInMillis) -> counter.getAndIncrement());
+    Future<Integer> future1 = pool.submit(CommandPool.Priority.LOW, "test", (waitInMillis) -> counter.getAndIncrement(), false);
+    Future<Integer> future2 = pool.submit(CommandPool.Priority.MEDIUM, "test", (waitInMillis) -> counter.getAndIncrement(), false);
+    Future<Integer> future3 = pool.submit(CommandPool.Priority.HIGH, "test", (waitInMillis) -> counter.getAndIncrement(), false);
 
     blocking.unblock();
     Assert.assertEquals(2, (int) Futures.getUnchecked(future1));

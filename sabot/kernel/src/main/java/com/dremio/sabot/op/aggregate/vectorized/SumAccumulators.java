@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -442,8 +442,9 @@ public class SumAccumulators {
         /* get the corresponding data from input vector -- source data for accumulation */
         final int bitVal = (PlatformDependent.getByte(incomingBit + ((incomingIndex >>> 3))) >>> (incomingIndex & 7)) & 1;
         long addressOfInput = incomingValue + (incomingIndex * WIDTH_INPUT);
-        long newValLow = PlatformDependent.getLong(addressOfInput);
-        long newValHigh = PlatformDependent.getLong(addressOfInput + DecimalUtils.LENGTH_OF_LONG);
+        long newValLow = PlatformDependent.getLong(addressOfInput) * bitVal;
+        long newValHigh =
+          PlatformDependent.getLong(addressOfInput + DecimalUtils.LENGTH_OF_LONG) * bitVal;
         /* get the hash table batch index */
         final int chunkIndex = tableIndex >>> bitsInChunk;
         final int chunkOffset = tableIndex & chunkOffsetMask;

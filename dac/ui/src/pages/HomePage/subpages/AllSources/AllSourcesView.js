@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -75,8 +75,8 @@ export default class AllSourcesView extends Component {
             }
           },
           [created.key]: {
-            node: () => moment(item.get('created')).format('MM/DD/YYYY'),
-            value: new Date(item.get('created'))
+            node: () => moment(item.get('ctime')).format('MM/DD/YYYY'),
+            value: new Date(item.get('ctime'))
           },
           [action.key]: {
             node: () => (

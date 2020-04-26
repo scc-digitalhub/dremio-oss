@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -45,6 +45,12 @@ public final class CatalogOptions {
 
   // Maximum number of leaf columns allowed for metadata
   public static final LongValidator METADATA_LEAF_COLUMN_MAX = new PositiveLongValidator("store.plugin.max_metadata_leaf_columns", Integer.MAX_VALUE, 800);
+
+  // ORC ACID table factor for leaf columns
+  public static final LongValidator ORC_DELTA_LEAF_COLUMN_FACTOR = new PositiveLongValidator("store.hive.orc_delta_leaf_column_factor", Integer.MAX_VALUE, 5);
+
+  // Maximum number of single split partitions allowed to be saved together
+  public static final LongValidator SINGLE_SPLIT_PARTITION_MAX = new PositiveLongValidator("store.plugin.max_single_split_partitions", Long.MAX_VALUE, 500);
 
   // How should (multi-)splits be compressed in the K/V store
   public static final TypeValidators.EnumValidator<NamespaceService.SplitCompression> SPLIT_COMPRESSION_TYPE = new TypeValidators.EnumValidator<>(

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ import Immutable  from 'immutable';
 import * as ActionTypes from 'actions/explore/ui';
 import * as QlikActions from 'actions/qlik';
 import localStorageUtils from 'utils/storageUtils/localStorageUtils';
-import {hashHeightTopSplitter} from 'constants/explorePage/heightTopSplitter';
+import {hashHeightTopSplitter} from '@app/constants/explorePage/heightTopSplitter';
 
 function getInitialState() {
   return Immutable.fromJS({

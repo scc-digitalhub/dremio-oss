@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ export default class YarnProperty extends Component {
   static propTypes = {
     fields: PropTypes.object,
     style: PropTypes.object
-  }
+  };
 
   static validate(values) {
     return applyValidators(values, [
@@ -47,7 +47,7 @@ export default class YarnProperty extends Component {
     { label: 'Java', option: 'JAVA_PROP'},
     { label: 'System', option: 'SYSTEM_PROP'},
     { label: 'Environment', option: 'ENV_VAR'}
-  ]
+  ];
 
   render() {
     const {fields: {name, value, type}} = this.props;
@@ -60,7 +60,7 @@ export default class YarnProperty extends Component {
             items={this.options}
             style={{width: 120}}/>
         </FieldWithError>
-        <FieldWithError label='Name' {...name} style={{display: 'inline-block'}}>
+        <FieldWithError label='Name' {...name} style={{display: 'inline-block', paddingRight: 5}}>
           <TextField {...name} />
         </FieldWithError>
         <FieldWithError label='Value' {...value} style={{display: 'inline-block'}}>

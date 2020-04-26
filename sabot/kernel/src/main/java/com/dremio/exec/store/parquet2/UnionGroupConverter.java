@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.parquet.schema.GroupType;
 
 import com.dremio.common.expression.SchemaPath;
+import com.dremio.exec.store.parquet.ParquetColumnResolver;
 import com.dremio.exec.store.parquet.SchemaDerivationHelper;
 import com.dremio.options.OptionManager;
 import com.dremio.sabot.op.scan.OutputMutator;
@@ -32,6 +33,8 @@ public class UnionGroupConverter extends ParquetGroupConverter {
   private final WriterProvider writerProvider;
 
   public UnionGroupConverter(
+      ParquetColumnResolver columnResolver,
+      String fieldName,
       OutputMutator mutator,
       WriterProvider writerProvider,
       GroupType schema,
@@ -41,6 +44,7 @@ public class UnionGroupConverter extends ParquetGroupConverter {
       final String name,
       SchemaDerivationHelper schemaHelper) {
     super(
+        columnResolver,
         mutator,
         schema,
         columns,
@@ -58,7 +62,7 @@ public class UnionGroupConverter extends ParquetGroupConverter {
 
     this.writerProvider = writerProvider;
 
-    convertChildren();
+    convertChildren(fieldName);
   }
 
   @Override

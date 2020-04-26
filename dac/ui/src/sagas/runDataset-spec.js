@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,19 +13,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { put, call, select } from 'redux-saga/effects';
-import socket from 'utils/socket';
+import { put, call, select, take, race } from 'redux-saga/effects';
+import socket, { WS_CONNECTION_OPEN } from 'utils/socket';
 import { testWithHooks } from 'testUtil';
 import Immutable from 'immutable';
 
 import { updateHistoryWithJobState } from 'actions/explore/history';
-import { addNotification } from 'actions/notification';
+import { updateExploreJobProgress } from 'actions/explore/dataset/data';
+import { LOGOUT_USER_SUCCESS } from '@app/actions/account';
 import { getTableDataRaw } from '@app/selectors/explore';
 
 import {
   waitForRunToComplete,
   handleResumeRunDataset,
-  DataLoadError
+  DataLoadError,
+  explorePageChanged
 } from './runDataset';
 
 describe('runDataset saga', () => {
@@ -54,12 +56,15 @@ describe('runDataset saga', () => {
       next = gen.next();
       expect(next.value).to.eql(select(getTableDataRaw, datasetVersion));
       next = gen.next(Immutable.fromJS({ rows: null }));
-      expect(next.value).to.eql(call(
-        waitForRunToComplete,
-        datasetVersion,
-        paginationUrl,
-        jobId
-      ));
+      expect(next.value).to.eql(race({
+        jobDone: call(
+          waitForRunToComplete,
+          datasetVersion,
+          paginationUrl,
+          jobId
+        ),
+        locationChange: call(explorePageChanged)
+      }));
       next = gen.next();
     });
 
@@ -69,12 +74,15 @@ describe('runDataset saga', () => {
       next = gen.next();
       expect(next.value).to.eql(select(getTableDataRaw, datasetVersion));
       next = gen.next(Immutable.fromJS({ rows: [] }));
-      expect(next.value).to.eql(call(
-        waitForRunToComplete,
-        datasetVersion,
-        paginationUrl,
-        jobId
-      ));
+      expect(next.value).to.eql(race({
+        jobDone: call(
+          waitForRunToComplete,
+          datasetVersion,
+          paginationUrl,
+          jobId
+        ),
+        locationChange: call(explorePageChanged)
+      }));
       next = gen.next();
     });
 
@@ -88,12 +96,17 @@ describe('runDataset saga', () => {
 
     const goToResponse = () => {
       gen = waitForRunToComplete(dataset, paginationUrl, jobId);
+      // wait for socket to be open
+      expect(gen.next().value).to.be.eql(race({
+        socketOpen: take(WS_CONNECTION_OPEN),
+        stop: take(LOGOUT_USER_SUCCESS)
+      }));
+      const socketOpenRaceResult = {
+        socketOpen: true
+      };
       // register web socket listener
-      next = gen.next();
+      next = gen.next(socketOpenRaceResult);
       expect(next.value).to.eql(call([socket, socket.startListenToJobProgress], jobId, true));
-      // show an notification if websocket connection was not established
-      next = gen.next();
-      expect(next.value).to.eql(put(addNotification(Immutable.Map({code: 'WS_CLOSED'}), 'error')));
       // race between jobCompletion listener and location change listener
       next = gen.next();
       expect(typeof next.value.RACE.jobDone).to.not.be.undefined;
@@ -103,6 +116,7 @@ describe('runDataset saga', () => {
       expect(next.value.PUT).to.not.be.undefined; // loadNextRows
       gen.next();
     };
+
     const checkFinallyBlock = (response) => {
       // remove job listener
       next = gen.next(response);
@@ -110,12 +124,14 @@ describe('runDataset saga', () => {
       next = gen.next();
       expect(next.done).to.be.true;
     };
+
     it('should succeed', () => {
       goToResponse();
       // change history item status to completed
-      const resultViewState = { someProp: 'someProp' };
-      next = gen.next(resultViewState);
+      next = gen.next({ someProp: 'someProp' });
       expect(next.value).to.eql(put(updateHistoryWithJobState(dataset, true)));
+      next = gen.next();
+      expect(next.value).to.eql(put(updateExploreJobProgress({state: true})));
       checkFinallyBlock();
     });
 

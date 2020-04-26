@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -65,6 +65,10 @@ public class TestFormatPluginOptionExtractor extends ExecTest {
         case "excel":
           assertEquals(d.typeName, "(type: String, sheet: String, extractHeader: boolean, hasMergedCells: boolean, xls: boolean)",
               d.presentParams());
+          break;
+        case "iceberg":
+          assertEquals(d.typeName, "(type: String, metaStoreType: IcebergMetaStoreType, dataFormatType: FileType, dataFormatConfig: FormatPluginConfig)",
+            d.presentParams());
           break;
         default:
           fail("add validation for format plugin type " + d.typeName);

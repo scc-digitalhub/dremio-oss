@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ import localStorageUtils from 'utils/storageUtils/localStorageUtils';
 import { formLabel } from 'uiTheme/radium/typography';
 
 import classNames from 'classnames';
-import { typeToIconType, BINARY, TEXT, INTEGER, FLOAT, DECIMAL, LIST, DATE, TIME, DATETIME, MAP, BOOLEAN } from 'constants/DataTypes';
+import { typeToIconType, BINARY, TEXT, INTEGER, FLOAT, DECIMAL, LIST, DATE, TIME, DATETIME, MAP, BOOLEAN } from '@app/constants/DataTypes';
 import SimpleButton from 'components/Buttons/SimpleButton';
 import {
   NoParamToBinary,
@@ -105,16 +105,16 @@ export default class DataTypeConverterView extends Component {
   }
 
   setTransformationInLocalStorage = (values) => {
-    const { newFieldName, ...restValues } = values;
+    const { newFieldName, ...restValues } = values; // eslint-disable-line @typescript-eslint/no-unused-vars
 
     localStorageUtils.setTransformValue(restValues);
-  }
+  };
 
   getTransformationValuesFromLocalStorage = () => {
     const { columnType, toType } = this.context.location.state;
 
     return localStorageUtils.getTransformValue(columnType, toType);
-  }
+  };
 
   renderSelect() {
     const { toType } = this.context.location.state;

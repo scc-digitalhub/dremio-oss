@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,12 +30,14 @@ import com.dremio.exec.expr.ClassProducer;
 import com.dremio.exec.expr.CodeGenerator;
 import com.dremio.exec.physical.config.ExternalSort;
 import com.dremio.exec.record.ExpandableHyperContainer;
+import com.dremio.exec.record.RecordBatchData;
 import com.dremio.exec.record.VectorAccessible;
 import com.dremio.exec.record.selection.SelectionVector2;
 import com.dremio.exec.record.selection.SelectionVector4;
 import com.google.common.collect.Lists;
 
 import io.netty.buffer.ArrowBuf;
+import io.netty.buffer.NettyArrowBuf;
 
 /**
  * - Sort each batch locally using an SV2
@@ -118,7 +120,9 @@ public class SplaySorter implements Sorter {
       final SelectionVector2 incomingSv2 = data.getSv2();
       if (incomingSv2 != null) {
         // just copy the sv2.
-        localSortVector.getBuffer(false).writeBytes(incomingSv2.getBuffer(false), 0, recordCount * 2);
+        NettyArrowBuf buffer = localSortVector.getBuffer(false).asNettyBuffer();
+        buffer.arrowBuf().setBytes(buffer.writerIndex(), incomingSv2.getBuffer(false), 0,
+          recordCount * 2);
       } else {
         for (int i = 0; i < recordCount; i++) {
           localSortVector.setIndex(i * 2, i);

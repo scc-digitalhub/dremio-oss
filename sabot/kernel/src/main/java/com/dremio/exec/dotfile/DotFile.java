@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,30 +18,29 @@ package com.dremio.exec.dotfile;
 import java.io.IOException;
 import java.io.InputStream;
 
-import org.apache.hadoop.fs.FileStatus;
-
 import com.dremio.common.config.LogicalPlanPersistence;
-import com.dremio.exec.store.dfs.FileSystemWrapper;
+import com.dremio.io.file.FileAttributes;
+import com.dremio.io.file.FileSystem;
 import com.google.common.base.Preconditions;
 
 public class DotFile {
 
-  private FileStatus status;
+  private FileAttributes attributes;
   private DotFileType type;
-  private FileSystemWrapper fs;
+  private FileSystem fs;
 
-  public static DotFile create(FileSystemWrapper fs, FileStatus status){
+  public static DotFile create(FileSystem fs, FileAttributes attributes){
     for(DotFileType d : DotFileType.values()){
-      if(!status.isDirectory() && d.matches(status)){
-        return new DotFile(fs, status, d);
+      if(!attributes.isDirectory() && d.matches(attributes)){
+        return new DotFile(fs, attributes, d);
       }
     }
     return null;
   }
 
-  private DotFile(FileSystemWrapper fs, FileStatus status, DotFileType type){
+  private DotFile(FileSystem fs, FileAttributes attributes, DotFileType type){
     this.fs = fs;
-    this.status = status;
+    this.attributes = attributes;
     this.type = type;
   }
 
@@ -53,7 +52,7 @@ public class DotFile {
    * @return Return owner of the file in underlying file system.
    */
   public String getOwner() {
-    return status.getOwner();
+    return attributes.owner().getName();
   }
 
   /**
@@ -61,13 +60,13 @@ public class DotFile {
    * @return Base file name.
    */
   public String getBaseName() {
-    final String fileName = status.getPath().getName();
+    final String fileName = attributes.getPath().getName();
     return fileName.substring(0, fileName.lastIndexOf(type.getEnding()));
   }
 
   public View getView(LogicalPlanPersistence lpPersistence) throws IOException {
     Preconditions.checkArgument(type == DotFileType.VIEW);
-    try(InputStream is = fs.open(status.getPath())){
+    try(InputStream is = fs.open(attributes.getPath())){
       return lpPersistence.getMapper().readValue(is, View.class);
     }
   }

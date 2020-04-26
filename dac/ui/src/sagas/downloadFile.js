@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,14 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { put, call, takeEvery } from 'redux-saga/effects';
-
-import { API_URL_V2 } from 'constants/Api';
+import { call, put, takeEvery } from 'redux-saga/effects';
 
 import { updateViewState } from 'actions/resources';
 import { addNotification } from 'actions/notification';
 
 import FileUtils from 'utils/FileUtils';
+import { APIV2Call } from '@app/core/APICall';
 
 const DOWNLOAD_FILE = 'DOWNLOAD_FILE';
 
@@ -34,7 +33,10 @@ export function* handleDownloadFile(action) {
   if (viewId) yield put(updateViewState(viewId, { isInProgress: true }));
 
   const headers = FileUtils.getHeaders();
-  const res = yield call(fetch, `${API_URL_V2}${url}`, {method, headers});
+
+  const apiCall = new APIV2Call().paths(url);
+
+  const res = yield call(fetch, apiCall.toString(), {method, headers});
 
   try {
     const downloadConfig = yield call([FileUtils, FileUtils.getFileDownloadConfigFromResponse], res);

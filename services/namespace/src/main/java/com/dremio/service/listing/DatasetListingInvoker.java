@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,8 +25,8 @@ import javax.inject.Provider;
 
 import org.apache.arrow.memory.BufferAllocator;
 
-import com.dremio.datastore.IndexedStore.FindByCondition;
 import com.dremio.datastore.RemoteDataStoreUtils;
+import com.dremio.datastore.api.LegacyIndexedStore.LegacyFindByCondition;
 import com.dremio.exec.proto.CoordinationProtos.NodeEndpoint;
 import com.dremio.exec.rpc.RpcException;
 import com.dremio.namespace.DatasetListingRPC.DLFindRequest;
@@ -104,7 +104,7 @@ public class DatasetListingInvoker implements DatasetListingService {
             DLFindRequest.getDefaultInstance(), DLFindResponse.getDefaultInstance()) {
           @Override
           public SentResponseMessage<DLFindResponse> handle(DLFindRequest findRequest, ArrowBuf dBody) {
-            final FindByCondition findByCondition = !findRequest.hasRequest() ? null :
+            final LegacyFindByCondition findByCondition = !findRequest.hasRequest() ? null :
                 RemoteDataStoreUtils.getConditionFromRequest(findRequest.getRequest());
 
             final Iterable<Entry<NamespaceKey, NameSpaceContainer>> searchResults;
@@ -120,9 +120,7 @@ public class DatasetListingInvoker implements DatasetListingService {
             final LinkedBuffer buffer = LinkedBuffer.allocate();
             final Iterable<ByteString> containersAsBytes = StreamSupport.stream(searchResults.spliterator(), false)
                 .map(input -> {
-                    // TODO(DX-10857): change from opaque object to protobuf; avoid unnecessary copies
-                    final ByteString bytes = ByteString.copyFrom(
-                        ProtobufIOUtil.toByteArray(input.getValue(), NameSpaceContainer.getSchema(), buffer));
+                    final ByteString bytes = input.getValue().clone(buffer);
                     buffer.clear();
                     return bytes;
                 }).collect(Collectors.toList());
@@ -233,7 +231,7 @@ public class DatasetListingInvoker implements DatasetListingService {
   @Override
   public Iterable<Entry<NamespaceKey, NameSpaceContainer>> find(
       String username,
-      FindByCondition condition
+      LegacyFindByCondition condition
   ) throws NamespaceException {
     if (isMaster) { // RPC calls unless running on master
       return datasetListing.find(username, condition);
@@ -262,8 +260,7 @@ public class DatasetListingInvoker implements DatasetListingService {
     return findResponse.getResponseList().stream()
         .map(input -> {
             // TODO(DX-10857): change from opaque object to protobuf; avoid unnecessary copies
-            final NameSpaceContainer nameSpaceContainer = NameSpaceContainer.getSchema().newMessage();
-            ProtobufIOUtil.mergeFrom(input.toByteArray(), nameSpaceContainer, NameSpaceContainer.getSchema());
+            final NameSpaceContainer nameSpaceContainer = NameSpaceContainer.from(input);
             return new AbstractMap.SimpleEntry<>(
                 new NamespaceKey(nameSpaceContainer.getFullPathList()), nameSpaceContainer);
         }).collect(Collectors.toList());
@@ -294,7 +291,6 @@ public class DatasetListingInvoker implements DatasetListingService {
       throw new RemoteNamespaceException(getSourceResponse.getFailureMessage());
     }
 
-    // TODO(DX-10857): change from opaque object to protobuf; avoid unnecessary copies
     final SourceConfig source = SourceConfig.getSchema().newMessage();
     ProtobufIOUtil.mergeFrom(getSourceResponse.getResponse().toByteArray(), source, SourceConfig.getSchema());
 

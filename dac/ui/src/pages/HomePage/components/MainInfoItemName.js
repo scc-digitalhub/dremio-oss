@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -73,7 +73,8 @@ export default class MainInfoItemName extends Component {
           entityType: entity.get('entityType'),
           entityId: entity.get('id'),
           fullPath: entity.get('filePath'),
-          query: {then: 'query'}
+          query: {then: 'query'},
+          isHomePage: true
         }
       };
     }
@@ -123,8 +124,8 @@ export default class MainInfoItemName extends Component {
     const fullPath = constructFullPath(getFullPathListFromEntity(item));
     const href = this.getHref(item);
     const linkStyle = (fileType === 'folder' && !item.get('queryable'))
-        ? styles.flexAlign
-        : {...styles.flexAlign, ...styles.leafLink};
+      ? styles.flexAlign
+      : {...styles.flexAlign, ...styles.leafLink};
     const holderClass = fileType + '-path';
 
     return (

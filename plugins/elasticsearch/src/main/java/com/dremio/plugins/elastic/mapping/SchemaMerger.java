@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -250,12 +250,17 @@ public class SchemaMerger {
     public Field toField(final ResultBuilder resultToPopulate) {
       final SchemaPath path = child(parent, elasticField != null ? elasticField.getName() : actualField.getName());
 
-      if(elasticField != null && elasticField.getType() == Type.UNKNOWN){
-        recordAnnotations(path, elasticField, resultToPopulate);
-        return null;
+      if (elasticField != null) {
+        if (elasticField.getType() == Type.UNKNOWN) {
+          recordAnnotations(path, elasticField, resultToPopulate);
+          return null;
+        } else if (elasticField.getType() == Type.SCALED_FLOAT) {
+          // Record the annotation so we can disable passdown, but also add as a field.
+          recordAnnotations(path, elasticField, resultToPopulate);
+        }
       }
 
-      if(!children.isEmpty()){
+      if (!children.isEmpty()) {
         List<Field> fieldChildren = FluentIterable.from(children).transform(new Function<MergeField, Field>(){
           @Override
           @Nullable
@@ -333,6 +338,10 @@ public class SchemaMerger {
         resultToPopulate.isNestedType(path);
         break;
 
+      case SCALED_FLOAT:
+        resultToPopulate.isScaledType(path);
+        break;
+
       case DATE:
       case TIMESTAMP:
       case TIME:
@@ -390,8 +399,13 @@ public class SchemaMerger {
     public void isNestedType(SchemaPath path){
       annotations.put(path,  anno(path).setSpecialType(ElasticSpecialType.NESTED).build());
     }
+
     public void isIpType(SchemaPath path){
       annotations.put(path,  anno(path).setSpecialType(ElasticSpecialType.IP_TYPE).build());
+    }
+
+    public void isScaledType(SchemaPath path){
+      annotations.put(path,  anno(path).setSpecialType(ElasticSpecialType.SCALED_FLOAT).build());
     }
 
     public void isAnalyzed(SchemaPath path){

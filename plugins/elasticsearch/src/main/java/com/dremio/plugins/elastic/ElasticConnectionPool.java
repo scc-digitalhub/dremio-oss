@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Function;
 import java.util.logging.Level;
 
 import javax.ws.rs.WebApplicationException;
@@ -41,13 +42,13 @@ import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.core.GenericType;
 import javax.ws.rs.core.Response;
 
-import org.glassfish.hk2.utilities.Binder;
-import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.client.ClientConfig;
 import org.glassfish.jersey.client.ClientProperties;
 import org.glassfish.jersey.client.JerseyInvocation;
 import org.glassfish.jersey.client.authentication.HttpAuthenticationFeature;
 import org.glassfish.jersey.client.filter.EncodingFilter;
+import org.glassfish.jersey.internal.InternalProperties;
+import org.glassfish.jersey.internal.util.PropertiesHelper;
 import org.glassfish.jersey.logging.LoggingFeature;
 import org.glassfish.jersey.message.DeflateEncoder;
 import org.glassfish.jersey.message.GZipEncoder;
@@ -72,14 +73,12 @@ import com.dremio.service.namespace.capabilities.BooleanCapabilityValue;
 import com.dremio.service.namespace.capabilities.SourceCapabilities;
 import com.dremio.ssl.SSLHelper;
 import com.fasterxml.jackson.jaxrs.json.JacksonJaxbJsonProvider;
-import com.google.common.base.Function;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import com.google.common.io.CharStreams;
-import com.google.common.util.concurrent.CheckedFuture;
-import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -173,22 +172,16 @@ public class ElasticConnectionPool implements AutoCloseable {
   }
 
   public void connect() throws IOException {
-    ClientConfig configuration = new ClientConfig();
+    final ClientConfig configuration = new ClientConfig();
     configuration.property(ClientProperties.READ_TIMEOUT, readTimeoutMillis);
-    AWSCredentialsProvider awsCredentialsProvider = elasticsearchAuthentication.getAwsCredentialsProvider();
+    final AWSCredentialsProvider awsCredentialsProvider = elasticsearchAuthentication.getAwsCredentialsProvider();
     if (awsCredentialsProvider != null) {
       configuration.property(REGION_NAME, elasticsearchAuthentication.getRegionName());
       configuration.register(ElasticsearchRequestClientFilter.class);
-      Binder binder = new AbstractBinder() {
-        @Override
-        protected void configure() {
-          bind(awsCredentialsProvider).to(AWSCredentialsProvider.class);
-        }
-      };
-      configuration.register(binder);
+      configuration.register(new InjectableAWSCredentialsProvider(awsCredentialsProvider), InjectableAWSCredentialsProvider.class);
     }
 
-    ClientBuilder builder = ClientBuilder.newBuilder()
+    final ClientBuilder builder = ClientBuilder.newBuilder()
         .withConfig(configuration);
 
     switch(sslMode) {
@@ -221,7 +214,14 @@ public class ElasticConnectionPool implements AutoCloseable {
 
     final JacksonJaxbJsonProvider provider = new JacksonJaxbJsonProvider();
     provider.setMapper(ElasticMappingSet.MAPPER);
+
+    // Disable other JSON providers.
+    client.property(
+      PropertiesHelper.getPropertyNameForRuntime(InternalProperties.JSON_FEATURE, client.getConfiguration().getRuntimeType()),
+      JacksonJaxbJsonProvider.class.getSimpleName());
+
     client.register(provider);
+
     HttpAuthenticationFeature httpAuthenticationFeature = elasticsearchAuthentication.getHttpAuthenticationFeature();
     if (httpAuthenticationFeature != null) {
       client.register(httpAuthenticationFeature);
@@ -538,7 +538,7 @@ public class ElasticConnectionPool implements AutoCloseable {
     return builder;
   }
 
-  private static UserException handleException(Exception e, ElasticAction2<?> action, ContextListenerImpl listener) {
+  private static UserException handleException(Throwable e, ElasticAction2<?> action, ContextListenerImpl listener) {
     if (e instanceof ResponseProcessingException) {
       final UserException.Builder builder = UserException.dataReadError(e)
           .message("Failure consuming response from Elastic cluster during %s.", action.getAction());
@@ -585,13 +585,15 @@ public class ElasticConnectionPool implements AutoCloseable {
         .build(logger);
   }
 
-  private static class AsyncCallback<T> implements InvocationCallback<T> {
+  private static class CheckedAsyncCallback<T> implements InvocationCallback<T> {
 
     private final SettableFuture<T> future;
+    private final Function<Throwable, Throwable> exceptionHandler;
 
-    public AsyncCallback(SettableFuture<T> future) {
+    public CheckedAsyncCallback(SettableFuture<T> future, Function<Throwable, Throwable> exceptionHandler) {
       super();
       this.future = future;
+      this.exceptionHandler = exceptionHandler;
     }
 
     @Override
@@ -601,7 +603,7 @@ public class ElasticConnectionPool implements AutoCloseable {
 
     @Override
     public void failed(Throwable throwable) {
-      future.setException(throwable);
+      future.setException(exceptionHandler.apply(throwable));
     }
 
   }
@@ -615,20 +617,20 @@ public class ElasticConnectionPool implements AutoCloseable {
       this.target = target;
     }
 
-    public <T> CheckedFuture<T, UserException> executeAsync(final ElasticAction2<T> action){
+    public <T> ListenableFuture<T> executeAsync(final ElasticAction2<T> action){
       final ContextListenerImpl listener = new ContextListenerImpl();
       // need to cast to jersey since the core javax.ws.rs Invocation doesn't support a typed submission.
       final JerseyInvocation invocation = (JerseyInvocation) action.buildRequest(target, listener);
       final SettableFuture<T> future = SettableFuture.create();
-      invocation.submit(new GenericType<T>(action.getResponseClass()), new AsyncCallback<>(future));
-      return Futures.makeChecked(future, new Function<Exception, UserException>(){
-        @Override
-        public UserException apply(Exception input) {
-          if(input instanceof ExecutionException){
-            input = (Exception) input.getCause();
-          }
-          return handleException(input, action, listener);
-        }});
+      invocation.submit(new GenericType<>(action.getResponseClass()),
+        new CheckedAsyncCallback<T>(future,  e -> {
+        if (e instanceof ExecutionException) {
+          e = e.getCause();
+        }
+        return handleException(e, action, listener);
+      }));
+
+      return future;
     }
 
     public <T> T execute(ElasticAction2<T> action){

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,10 +24,10 @@ describe('extractValue', () => {
   const test = (actionType, action, pathToValue, expectedValue) => {
     it(`actionType to listen = '${actionType}'; action = ${JSON.stringify(action)};
         path to extract = '${pathToValue}'; expected state value = ${JSON.stringify(expectedValue)}`,
-      () => {
-        const reducer = extractValue(actionType, pathToValue);
-        expect(reducer(undefined, action)).to.be.equal(expectedValue);
-      });
+    () => {
+      const reducer = extractValue(actionType, pathToValue);
+      expect(reducer(undefined, action)).to.be.equal(expectedValue);
+    });
   };
 
   const obj = { b: 1};

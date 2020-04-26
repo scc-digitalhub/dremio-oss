@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,7 +27,6 @@ import java.util.Set;
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.vector.ValueVector;
 import org.apache.arrow.vector.types.pojo.Schema;
-import org.apache.hadoop.fs.FileStatus;
 
 import com.carrotsearch.hppc.cursors.ObjectLongCursor;
 import com.dremio.connector.ConnectorException;
@@ -39,7 +38,6 @@ import com.dremio.connector.metadata.DatasetStats;
 import com.dremio.connector.metadata.EntityPath;
 import com.dremio.connector.metadata.GetMetadataOption;
 import com.dremio.connector.metadata.ListPartitionChunkOption;
-import com.dremio.connector.metadata.PartitionChunk;
 import com.dremio.connector.metadata.PartitionChunkListing;
 import com.dremio.connector.metadata.PartitionValue;
 import com.dremio.connector.metadata.PartitionValue.PartitionValueType;
@@ -48,17 +46,16 @@ import com.dremio.exec.catalog.FileConfigMetadata;
 import com.dremio.exec.catalog.MetadataObjectsUtils;
 import com.dremio.exec.physical.base.GroupScan;
 import com.dremio.exec.planner.cost.ScanCostFactor;
-import com.dremio.exec.proto.CoordinationProtos;
 import com.dremio.exec.record.BatchSchema;
 import com.dremio.exec.record.VectorWrapper;
 import com.dremio.exec.server.SabotContext;
+import com.dremio.exec.store.PartitionChunkListingImpl;
 import com.dremio.exec.store.RecordReader;
 import com.dremio.exec.store.SampleMutator;
 import com.dremio.exec.store.dfs.CompleteFileWork;
 import com.dremio.exec.store.dfs.FileDatasetHandle;
 import com.dremio.exec.store.dfs.FileSelection;
 import com.dremio.exec.store.dfs.FileSystemPlugin;
-import com.dremio.exec.store.dfs.FileSystemWrapper;
 import com.dremio.exec.store.dfs.FormatPlugin;
 import com.dremio.exec.store.dfs.PhysicalDatasetUtils;
 import com.dremio.exec.store.dfs.PreviousDatasetInfo;
@@ -69,6 +66,8 @@ import com.dremio.exec.store.dfs.implicit.ImplicitFilesystemColumnFinder;
 import com.dremio.exec.store.dfs.implicit.NameValuePair;
 import com.dremio.exec.store.file.proto.FileProtobuf.FileSystemCachedEntity;
 import com.dremio.exec.store.file.proto.FileProtobuf.FileUpdateKey;
+import com.dremio.io.file.FileAttributes;
+import com.dremio.io.file.FileSystem;
 import com.dremio.sabot.exec.context.OperatorContextImpl;
 import com.dremio.sabot.exec.store.easy.proto.EasyProtobuf.EasyDatasetSplitXAttr;
 import com.dremio.sabot.exec.store.easy.proto.EasyProtobuf.EasyDatasetXAttr;
@@ -79,16 +78,16 @@ import com.google.common.base.Optional;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
-import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
+import com.google.common.net.HostAndPort;
 
 /**
- * Dataset accessor for text/avro/json.. file formats
+ * Dataset accessor for text/json.. file formats
  */
 public class EasyFormatDatasetAccessor implements FileDatasetHandle {
 
   private final DatasetType type;
-  private final FileSystemWrapper fs;
+  private final FileSystem fs;
   private final FileSelection fileSelection;
   private final FileSystemPlugin<?> fsPlugin;
   private final NamespaceKey tableSchemaPath;
@@ -97,14 +96,14 @@ public class EasyFormatDatasetAccessor implements FileDatasetHandle {
   private final PreviousDatasetInfo oldConfig;
   private final int maxLeafColumns;
 
-  private List<PartitionChunk> cachedSplits;
+  private PartitionChunkListingImpl partitionChunkListing;
   private long recordCount;
   private EasyDatasetXAttr extended;
   private List<String> partitionColumns;
 
   public EasyFormatDatasetAccessor(
       DatasetType type,
-      FileSystemWrapper fs, FileSelection fileSelection, FileSystemPlugin<?> fsPlugin,
+      FileSystem fs, FileSelection fileSelection, FileSystemPlugin<?> fsPlugin,
       NamespaceKey tableSchemaPath, FileUpdateKey updateKey, FormatPlugin formatPlugin, PreviousDatasetInfo oldConfig,
       int maxLeafColumns) {
     this.type = type;
@@ -116,6 +115,7 @@ public class EasyFormatDatasetAccessor implements FileDatasetHandle {
     this.formatPlugin = formatPlugin;
     this.oldConfig = oldConfig;
     this.maxLeafColumns = maxLeafColumns;
+    this.partitionChunkListing = new PartitionChunkListingImpl();
   }
 
   @Override
@@ -180,7 +180,7 @@ public class EasyFormatDatasetAccessor implements FileDatasetHandle {
       throw new ConnectorException(e);
     }
 
-    return () -> cachedSplits.iterator();
+    return partitionChunkListing;
   }
 
   @Override
@@ -188,7 +188,7 @@ public class EasyFormatDatasetAccessor implements FileDatasetHandle {
     return updateKey::writeTo;
   }
 
-  private BatchSchema getBatchSchema(BatchSchema oldSchema, final FileSelection selection, final FileSystemWrapper dfs) throws Exception {
+  private BatchSchema getBatchSchema(BatchSchema oldSchema, final FileSelection selection, final FileSystem dfs) throws Exception {
     final SabotContext context = formatPlugin.getContext();
     try (
         BufferAllocator sampleAllocator = context.getAllocator().newChildAllocator("sample-alloc", 0, Long.MAX_VALUE);
@@ -197,9 +197,9 @@ public class EasyFormatDatasetAccessor implements FileDatasetHandle {
     ) {
       final ImplicitFilesystemColumnFinder explorer = new ImplicitFilesystemColumnFinder(context.getOptionManager(), dfs, GroupScan.ALL_COLUMNS);
 
-      Optional<FileStatus> fileName = Iterables.tryFind(selection.getStatuses(), input -> input.getLen() > 0);
+      Optional<FileAttributes> fileName = Iterables.tryFind(selection.getFileAttributesList(), input -> input.size() > 0);
 
-      final FileStatus file = fileName.or(selection.getStatuses().get(0));
+      final FileAttributes file = fileName.or(selection.getFileAttributesList().get(0));
 
       EasyDatasetSplitXAttr dataset = EasyDatasetSplitXAttr.newBuilder()
           .setStart(0l)
@@ -214,7 +214,7 @@ public class EasyFormatDatasetAccessor implements FileDatasetHandle {
         for (VectorWrapper<?> vw : mutator.getContainer()) {
           fieldVectorMap.put(vw.getField().getName(), vw.getValueVector());
           if (++i > maxLeafColumns) {
-            throw new ColumnCountTooLargeException(tableSchemaPath.getLeaf(), maxLeafColumns);
+            throw new ColumnCountTooLargeException(maxLeafColumns);
           }
         }
         reader.allocate(fieldVectorMap);
@@ -227,14 +227,13 @@ public class EasyFormatDatasetAccessor implements FileDatasetHandle {
   }
 
   private void buildIfNecessary() throws Exception {
-    if (cachedSplits != null) {
+    if (partitionChunkListing.computed()) {
       return;
     }
     final EasyGroupScanUtils easyGroupScanUtils = ((EasyFormatPlugin) formatPlugin).getGroupScan(SYSTEM_USERNAME, fsPlugin, fileSelection, GroupScan.ALL_COLUMNS);
     extended = EasyDatasetXAttr.newBuilder().setSelectionRoot(fileSelection.getSelectionRoot()).build();
     recordCount = easyGroupScanUtils.getScanStats().getRecordCount();
 
-    final List<PartitionChunk> splits = Lists.newArrayList();
     final ImplicitFilesystemColumnFinder finder = new ImplicitFilesystemColumnFinder(fsPlugin.getContext().getOptionManager(), fs, GroupScan.ALL_COLUMNS);
     final List<CompleteFileWork> work = easyGroupScanUtils.getChunks();
     final List<List<NameValuePair<?>>> pairs = finder.getImplicitFields(easyGroupScanUtils.getSelectionRoot(), work);
@@ -244,11 +243,11 @@ public class EasyFormatDatasetAccessor implements FileDatasetHandle {
       final CompleteFileWork completeFileWork = work.get(i);
 
       final long size = completeFileWork.getTotalBytes();
-      final String pathString = completeFileWork.getStatus().getPath().toString();
+      final String pathString = completeFileWork.getFileAttributes().getPath().toString();
 
       final List<DatasetSplitAffinity> affinities = new ArrayList<>();
-      for (ObjectLongCursor<CoordinationProtos.NodeEndpoint> item : completeFileWork.getByteMap()) {
-        affinities.add(DatasetSplitAffinity.of(item.key.getAddress(), completeFileWork.getTotalBytes()));
+      for (ObjectLongCursor<HostAndPort> item : completeFileWork.getByteMap()) {
+        affinities.add(DatasetSplitAffinity.of(item.key.getHost(), completeFileWork.getTotalBytes()));
       }
 
       EasyDatasetSplitXAttr splitExtended = EasyDatasetSplitXAttr.newBuilder()
@@ -257,7 +256,7 @@ public class EasyFormatDatasetAccessor implements FileDatasetHandle {
           .setLength(completeFileWork.getLength())
           .setUpdateKey(FileSystemCachedEntity.newBuilder()
               .setPath(pathString)
-              .setLastModificationTime(completeFileWork.getStatus().getModificationTime()))
+              .setLastModificationTime(completeFileWork.getFileAttributes().lastModifiedTime().toMillis()))
           .build();
 
       List<PartitionValue> partitionValues = new ArrayList<>();
@@ -278,10 +277,10 @@ public class EasyFormatDatasetAccessor implements FileDatasetHandle {
       }
       long splitRecordCount = 0; // unknown.
       DatasetSplit split = DatasetSplit.of(affinities, size, splitRecordCount, splitExtended::writeTo);
-      splits.add(PartitionChunk.of(partitionValues, Collections.singletonList(split)));
+      partitionChunkListing.put(partitionValues, split);
     }
     partitionColumns = ImmutableList.copyOf(allImplicitColumns);
-    this.cachedSplits = splits;
+    partitionChunkListing.computePartitionChunks();
   }
 
   @Override

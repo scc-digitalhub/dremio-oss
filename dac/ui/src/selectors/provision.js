@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,4 +25,8 @@ export function getAllProvisions(state) {
     .sortBy((provision) => provision.getIn(['id', 'id'])) // ultimate fallback stability
     .sortBy((provision) => provision.get('name'))
     .sortBy((provision) => provision.get('clusterType'));
+}
+
+export function getAwsDefaults(state) {
+  return state.resources.entities.get('awsDefaults');
 }

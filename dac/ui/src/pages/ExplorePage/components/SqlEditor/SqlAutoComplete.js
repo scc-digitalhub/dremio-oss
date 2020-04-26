@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -93,7 +93,7 @@ export default class SqlAutoComplete extends Component { // todo: pull SQLEditor
     );
   }
 
-  handleDrop = ({ id, args }, monitor) => {
+  handleDrop = ({ id, args }) => {
     // because we move the cursor as we drag around, we can simply insert at the current position in the editor (default)
 
     // duck-type check pending drag-n-drop revamp
@@ -104,7 +104,7 @@ export default class SqlAutoComplete extends Component { // todo: pull SQLEditor
     } else {
       this.insertFullPath(id);
     }
-  }
+  };
 
   getMonacoEditorInstance() {
     return this.sqlEditor.monacoEditorComponent.editor;
@@ -119,7 +119,7 @@ export default class SqlAutoComplete extends Component { // todo: pull SQLEditor
     if (!target || !target.position) return; // no position if you drag over the rightmost part of the context UI
     this.getMonacoEditorInstance().setPosition(target.position);
     this.focus();
-  }
+  };
 
   focus() {
     if (this.sqlEditor) {
@@ -128,12 +128,12 @@ export default class SqlAutoComplete extends Component { // todo: pull SQLEditor
   }
 
   resetValue() {
-    this.sqlEditor.resetValue();
+    this.sqlEditor && this.sqlEditor.resetValue();
   }
 
   handleChange = () => {
     this.updateCode();
-  }
+  };
 
   handleClickEditContext() {
     this.setState({ showSelectContextModal: true });
@@ -289,7 +289,7 @@ export default class SqlAutoComplete extends Component { // todo: pull SQLEditor
             errors={errors}
             autoCompleteEnabled={autoCompleteEnabled}
             sqlContext={context}
-            />
+          />
           { query.type !== 'transform' && this.renderContext() }
         </div>
       </DragTarget>

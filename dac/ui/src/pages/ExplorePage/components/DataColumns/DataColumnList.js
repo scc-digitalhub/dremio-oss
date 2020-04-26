@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -55,7 +55,7 @@ export class DataColumnListView extends PureComponent {
         title={`${formatMessage('Dataset.Fields')} ${columns.size}`}
         titleClass={titleClass}
         className={title}
-        />
+      />
       <div className={listCls}>
         {
           // call [toJS] right here, as it is a pure component and column is an only property

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,18 +34,27 @@ import java.sql.Date;
 import java.sql.Timestamp;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.util.DateString;
 import org.apache.commons.net.ntp.TimeStamp;
+import org.junit.ClassRule;
 import org.junit.Test;
+import org.junit.rules.TestRule;
 
+import com.dremio.common.util.TestTools;
 import com.dremio.exec.planner.RexBuilderTestBase;
 
 /**
  * Unit tests for {@link ORCSearchArgumentGenerator}
  */
 public class TestORCSearchArgumentGenerator extends RexBuilderTestBase {
+
+  @ClassRule
+  public static final TestRule CLASS_TIMEOUT = TestTools.getTimeoutRule(100000, TimeUnit.SECONDS);
+
   @Test
   public void equal() {
     RexNode eqInt = builder.makeCall(EQUALS, asList(input(0), intLit(0, 23)));
@@ -316,7 +325,7 @@ public class TestORCSearchArgumentGenerator extends RexBuilderTestBase {
   }
 
   private String sarg(RexNode expr) {
-    ORCSearchArgumentGenerator gen = new ORCSearchArgumentGenerator(input.getRowType().getFieldNames());
+    ORCSearchArgumentGenerator gen = new ORCSearchArgumentGenerator(input.getRowType().getFieldNames(), new ArrayList<>());
     expr.accept(gen);
     return gen.get().toString();
   }

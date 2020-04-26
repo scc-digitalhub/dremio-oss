@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ import com.dremio.exec.planner.physical.PlannerSettings;
 import com.dremio.exec.planner.sql.ConvertletTable;
 import com.dremio.exec.planner.sql.parser.CompoundIdentifierConverter;
 import com.dremio.exec.planner.sql.parser.impl.ParserImpl;
+import com.dremio.exec.proto.UserBitShared.QueryId;
 import com.dremio.sabot.exec.context.ContextInformation;
 import com.dremio.test.DremioAssert;
 
@@ -64,6 +65,9 @@ public class TestSqlBracketlessSyntax {
           public int getRootFragmentTimeZone() {
             return 0;
           }
+
+          @Override
+          public QueryId getLastQueryId() { return null; }
 
           @Override
           public void registerAdditionalInfo(AdditionalContext object) {

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,16 +43,18 @@ import org.junit.Test;
 import com.dremio.dac.explore.model.DatasetPath;
 import com.dremio.dac.model.spaces.HomeName;
 import com.dremio.dac.server.test.SampleDataPopulator;
-import com.dremio.datastore.KVStoreProvider;
+import com.dremio.datastore.api.LegacyKVStoreProvider;
 import com.dremio.exec.catalog.DremioTable;
+import com.dremio.exec.catalog.MetadataRequestOptions;
 import com.dremio.exec.server.ContextService;
 import com.dremio.exec.server.MaterializationDescriptorProvider;
 import com.dremio.exec.store.SchemaConfig;
 import com.dremio.options.OptionValue;
 import com.dremio.service.accelerator.AccelerationTestUtil;
-import com.dremio.service.accelerator.ReflectionMonitor;
+import com.dremio.service.jobs.JobsService;
 import com.dremio.service.namespace.file.FileFormat;
 import com.dremio.service.namespace.file.proto.FileType;
+import com.dremio.service.reflection.ReflectionMonitor;
 import com.dremio.service.reflection.ReflectionService;
 import com.dremio.service.reflection.ReflectionStatusService;
 import com.dremio.service.reflection.proto.PartitionDistributionStrategy;
@@ -105,7 +107,8 @@ public class TestReflectionResource extends AccelerationTestUtil {
       l(ReflectionService.class),
       l(ReflectionStatusService.class),
       l(MaterializationDescriptorProvider.class),
-      new MaterializationStore(p(KVStoreProvider.class)),
+      l(JobsService.class),
+      new MaterializationStore(p(LegacyKVStoreProvider.class)),
       SECONDS.toMillis(1),
       SECONDS.toMillis(10)
     );
@@ -200,7 +203,9 @@ public class TestReflectionResource extends AccelerationTestUtil {
     // create a reflection
     List<ReflectionField> displayFields = new ArrayList<>();
 
-    DremioTable table = newCatalogService().getCatalog(SchemaConfig.newBuilder(SystemUser.SYSTEM_USERNAME).build()).getTable(datasetId);
+    DremioTable table = newCatalogService().getCatalog(
+        MetadataRequestOptions.of(SchemaConfig.newBuilder(SystemUser.SYSTEM_USERNAME).build()))
+        .getTable(datasetId);
     for (int i = 0; i < table.getSchema().getFieldCount(); i++) {
       Field field = table.getSchema().getColumn(i);
       displayFields.add(new ReflectionField(field.getName()));

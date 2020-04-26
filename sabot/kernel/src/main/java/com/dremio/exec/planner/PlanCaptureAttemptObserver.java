@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,6 +28,9 @@ import org.apache.calcite.plan.RelOptPlanner;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.plan.volcano.VolcanoPlanner;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.RelShuttleImpl;
+import org.apache.calcite.rel.core.TableScan;
+import org.apache.calcite.rel.logical.LogicalTableScan;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.SqlExplainFormat;
 import org.apache.calcite.sql.SqlExplainLevel;
@@ -41,6 +44,7 @@ import com.dremio.exec.planner.acceleration.substitution.SubstitutionInfo;
 import com.dremio.exec.planner.acceleration.substitution.SubstitutionInfo.Substitution;
 import com.dremio.exec.planner.logical.ViewTable;
 import com.dremio.exec.planner.observer.AbstractAttemptObserver;
+import com.dremio.exec.planner.serialization.RelSerializerFactory;
 import com.dremio.exec.proto.UserBitShared;
 import com.dremio.exec.proto.UserBitShared.AccelerationProfile;
 import com.dremio.exec.proto.UserBitShared.FragmentRpcSizeStats;
@@ -68,6 +72,7 @@ public class PlanCaptureAttemptObserver extends AbstractAttemptObserver {
     mapIdToAccelerationProfile = new LinkedHashMap<>();
   private final AccelerationDetailsPopulator detailsPopulator;
   private final ImmutableList.Builder<UserBitShared.DatasetProfile> datasetProfileBuilder = ImmutableList.builder();
+  private final RelSerializerFactory relSerializerFactory;
 
   private String text;
   private String json;
@@ -79,17 +84,21 @@ public class PlanCaptureAttemptObserver extends AbstractAttemptObserver {
   private long normalizationMillis = 0;
   private long substitutionMillis = 0;
   private int numSubstitutions = 0;
+  private int numFragments;
   private List<String> normalizedQueryPlans;
 
   private volatile ByteString accelerationDetails;
+  private byte[] serializedPlan;
 
   public PlanCaptureAttemptObserver(final boolean verbose, final boolean includeDatasetProfiles,
                                     final FunctionImplementationRegistry funcRegistry,
-                                    AccelerationDetailsPopulator detailsPopulator) {
+                                    AccelerationDetailsPopulator detailsPopulator,
+                                    RelSerializerFactory relSerializerFactory) {
     this.verbose = verbose;
     this.includeDatasetProfiles = includeDatasetProfiles;
     this.funcRegistry = funcRegistry;
     this.detailsPopulator = detailsPopulator;
+    this.relSerializerFactory = relSerializerFactory;
   }
 
   public AccelerationProfile getAccelerationProfile() {
@@ -117,6 +126,10 @@ public class PlanCaptureAttemptObserver extends AbstractAttemptObserver {
 
   public List<PlanPhaseProfile> getPlanPhases() {
     return planPhases;
+  }
+
+  public byte[] getSerializedPlan() {
+    return serializedPlan;
   }
 
   @Override
@@ -236,6 +249,7 @@ public class PlanCaptureAttemptObserver extends AbstractAttemptObserver {
     if (plan != null) {
       try {
         schema = RootSchemaFinder.getSchema(plan.getRootOperator());
+        numFragments = plan.getFragments().size();
       } catch (Exception e) {
         logger.warn("Failed to capture query output schema", e);
       }
@@ -256,6 +270,20 @@ public class PlanCaptureAttemptObserver extends AbstractAttemptObserver {
   @Override
   public void planConvertedToRel(RelNode converted, long millisTaken) {
     final String convertedRelTree = toStringOrEmpty(converted, true);
+
+    try {
+      RelNode toSerialize = converted.accept(new RelShuttleImpl() {
+        @Override
+        public RelNode visit(TableScan scan) {
+          return LogicalTableScan.create(scan.getCluster(), scan.getTable());
+        }
+      });
+
+      serializedPlan = relSerializerFactory.getSerializer(converted.getCluster()).serializeToBytes(toSerialize);
+    } catch (Throwable e) {
+      logger.debug("Error", e);
+    }
+
     planPhases.add(PlanPhaseProfile.newBuilder()
       .setPhaseName("Convert To Rel")
       .setDurationMillis(millisTaken)
@@ -385,9 +413,27 @@ public class PlanCaptureAttemptObserver extends AbstractAttemptObserver {
   }
 
   @Override
+  public void executorsSelected(long millisTaken, int idealNumFragments, int idealNumNodes, int numExecutors, String detailsText) {
+    StringBuilder sb = new StringBuilder()
+        .append("idealNumFragments: ").append(idealNumFragments).append("\n")
+        .append("idealNumNodes    : ").append(idealNumNodes).append("\n")
+        .append("numExecutors     : ").append(numExecutors).append("\n")
+        .append("details          : ").append(detailsText);
+    planPhases.add(PlanPhaseProfile.newBuilder()
+        .setPhaseName("Execution Plan: Executor Selection")
+        .setDurationMillis(millisTaken)
+        .setPlan(sb.toString())
+        .build());
+  }
+
+  @Override
+  public void recordsProcessed(long recordCount) {
+  }
+
+  @Override
   public void planGenerationTime(long millisTaken) {
     planPhases.add(PlanPhaseProfile.newBuilder()
-      .setPhaseName("Plan Generation")
+      .setPhaseName("Execution Plan: Plan Generation")
       .setDurationMillis(millisTaken)
       .setPlan("")
       .build());
@@ -396,27 +442,26 @@ public class PlanCaptureAttemptObserver extends AbstractAttemptObserver {
   @Override
   public void planAssignmentTime(long millisTaken) {
     planPhases.add(PlanPhaseProfile.newBuilder()
-      .setPhaseName("Fragment Assignment")
+      .setPhaseName("Execution Plan: Fragment Assignment")
       .setDurationMillis(millisTaken)
       .setPlan("")
       .build());
   }
 
   @Override
-  public void intermediateFragmentScheduling(long millisTaken, FragmentRpcSizeStats stats) {
+  public void fragmentsStarted(long millisTaken, FragmentRpcSizeStats stats) {
     planPhases.add(PlanPhaseProfile.newBuilder()
-      .setPhaseName("Intermediate Fragments Scheduling")
+      .setPhaseName("Fragment Start RPCs")
       .setDurationMillis(millisTaken)
       .setSizeStats(stats)
       .build());
   }
 
   @Override
-  public void leafFragmentScheduling(long millisTaken, FragmentRpcSizeStats stats) {
+  public void fragmentsActivated(long millisTaken) {
     planPhases.add(PlanPhaseProfile.newBuilder()
-      .setPhaseName("Leaf Fragments Scheduling")
+      .setPhaseName("Fragment Activate RPCs")
       .setDurationMillis(millisTaken)
-      .setSizeStats(stats)
       .build());
   }
 
@@ -463,4 +508,7 @@ public class PlanCaptureAttemptObserver extends AbstractAttemptObserver {
       verbose ? SqlExplainLevel.ALL_ATTRIBUTES : SqlExplainLevel.EXPPLAN_ATTRIBUTES);
   }
 
+  public int getNumFragments() {
+    return numFragments;
+  }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,7 +36,6 @@ import com.dremio.exec.testing.ExecutionControls;
 import com.dremio.options.OptionManager;
 import com.dremio.sabot.exec.rpc.TunnelProvider;
 import com.dremio.sabot.op.filter.VectorContainerWithSV;
-import com.dremio.service.namespace.NamespaceService;
 import com.dremio.service.spill.SpillService;
 
 import io.netty.buffer.ArrowBuf;
@@ -97,8 +96,6 @@ public abstract class OperatorContext {
   public abstract FragmentHandle getFragmentHandle();
 
   public abstract ExecutorService getExecutor();
-
-  public abstract NamespaceService getNamespaceService();
 
   public abstract NodeDebugContextProvider getNodeDebugContextProvider();
 

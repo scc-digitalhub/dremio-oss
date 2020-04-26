@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -169,6 +169,14 @@ describe('SqlAutoComplete', () => {
       const data = { id: Immutable.fromJS(['@a', 'b'])};
       instance.handleDrop(data);
       expect(instance.insertFullPath).to.have.been.calledWith(data.id);
+    });
+  });
+
+  describe('#resetValue', () => {
+    it('should handle invalid sqlEditor', () => {
+      instance.sqlEditor = null;
+      //should not give error
+      instance.resetValue();
     });
   });
 });

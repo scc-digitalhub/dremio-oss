@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ import java.util.List;
 import java.util.Random;
 
 import org.apache.arrow.memory.BufferAllocator;
-import org.apache.arrow.memory.RootAllocator;
+import org.apache.arrow.memory.util.LargeMemoryUtil;
 import org.apache.arrow.vector.BigIntVector;
 import org.apache.arrow.vector.FieldVector;
 import org.apache.arrow.vector.Float4Vector;
@@ -40,14 +40,15 @@ import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.junit.Rule;
 import org.junit.Test;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 
 import com.dremio.common.config.SabotConfig;
+import com.dremio.common.utils.protos.AttemptId;
 import com.dremio.exec.proto.ExecProtos;
 import com.dremio.exec.record.VectorContainer;
-import com.dremio.exec.work.AttemptId;
 import com.dremio.sabot.op.aggregate.vectorized.AccumulatorSet;
 import com.dremio.sabot.op.aggregate.vectorized.CountColumnAccumulator;
 import com.dremio.sabot.op.aggregate.vectorized.CountOneAccumulator;
@@ -57,11 +58,11 @@ import com.dremio.sabot.op.aggregate.vectorized.PartitionToLoadSpilledData;
 import com.dremio.sabot.op.aggregate.vectorized.SumAccumulators;
 import com.dremio.sabot.op.aggregate.vectorized.VectorizedHashAggOperator;
 import com.dremio.sabot.op.aggregate.vectorized.VectorizedHashAggPartition;
-import com.dremio.sabot.op.aggregate.vectorized.VectorizedHashAggPartitionSerializable;
 import com.dremio.sabot.op.aggregate.vectorized.VectorizedHashAggPartitionSpillHandler;
 import com.dremio.sabot.op.aggregate.vectorized.VectorizedHashAggPartitionSpillHandler.SpilledPartitionIterator;
 import com.dremio.service.spill.SpillDirectory;
 import com.dremio.service.spill.SpillService;
+import com.dremio.test.AllocatorRule;
 import com.dremio.test.DremioTest;
 import com.google.common.collect.Lists;
 import com.google.common.io.Files;
@@ -80,9 +81,12 @@ import io.netty.util.internal.PlatformDependent;
  * to test the operator lifeycle using BaseTestOperator framework
  * and there we won't have to mock certain data structures.
  */
-public class TestVectorizedHashAggPartitionSerializable {
+public class TestVectorizedHashAggPartitionSerializable extends DremioTest {
   private final List<Field> postSpillAccumulatorVectorFields = Lists.newArrayList();
   private int MAX_VALUES_PER_BATCH = 0;
+
+  @Rule
+  public final AllocatorRule allocatorRule = AllocatorRule.defaultAllocator();
 
   /**
    * Both fixed and variable width GROUP BY key columns.
@@ -196,7 +200,7 @@ public class TestVectorizedHashAggPartitionSerializable {
     final long[] expectedCount = {2, 2, 2, 2, 1, 1, 1};
     final long[] expectedCount1 = {3, 2, 2, 2, 1, 1, 1};
 
-    try (BufferAllocator allocator = new RootAllocator(Long.MAX_VALUE);
+    try (final BufferAllocator allocator = allocatorRule.newAllocator("test-vectorized-hashagg-partition-serializable", 0, Long.MAX_VALUE);
          final VectorContainer c = new VectorContainer();) {
 
       /* GROUP BY key columns */
@@ -346,7 +350,7 @@ public class TestVectorizedHashAggPartitionSerializable {
     final long[] expectedCount = {1, 1, 1, 0, 1, 1, 1, 1};
     final long[] expectedCount1 = {2, 2, 2, 1, 1, 2, 1, 1};
 
-    try (BufferAllocator allocator = new RootAllocator(Long.MAX_VALUE);
+    try (final BufferAllocator allocator = allocatorRule.newAllocator("test-vectorized-hashagg-partition-serializable", 0, Long.MAX_VALUE);
          final VectorContainer c = new VectorContainer();) {
 
       /* GROUP BY key columns */
@@ -456,7 +460,7 @@ public class TestVectorizedHashAggPartitionSerializable {
         LBlockHashTable sourceHashTable = new LBlockHashTable(HashConfig.getDefault(), pivot, allocator, 16000, 10, true, accumulator, MAX_VALUES_PER_BATCH);
         VectorizedHashAggPartition hashAggPartition =  new VectorizedHashAggPartition
           (accumulator, sourceHashTable, pivot.getBlockWidth(), "P0", offsets, false);
-        final VectorizedHashAggPartitionSpillHandler partitionSpillHandler = new VectorizedHashAggPartitionSpillHandler(hashAggPartitions, fragmentHandle, null, sabotConfig, 1, partitionToLoadSpilledData, spillService, true);
+        final VectorizedHashAggPartitionSpillHandler partitionSpillHandler = new VectorizedHashAggPartitionSpillHandler(hashAggPartitions, fragmentHandle, null, sabotConfig, 1, partitionToLoadSpilledData, spillService, true, null);
         hashAggPartitions[0] = hashAggPartition;
 
         final long keyFixedVectorAddr = fbv.getMemoryAddress();
@@ -498,8 +502,8 @@ public class TestVectorizedHashAggPartitionSerializable {
          * testing, we save state about buffers to compare later after reading spilled
          * data.
          */
-        final int fixedWidthPivotedDataLength = sourceFixedBuffers.get(0).readableBytes();
-        final int varWidthPivotedDataLength = sourceVarBuffers.get(0).readableBytes();
+        final long fixedWidthPivotedDataLength = sourceFixedBuffers.get(0).readableBytes();
+        final long varWidthPivotedDataLength = sourceVarBuffers.get(0).readableBytes();
         try(final ArrowBuf sourceFixedBuffer = allocator.buffer(fixedWidthPivotedDataLength);
             final ArrowBuf sourceVarBuffer = allocator.buffer(varWidthPivotedDataLength)) {
           PlatformDependent.copyMemory(sourceFixedBuffers.get(0).memoryAddress(), sourceFixedBuffer.memoryAddress(), fixedWidthPivotedDataLength);
@@ -536,14 +540,14 @@ public class TestVectorizedHashAggPartitionSerializable {
                */
               long addr1 = sourceFixedBuffer.memoryAddress();
               long addr2 = fixedWidthPivotedData.memoryAddress();
-              assertTrue(memcmp(addr1, addr2, sourceFixedBuffers.get(0).readableBytes()));
+              assertTrue(memcmp(addr1, addr2, LargeMemoryUtil.checkedCastToInt(sourceFixedBuffers.get(0).readableBytes())));
 
               /* compare bytes of variable width pivoted hash table data loaded from disk to the in-memory
                * contents that were spilled.
                */
               addr1 = sourceVarBuffer.memoryAddress();
               addr2 = variableWidthPivotedData.memoryAddress();
-              assertTrue(memcmp(addr1, addr2, sourceFixedBuffers.get(0).readableBytes()));
+              assertTrue(memcmp(addr1, addr2, LargeMemoryUtil.checkedCastToInt(sourceFixedBuffers.get(0).readableBytes())));
 
               /* check accumulator data */
               verifyAccumulators(accumulatorVectors, sum, max, min, counts, counts1, nullsInAccumulator, numRecordsInBatch);

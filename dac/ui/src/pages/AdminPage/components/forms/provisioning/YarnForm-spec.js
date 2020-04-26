@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 import Immutable from 'immutable';
-import {shallow} from 'enzyme';
-import {minimalFormProps} from 'testUtil';
-import * as PROVISION_DISTRIBUTIONS from 'constants/provisioningPage/provisionDistributions';
-import {YarnForm} from './YarnForm';
+import { shallow } from 'enzyme';
+import { minimalFormProps } from 'testUtil';
+import * as PROVISION_DISTRIBUTIONS from '@app/constants/provisioningPage/provisionDistributions';
+import { YarnForm } from './YarnForm';
 
 describe('YarnForm', () => {
   let minimalProps;
@@ -91,78 +91,42 @@ describe('YarnForm', () => {
     });
   });
 
-  describe('#getIsRestartRequired', () => {
-    let wrapper, instance;
-    beforeEach(() => {
-      wrapper = shallow(<YarnForm {...minimalProps}/>);
-      instance = wrapper.instance();
-    });
-
-    it('return false if not edit mode', () => {
-      expect(instance.getIsRestartRequired()).to.be.false;
-    });
-    it('return false if currentState is not RUNNING', () => {
-      wrapper.setProps({provision: Immutable.fromJS({currentState: 'STOPPED'})});
-      expect(instance.getIsRestartRequired()).to.be.false;
-    });
-    it('return false if there is nothing dirty', () => {
-      wrapper.setProps({provisionId: 'foo'});
-      expect(instance.getIsRestartRequired()).to.be.false;
-    });
-    it('return false if only dynamicConfig children dirty', () => {
-      wrapper.setProps({provisionId: 'foo'});
-      fields.dynamicConfig.containerCount.dirty = true;
-      expect(instance.getIsRestartRequired()).to.be.false;
-    });
-    it('return true if non-dynamicConfig children dirty', () => {
-      wrapper.setProps({provision: Immutable.fromJS({id: 'foo', currentState: 'RUNNING'})});
-      fields.dynamicConfig.containerCount.dirty = true;
-      fields.queue.dirty = true;
-      expect(instance.getIsRestartRequired()).to.be.true;
-
-      fields.queue.dirty = false;
-      fields.propertyList.push({name:{dirty:true}, value:{}});
-      expect(instance.getIsRestartRequired()).to.be.true;
-
-      fields.propertyList.length = 0;
-      fields.propertyList.push({name:{}, value:{dirty:true}});
-      expect(instance.getIsRestartRequired()).to.be.true;
-
-      fields.propertyList.length = 0;
-      fields.spillDirectories.length = 0;
-      fields.spillDirectories.push({dirty: true});
-      expect(instance.getIsRestartRequired()).to.be.true;
-    });
-  });
-
   describe('#mapToFormFields', () => {
     it('should generate appropriate form fields from provision entity', () => {
       const provision = Immutable.fromJS({
-        memoryMB: 1200,
         clusterType: 'YARN',
-        virtualCoreCount: 1,
         dynamicConfig: {
           containerCount: 2
         },
-        subPropertyList: [
-          {
-            key: 'yarn.resourcemanager.hostname',
-            value: 'localhost',
-            type: 'type'
-          },
-          {
-            key: 'fs.defaultFS',
-            value: 'hdfs://localhost',
-            type: 'type'
-          },
-          {
-            key: 'paths.spilling',
-            value: JSON.stringify(['/path1', '/path2']),
-            type: 'type'
-          }
-        ]
+        yarnProps: {
+          memoryMB: 1200,
+          virtualCoreCount: 1,
+          subPropertyList: [
+            {
+              key: 'yarn.resourcemanager.hostname',
+              value: 'localhost',
+              type: 'type'
+            },
+            {
+              key: 'fs.defaultFS',
+              value: 'hdfs://localhost',
+              type: 'type'
+            },
+            {
+              key: 'paths.spilling',
+              value: JSON.stringify(['/path1', '/path2']),
+              type: 'type'
+            },
+            {
+              key: 'services.node-tag',
+              value: 'tag',
+              type: 'type'
+            }
+          ]
+        }
       });
-      expect(YarnForm.mapToFormFields(provision)).to.be.eql({
+
+      expect(YarnForm.getInitValuesFromProvision(provision)).to.be.eql({
         clusterType: 'YARN',
         dynamicConfig: {
           containerCount: 2
@@ -171,60 +135,74 @@ describe('YarnForm', () => {
         namenodeHost: 'hdfs://localhost',
         propertyList: [],
         spillDirectories: ['/path1', '/path2'],
+        nodeTag: 'tag',
         resourceManagerHost: 'localhost',
-        subPropertyList: [
-          {
-            key: 'yarn.resourcemanager.hostname',
-            value: 'localhost',
-            type: 'type'
-          },
-          {
-            key: 'fs.defaultFS',
-            value: 'hdfs://localhost',
-            type: 'type'
-          },
-          {
-            key: 'paths.spilling',
-            value: JSON.stringify(['/path1', '/path2']),
-            type: 'type'
-          }
-        ],
         virtualCoreCount: 1
       });
     });
   });
 
-  describe('#normalizeValues', () => {
-    it('should return value to be submitted as entity', () => {
-      const values = {
+  describe('#prepareValuesForSave', () => {
+    let values, instance;
+    beforeEach(() => {
+      values = {
         clusterType: 'YARN',
         dynamicConfig: {
           containerCount: 2
         },
+        nodeTag: 'Y-Name',
         memoryMB: '1.17',
         namenodeHost: 'hdfs://localhost',
         propertyList: [],
+        spillDirectories: ['file:///v/l/drem'],
         resourceManagerHost: 'localhost',
-        virtualCoreCount: 1
+        virtualCoreCount: 1,
+        distroType: 'APACHE',
+        queue: 'q',
+        isSecure: true
       };
-      expect(YarnForm.normalizeValues(values)).to.be.eql({
-        clusterType: 'YARN',
-        dynamicConfig: {
-          containerCount: 2
-        },
-        memoryMB: 1198.08,
-        subPropertyList: [
+      const wrapper = shallow(<YarnForm {...minimalProps}/>);
+      instance = wrapper.instance();
+    });
+
+    it('should map values w/o propertyList into entity', () => {
+      const result = instance.prepareValuesForSave(values);
+      expect(result.clusterType).to.equal('YARN');
+      expect(result.name).to.equal('Y-Name');
+      expect(result.dynamicConfig).to.eql({ containerCount: 2 });
+      expect(result.awsProps).to.be.null;
+      expect(result.yarnProps.memoryMB).to.equal(1198.08);
+      expect(result.yarnProps.virtualCoreCount).to.equal(1);
+      expect(result.yarnProps.distroType).to.equal('APACHE');
+      expect(result.yarnProps.isSecure).to.equal(true);
+      expect(result.yarnProps.queue).to.equal('q');
+
+      expect(result.yarnProps.subPropertyList.slice(0, 4)).to.eql(
+        [
+          {
+            key: 'yarn.resourcemanager.hostname',
+            value: 'localhost'
+          },
           {
             key: 'fs.defaultFS',
             value: 'hdfs://localhost'
           },
           {
-            key: 'yarn.resourcemanager.hostname',
-            value: 'localhost'
+            key: 'services.node-tag',
+            value: 'Y-Name'
+          },
+          {
+            key: 'paths.spilling',
+            value: '["file:///v/l/drem"]'
           }
-        ],
-        virtualCoreCount: 1
-      });
+        ]
+      );
+    });
+    it('should map values with propertyList into entity', () => {
+      const propListEntry = {name: 'a', value: 'v', type: 'JAVA_PROP'};
+      const result = instance.prepareValuesForSave({...values, propertyList: [propListEntry]});
+      const subPropertyList = result.yarnProps.subPropertyList;
+      expect(subPropertyList[subPropertyList.length - 1]).to.eql({key: 'a', value: 'v', type: 'JAVA_PROP'});
     });
   });
 
@@ -234,7 +212,7 @@ describe('YarnForm', () => {
     });
 
     it('should return "NameNode" by default and all other distro types', () => {
-      const { MAPR, ...other} = PROVISION_DISTRIBUTIONS;
+      const { MAPR, ...other} = PROVISION_DISTRIBUTIONS; // eslint-disable-line @typescript-eslint/no-unused-vars
       Object.keys(other).forEach(distroType => {
         expect(YarnForm.hostNameLabel({distroType})).to.be.eql('NameNode');
       });
@@ -247,7 +225,7 @@ describe('YarnForm', () => {
     });
 
     it('should return empty string by default and all other distro types', () => {
-      const { MAPR, ...other} = PROVISION_DISTRIBUTIONS;
+      const { MAPR, ...other} = PROVISION_DISTRIBUTIONS; // eslint-disable-line @typescript-eslint/no-unused-vars
       Object.keys(other).forEach(distroType => {
         expect(YarnForm.hostNamePrefix(distroType)).to.be.eql('');
       });
@@ -260,7 +238,7 @@ describe('YarnForm', () => {
     });
 
     it('should return "file:///var/log/dremio" by default and all other distro types', () => {
-      const { MAPR, ...other} = PROVISION_DISTRIBUTIONS;
+      const { MAPR, ...other} = PROVISION_DISTRIBUTIONS; // eslint-disable-line @typescript-eslint/no-unused-vars
       Object.keys(other).forEach(distroType => {
         expect(YarnForm.distributionDirectory(distroType)).to.be.eql('file:///var/log/dremio');
       });

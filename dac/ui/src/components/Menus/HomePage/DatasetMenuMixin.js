@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -71,13 +71,13 @@ export default function(input) {
         {
           canDelete &&
           (entityType !== 'file' && <MenuItemLink
-              closeMenu={closeMenu}
-              href={this.getRemoveLocation()}
-              text={la('Remove')}/> ||
+            closeMenu={closeMenu}
+            href={this.getRemoveLocation()}
+            text={la('Remove')}/> ||
             entityType === 'file' && <MenuItem
               onClick={this.handleRemoveFile}>
               {la('Remove')}
-              </MenuItem>
+            </MenuItem>
           )
         }
 
@@ -105,13 +105,11 @@ export default function(input) {
           text={la('Settings')}/>
 
         {
-          canRemoveFormat && <MenuItem
-            onClick={this.handleRemoveFormat}>
-
-            {la('Remove Format')}
-          </MenuItem>
+          canRemoveFormat && <MenuItemLink
+            closeMenu={closeMenu}
+            href={this.getRemoveFormatLocation()}
+            text={la('Remove Format')}/>
         }
-
       </Menu>;
     }
   });

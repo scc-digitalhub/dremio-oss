@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,9 +31,9 @@ import java.util.stream.Collectors;
 import com.dremio.common.Version;
 import com.dremio.common.config.LogicalPlanPersistence;
 import com.dremio.common.config.SabotConfig;
-import com.dremio.common.exceptions.UserException;
 import com.dremio.common.scanner.ClassPathScanner;
 import com.dremio.common.scanner.persistence.ScanResult;
+import com.dremio.dac.cmd.AdminCommand;
 import com.dremio.dac.cmd.AdminLogger;
 import com.dremio.dac.cmd.CmdUtils;
 import com.dremio.dac.proto.model.source.ClusterIdentity;
@@ -43,8 +43,7 @@ import com.dremio.dac.proto.model.source.UpgradeTaskStore;
 import com.dremio.dac.server.DACConfig;
 import com.dremio.dac.support.SupportService;
 import com.dremio.dac.support.UpgradeStore;
-import com.dremio.datastore.KVStoreProvider;
-import com.dremio.datastore.LocalKVStoreProvider;
+import com.dremio.datastore.api.LegacyKVStoreProvider;
 import com.dremio.exec.catalog.ConnectionReader;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
@@ -58,9 +57,14 @@ import com.google.common.base.Preconditions;
  * 1. Not to repeat task run if already run, but upgrade aborted/stopped in between
  * 2. Repeat task run is it was not successful
  */
+@AdminCommand(value = "upgrade", description = "Upgrades KV store version")
 public class Upgrade {
 
   private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(Upgrade.class);
+
+  //Special VERSION number - which was assigned to a few customer[s] out of band.
+  //Even though it shows up as 5.0.1 , its less than dremio version 4.2.0
+  private static final Version VERSION_501 = new Version("5.0.1", 5, 0, 1, 0, "");
 
   /**
    * A {@code Version} ordering ignoring qualifiers for the sake of upgrade
@@ -135,9 +139,24 @@ public class Upgrade {
   }
 
   protected void ensureUpgradeSupported(Version storeVersion) {
-    // make sure we are not trying to downgrade
-    Preconditions.checkState(UPGRADE_VERSION_ORDERING.compare(storeVersion, VERSION) <= 0,
-      "Downgrading from version %s to %s is not supported", storeVersion, VERSION);
+
+    boolean versionDowngradeCheck = true;
+
+    //disable the check when moving from 5.0.0/5.0.1 to 4.2.x, as its still an upgrade.
+    if (storeVersion.getMajorVersion() == VERSION_501.getMajorVersion()
+      && storeVersion.getMinorVersion() == VERSION_501.getMinorVersion()
+      && storeVersion.getPatchVersion() <= VERSION_501.getPatchVersion()
+      && VERSION.getMajorVersion() == 4
+      && VERSION.getMinorVersion() == 2) {
+      versionDowngradeCheck = false;
+    }
+
+
+    if (versionDowngradeCheck) {
+      // make sure we are not trying to downgrade
+      Preconditions.checkState(UPGRADE_VERSION_ORDERING.compare(storeVersion, VERSION) <= 0,
+        "Downgrading from version %s to %s is not supported", storeVersion, VERSION);
+    }
 
     // only allow upgrading from 2.0 and higher
     Preconditions.checkState(storeVersion.getMajorVersion() >= 2,
@@ -149,12 +168,12 @@ public class Upgrade {
   }
 
   public void run(boolean noDBOpenRetry) throws Exception {
-    Optional<LocalKVStoreProvider> storeOptional = CmdUtils.getKVStoreProvider(dacConfig.getConfig(), classpathScan, noDBOpenRetry);
+    Optional<LegacyKVStoreProvider> storeOptional = CmdUtils.getLegacyKVStoreProvider(dacConfig.getConfig(), classpathScan, noDBOpenRetry);
     if (!storeOptional.isPresent()) {
       AdminLogger.log("No database found. Skipping upgrade");
       return;
     }
-    try (final KVStoreProvider storeProvider = storeOptional.get()) {
+    try (final LegacyKVStoreProvider storeProvider = storeOptional.get()) {
       storeProvider.start();
 
       run(storeProvider);
@@ -162,12 +181,13 @@ public class Upgrade {
 
   }
 
-  public void run(final KVStoreProvider storeProvider) throws Exception {
+  public void run(final LegacyKVStoreProvider storeProvider) throws Exception {
     final Optional<ClusterIdentity> identity = SupportService.getClusterIdentity(storeProvider);
     final UpgradeStore upgradeStore = new UpgradeStore(storeProvider);
 
     if (!identity.isPresent()) {
-      throw UserException.validationError().message("No Cluster Identity found").build(logger);
+      AdminLogger.log("No cluster identity found. Skipping upgrade");
+      return;
     }
 
     ClusterIdentity clusterIdentity = identity.get();
@@ -197,7 +217,7 @@ public class Upgrade {
       final LogicalPlanPersistence lpPersistence = new LogicalPlanPersistence(sabotConfig, classpathScan);
       final ConnectionReader connectionReader = ConnectionReader.of(classpathScan, sabotConfig);
 
-      final UpgradeContext context = new UpgradeContext(storeProvider, lpPersistence, connectionReader);
+      final UpgradeContext context = new UpgradeContext(storeProvider, lpPersistence, connectionReader, classpathScan);
 
       for (UpgradeTask task : tasksToRun) {
         AdminLogger.log(task.toString());

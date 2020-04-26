@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <!--
 
-    Copyright (C) 2017-2018 Dremio Corporation
+    Copyright (C) 2017-2019 Dremio Corporation
 
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@
   <parent>
     <groupId>com.dremio.distribution</groupId>
     <artifactId>dremio-distribution-parent</artifactId>
-    <version>3.2.1-201905191350330803-1a33f83</version>
+    <version>4.2.2-202004211133290458-b550b6fa</version>
   </parent>
 
   <artifactId>dremio-jdbc-driver</artifactId>
@@ -91,6 +91,14 @@
           <artifactId>protostuff-json</artifactId>
           <groupId>io.protostuff</groupId>
         </exclusion>
+        <exclusion>
+          <artifactId>guice-servlet</artifactId>
+          <groupId>com.google.inject.extensions</groupId>
+        </exclusion>
+        <exclusion>
+          <artifactId>guice</artifactId>
+          <groupId>com.google.inject</groupId>
+        </exclusion>
       </exclusions>
     </dependency>
 
@@ -98,6 +106,7 @@
       <groupId>com.dremio.sabot</groupId>
       <artifactId>dremio-sabot-kernel</artifactId>
       <version>${project.version}</version>
+      <scope>test</scope>
       <exclusions>
         <exclusion>
           <groupId>com.koloboke</groupId>
@@ -106,10 +115,6 @@
         <exclusion>
           <groupId>org.codehaus.jackson</groupId>
           <artifactId>*</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>com.fasterxml.jackson.dataformat</groupId>
-          <artifactId>jackson-dataformat-yaml</artifactId>
         </exclusion>
         <exclusion>
           <groupId>log4j</groupId>
@@ -256,7 +261,27 @@
           <groupId>com.dremio.services</groupId>
         </exclusion>
         <exclusion>
+          <artifactId>dremio-services-grpc</artifactId>
+          <groupId>com.dremio.services</groupId>
+        </exclusion>
+        <exclusion>
           <artifactId>dremio-services-fabric-rpc</artifactId>
+          <groupId>com.dremio.services</groupId>
+        </exclusion>
+        <exclusion>
+          <artifactId>dremio-services-telemetry-impl</artifactId>
+          <groupId>com.dremio.services</groupId>
+        </exclusion>
+        <exclusion>
+          <artifactId>dremio-services-jobtelemetry-common</artifactId>
+          <groupId>com.dremio.services</groupId>
+        </exclusion>
+        <exclusion>
+          <artifactId>dremio-services-jobtelemetry-server</artifactId>
+          <groupId>com.dremio.services</groupId>
+        </exclusion>
+        <exclusion>
+          <artifactId>dremio-services-jobtelemetry-client</artifactId>
           <groupId>com.dremio.services</groupId>
         </exclusion>
         <exclusion>
@@ -325,7 +350,11 @@
         </exclusion>
         <exclusion>
           <artifactId>hibernate-validator</artifactId>
-          <groupId>org.hibernate</groupId>
+          <groupId>org.hibernate.validator</groupId>
+        </exclusion>
+        <exclusion>
+          <artifactId>secretsmanager</artifactId>
+          <groupId>software.amazon.awssdk</groupId>
         </exclusion>
         <exclusion>
           <artifactId>jcommander</artifactId>
@@ -334,6 +363,10 @@
         <exclusion>
           <artifactId>*</artifactId>
           <groupId>org.apache.avro</groupId>
+        </exclusion>
+        <exclusion>
+          <artifactId>*</artifactId>
+          <groupId>org.apache.iceberg</groupId>
         </exclusion>
       </exclusions>
     </dependency>
@@ -433,6 +466,12 @@
         <artifactId>maven-dependency-plugin</artifactId>
         <executions>
           <execution>
+            <id>set-dependency-properties</id>
+            <goals>
+              <goal>properties</goal>
+            </goals>
+          </execution>
+          <execution>
             <id>unpack-resources</id>
             <phase>generate-resources</phase>
             <goals>
@@ -485,31 +524,40 @@
         </executions>
 
         <configuration>
-          <argLine>-Xms512m -Xmx3g -Ddremio.exec.http.enabled=false -Djava.net.preferIPv4Stack=true
-            -Dcom.dremio.exec.server.SabotNode.system_options="com.dremio.exec.compile.ClassTransformer.scalar_replacement=on"
+          <argLine>
+            -Xms512m
+            -Xmx3g
+            -Xss2048k
+            -Ddremio.exec.http.enabled=false
+            -Djava.net.preferIPv4Stack=true
             -XX:MaxDirectMemorySize=3072M
-            -XX:+CMSClassUnloadingEnabled -ea</argLine>
+            -XX:+CMSClassUnloadingEnabled -ea
+            @{argLine}
+          </argLine>
           <additionalClasspathElements>
-            <additionalClasspathElement>${settings.localRepository}/com/dremio/dremio-connector/${project.version}/dremio-connector-${project.version}.jar</additionalClasspathElement>
-            <additionalClasspathElement>${settings.localRepository}/junit/junit/${junit.version}/junit-${junit.version}.jar</additionalClasspathElement>
-            <additionalClasspathElement>${settings.localRepository}/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar</additionalClasspathElement>
-            <additionalClasspathElement>${settings.localRepository}/org/slf4j/slf4j-api/${slf4j.version}/slf4j-api-${slf4j.version}.jar</additionalClasspathElement>
-            <additionalClasspathElement>${settings.localRepository}/ch/qos/logback/logback-classic/${logback.version}/logback-classic-${logback.version}.jar</additionalClasspathElement>
-            <additionalClasspathElement>${settings.localRepository}/ch/qos/logback/logback-core/${logback.version}/logback-core-${logback.version}.jar</additionalClasspathElement>
-            <additionalClasspathElement>${settings.localRepository}/de/huxhorn/lilith/de.huxhorn.lilith.logback.appender.multiplex-classic/${lilith.version}/de.huxhorn.lilith.logback.appender.multiplex-classic-${lilith.version}.jar</additionalClasspathElement>
-            <additionalClasspathElement>${settings.localRepository}/de/huxhorn/sulky/de.huxhorn.sulky.codec/0.9.17/de.huxhorn.sulky.codec-0.9.17.jar</additionalClasspathElement>
-            <additionalClasspathElement>${settings.localRepository}/de/huxhorn/sulky/de.huxhorn.sulky.io/0.9.17/de.huxhorn.sulky.io-0.9.17.jar</additionalClasspathElement>
-            <additionalClasspathElement>${settings.localRepository}/de/huxhorn/lilith/de.huxhorn.lilith.logback.converter-classic/${lilith.version}/de.huxhorn.lilith.logback.converter-classic-${lilith.version}.jar</additionalClasspathElement>
-            <additionalClasspathElement>${settings.localRepository}/de/huxhorn/lilith/de.huxhorn.lilith.data.converter/${lilith.version}/de.huxhorn.lilith.data.converter-${lilith.version}.jar</additionalClasspathElement>
-            <additionalClasspathElement>${settings.localRepository}/de/huxhorn/lilith/de.huxhorn.lilith.logback.classic/${lilith.version}/de.huxhorn.lilith.logback.classic-${lilith.version}.jar</additionalClasspathElement>
-            <additionalClasspathElement>${settings.localRepository}/de/huxhorn/lilith/de.huxhorn.lilith.data.logging/${lilith.version}/de.huxhorn.lilith.data.logging-${lilith.version}.jar</additionalClasspathElement>
-            <additionalClasspathElement>${settings.localRepository}/de/huxhorn/sulky/de.huxhorn.sulky.formatting/0.9.17/de.huxhorn.sulky.formatting-0.9.17.jar</additionalClasspathElement>
-            <additionalClasspathElement>${settings.localRepository}/de/huxhorn/lilith/de.huxhorn.lilith.data.eventsource/${lilith.version}/de.huxhorn.lilith.data.eventsource-${lilith.version}.jar</additionalClasspathElement>
-            <additionalClasspathElement>${settings.localRepository}/de/huxhorn/lilith/de.huxhorn.lilith.logback.appender.multiplex-core/${lilith.version}/de.huxhorn.lilith.logback.appender.multiplex-core-${lilith.version}.jar</additionalClasspathElement>
-            <additionalClasspathElement>${settings.localRepository}/de/huxhorn/lilith/de.huxhorn.lilith.sender/${lilith.version}/de.huxhorn.lilith.sender-${lilith.version}.jar</additionalClasspathElement>
-            <additionalClasspathElement>${settings.localRepository}/de/huxhorn/lilith/de.huxhorn.lilith.data.logging.protobuf/${lilith.version}/de.huxhorn.lilith.data.logging.protobuf-${lilith.version}.jar</additionalClasspathElement>
-            <additionalClasspathElement>${settings.localRepository}/com/google/protobuf/protobuf-java/${protobuf.version}/protobuf-java-${protobuf.version}.jar</additionalClasspathElement>
+            <additionalClasspathElement>${junit:junit:jar}</additionalClasspathElement>
+            <additionalClasspathElement>${org.hamcrest:hamcrest-core:jar}</additionalClasspathElement>
+            <additionalClasspathElement>${org.slf4j:slf4j-api:jar}</additionalClasspathElement>
+            <additionalClasspathElement>${ch.qos.logback:logback-classic:jar}</additionalClasspathElement>
+            <additionalClasspathElement>${ch.qos.logback:logback-core:jar}</additionalClasspathElement>
+            <additionalClasspathElement>${de.huxhorn.lilith:de.huxhorn.lilith.logback.appender.multiplex-classic:jar}</additionalClasspathElement>
+            <additionalClasspathElement>${de.huxhorn.sulky:de.huxhorn.sulky.codec:jar}</additionalClasspathElement>
+            <additionalClasspathElement>${de.huxhorn.sulky:de.huxhorn.sulky.io:jar}</additionalClasspathElement>
+            <additionalClasspathElement>${de.huxhorn.sulky:de.huxhorn.sulky.ulid:jar}</additionalClasspathElement>
+            <additionalClasspathElement>${de.huxhorn.lilith:de.huxhorn.lilith.logback.converter-classic:jar}</additionalClasspathElement>
+            <additionalClasspathElement>${de.huxhorn.lilith:de.huxhorn.lilith.data.converter:jar}</additionalClasspathElement>
+            <additionalClasspathElement>${de.huxhorn.lilith:de.huxhorn.lilith.logback.classic:jar}</additionalClasspathElement>
+            <additionalClasspathElement>${de.huxhorn.lilith:de.huxhorn.lilith.data.logging:jar}</additionalClasspathElement>
+            <additionalClasspathElement>${de.huxhorn.sulky:de.huxhorn.sulky.formatting:jar}</additionalClasspathElement>
+            <additionalClasspathElement>${de.huxhorn.lilith:de.huxhorn.lilith.data.eventsource:jar}</additionalClasspathElement>
+            <additionalClasspathElement>${de.huxhorn.lilith:de.huxhorn.lilith.logback.appender.multiplex-core:jar}</additionalClasspathElement>
+            <additionalClasspathElement>${de.huxhorn.lilith:de.huxhorn.lilith.sender:jar}</additionalClasspathElement>
+            <additionalClasspathElement>${de.huxhorn.lilith:de.huxhorn.lilith.data.logging.protobuf:jar}</additionalClasspathElement>
+            <additionalClasspathElement>${com.google.protobuf:protobuf-java:jar}</additionalClasspathElement>
           </additionalClasspathElements>
+
+          <!-- Use this to avoid including the main artifact. This directory doesn't actually have any classes in it. -->
+          <classesDirectory>${project.build.outputDirectory}</classesDirectory>
           <classpathDependencyExcludes>
             <classpathDependencyExclude>*:*</classpathDependencyExclude>
           </classpathDependencyExcludes>
@@ -523,6 +571,36 @@
       </plugin>
 
       <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>flatten-maven-plugin</artifactId>
+        <configuration>
+          <flattenMode>fatjar</flattenMode>
+          <pomElements>
+            <name/>
+            <description/>
+            <organization/>
+          </pomElements>
+        </configuration>
+        <executions>
+          <!-- enable flattening -->
+          <execution>
+            <id>flatten</id>
+            <phase>process-resources</phase>
+            <goals>
+              <goal>flatten</goal>
+            </goals>
+          </execution>
+          <!-- ensure proper cleanup -->
+          <execution>
+            <id>flatten.clean</id>
+            <phase>clean</phase>
+            <goals>
+              <goal>clean</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-shade-plugin</artifactId>
         <executions>
@@ -535,7 +613,7 @@
         </executions>
         <configuration>
           <shadedArtifactAttached>false</shadedArtifactAttached>
-          <createDependencyReducedPom>true</createDependencyReducedPom>
+          <createDependencyReducedPom>false</createDependencyReducedPom>
           <minimizeJar>false</minimizeJar>
 
           <artifactSet>
@@ -553,7 +631,7 @@
               <exclude>org.mongodb:*</exclude>
               <exclude>com.googlecode.json-simple:*</exclude>
               <exclude>dom4j:*</exclude>
-              <exclude>org.hibernate:*</exclude>
+              <exclude>org.hibernate.validator:*</exclude>
               <exclude>javax.validation:*</exclude>
               <exclude>antlr:*</exclude>
               <exclude>org.ow2.asm:*</exclude>
@@ -562,7 +640,7 @@
               <exclude>org.apache.parquet:*</exclude>
               <exclude>javax.inject:*</exclude>
               <exclude>jline:*</exclude>
-              <exclude>io.netty:netty:jar:3.7.0.Final</exclude>
+              <exclude>io.netty:netty:jar</exclude>
               <exclude>org.xerial.snappy:*</exclude>
               <exclude>org.tukaani:*</exclude>
               <exclude>org.apache.velocity:*</exclude>
@@ -579,10 +657,15 @@
               <exclude>com.github.slugify:*</exclude>
               <exclude>com.dremio.contrib:dremio-slim-shade</exclude>
               <exclude>de.vandermeer:*</exclude>
+              <exclude>com.dremio.contrib:dremio-maprfs-shaded</exclude>
               <exclude>com.dremio.distribution:dremio-distribution-resources</exclude>
               <exclude>com.yahoo.datasketches:*</exclude>
               <exclude>com.esri.geometry:*</exclude>
               <exclude>org.antlr:*</exclude>
+              <exclude>org.hdrhistogram:HdrHistogram:*</exclude>
+              <exclude>io.grpc:*</exclude>
+              <exclude>io.prometheus:*</exclude>
+              <exclude>org.apache.yetus:audience-annotations</exclude>
             </excludes>
           </artifactSet>
           <relocations>
@@ -593,7 +676,8 @@
             <relocation><pattern>com.dremio.sabot.</pattern><shadedPattern>cdjd.com.dremio.sabot.</shadedPattern></relocation>
             <relocation><pattern>com.dremio.service.</pattern><shadedPattern>cdjd.com.dremio.service.</shadedPattern></relocation>
             <relocation><pattern>com.dremio.services.</pattern><shadedPattern>cdjd.com.dremio.services.</shadedPattern></relocation>
-            <relocation><pattern>com.dremio.metrics.</pattern><shadedPattern>cdjd.com.dremio.metrics.</shadedPattern></relocation>
+            <relocation><pattern>com.dremio.telemetry.</pattern><shadedPattern>cdjd.com.dremio.telemetry.</shadedPattern></relocation>
+            <relocation><pattern>com.dremio.io.</pattern><shadedPattern>cdjd.com.dremio.io.</shadedPattern></relocation>
 
             <!-- Move dependencies out of path -->
             <relocation><pattern>io.</pattern><shadedPattern>cdjd.io.</shadedPattern></relocation>
@@ -635,6 +719,7 @@
             <relocation><pattern>org.apache.html.</pattern><shadedPattern>cdjd.org.apache.html.</shadedPattern></relocation>
             <relocation><pattern>org.apache.jute.</pattern><shadedPattern>cdjd.org.apache.jute.</shadedPattern></relocation>
             <relocation><pattern>org.apache.log4j.</pattern><shadedPattern>cdjd.org.apache.log4j.</shadedPattern></relocation>
+            <relocation><pattern>org.apache.logging.</pattern><shadedPattern>cdjd.org.apache.logging.</shadedPattern></relocation>
             <relocation><pattern>org.apache.regexp.</pattern><shadedPattern>cdjd.org.apache.regexp.</shadedPattern></relocation>
             <relocation><pattern>org.apache.velocity.</pattern><shadedPattern>cdjd.org.apache.velocity.</shadedPattern></relocation>
             <relocation><pattern>org.apache.wml.</pattern><shadedPattern>cdjd.org.apache.wml.</shadedPattern></relocation>
@@ -643,6 +728,7 @@
             <relocation><pattern>org.apache.xml.</pattern><shadedPattern>cdjd.org.apache.xml.</shadedPattern></relocation>
             <relocation><pattern>org.apache.xmlcommons.</pattern><shadedPattern>cdjd.org.apache.xmlcommons.</shadedPattern></relocation>
             <relocation><pattern>org.apache.xpath.</pattern><shadedPattern>cdjd.org.apache.xpath.</shadedPattern></relocation>
+            <relocation><pattern>org.apache.yetus.</pattern><shadedPattern>cdjd.org.apache.yetus.</shadedPattern></relocation>
             <relocation><pattern>org.apache.zookeeper.</pattern><shadedPattern>cdjd.org.apache.zookeeper.</shadedPattern></relocation>
             <!-- Entries to relocate netty native libraries  -->
             <relocation><pattern>META-INF.native.libnetty_</pattern><shadedPattern>META-INF.native.libcdjd_netty_</shadedPattern></relocation>
@@ -660,6 +746,7 @@
               <excludes>
                 <exclude>org/apache/calcite/avatica/org/apache/http/**</exclude>
                 <exclude>org/apache/calcite/avatica/org/apache/commons/codec/**</exclude>
+                <exclude>org/apache/calcite/avatica/com/fasterxml/jackson/**</exclude>
               </excludes>
             </filter>
             <filter>
@@ -761,6 +848,12 @@
                 <exclude>libgandiva_helpers.*</exclude>
                 <exclude>irhelpers.bc</exclude>
                 <exclude>mozilla/**</exclude>
+                <exclude>com/dremio/daas/**</exclude>
+                <exclude>com/dremio/services/**</exclude>
+                <exclude>io/grpc/**</exclude>
+                <exclude>io/opencensus/**</exclude>
+                <exclude>META-INF/native/libio_grpc_netty*</exclude>
+                <exclude>META-INF/native/io_grpc_netty_shaded*</exclude>
               </excludes>
             </filter>
           </filters>
@@ -787,7 +880,7 @@
                     This is likely due to you adding new dependencies to a sabot-kernel and not updating the excludes in this module. This is important as it minimizes the size of the dependency of Dremio application users.
 
                   </message>
-                  <maxsize>29100000</maxsize>
+                  <maxsize>32000000</maxsize>
                   <minsize>15000000</minsize>
                   <files>
                     <file>${project.build.directory}/dremio-jdbc-driver-${project.version}.jar</file>

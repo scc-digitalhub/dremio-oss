@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,6 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-export ExcelFormatForm from './ExcelFormatForm';
-export TextFormatForm from './TextFormatForm';
-export XLSFormatForm from './XLSFormatForm';
+import ExcelFormatForm from './ExcelFormatForm';
+import TextFormatForm from './TextFormatForm';
+import XLSFormatForm from './XLSFormatForm';
+
+
+export {
+  ExcelFormatForm,
+  TextFormatForm,
+  XLSFormatForm
+};

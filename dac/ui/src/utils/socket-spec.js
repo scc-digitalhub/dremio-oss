@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -121,7 +121,7 @@ describe('Socket', () => {
     it('should resend listen messages', () => {
       sinon.stub(socket, '_sendMessage');
       socket.sendListenMessage(message);
-      socket._sendMessage.reset();
+      socket._sendMessage.resetHistory();
 
       socket._handleConnectionEstablished();
       expect(socket._sendMessage).to.be.calledOnce;

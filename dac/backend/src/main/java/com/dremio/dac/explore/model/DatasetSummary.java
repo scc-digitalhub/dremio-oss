@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,15 +15,17 @@
  */
 package com.dremio.dac.explore.model;
 
+import static com.dremio.common.utils.PathUtils.encodeURIComponent;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import com.dremio.common.utils.PathUtils;
 import com.dremio.dac.model.job.JobFilters;
 import com.dremio.dac.util.DatasetsUtil;
 import com.dremio.service.jobs.JobIndexKeys;
-import com.dremio.service.namespace.NamespaceException;
 import com.dremio.service.namespace.NamespaceKey;
 import com.dremio.service.namespace.dataset.DatasetVersion;
 import com.dremio.service.namespace.dataset.proto.DatasetConfig;
@@ -61,22 +63,25 @@ public class DatasetSummary {
     this.datasetVersion = datasetVersion;
   }
 
-  public static DatasetSummary newInstance(DatasetConfig datasetConfig, int jobCount, int descendants)
-      throws NamespaceException {
+  public static DatasetSummary newInstance(DatasetConfig datasetConfig, int jobCount, int descendants) {
     List<String> fullPath = datasetConfig.getFullPathList();
 
     DatasetType datasetType = datasetConfig.getType();
-    List<Field> fields;
+    List<Field> fields; // here
     DatasetVersion datasetVersion;
 
     List<com.dremio.dac.model.common.Field> fieldList = DatasetsUtil.getFieldsFromDatasetConfig(datasetConfig);
     if (fieldList == null) {
       fields = null;
     } else {
+      final Set<String> partitionedColumnsSet = DatasetsUtil.getPartitionedColumns(datasetConfig);
+      final Set<String> sortedColumns = DatasetsUtil.getSortedColumns(datasetConfig);
+
       fields = Lists.transform(fieldList, new Function<com.dremio.dac.model.common.Field, Field>() {
         @Override
         public Field apply(com.dremio.dac.model.common.Field input) {
-          return new Field(input.getName(), input.getType().name());
+          return new Field(input.getName(), input.getType().name(), partitionedColumnsSet.contains(input.getName()),
+            sortedColumns.contains(input.getName()));
         }
       });
     }
@@ -125,7 +130,8 @@ public class DatasetSummary {
     links.put("query", datasetPath.getQueryUrlPath());
     links.put("jobs", this.getJobsUrl());
     if (datasetType == DatasetType.VIRTUAL_DATASET) {
-      links.put("edit", datasetPath.getQueryUrlPath() + "?mode=edit&version=" + datasetVersion);
+      links.put("edit", datasetPath.getQueryUrlPath() + "?mode=edit&version="
+        + (datasetVersion == null ? datasetVersion : encodeURIComponent(datasetVersion.toString())));
     }
     return links;
   }
@@ -141,7 +147,9 @@ public class DatasetSummary {
     switch (datasetType) {
       case VIRTUAL_DATASET:
         links.put("edit", "/dataset/" + dottedFullPath + "/version/" + datasetVersion + "/preview"); // edit dataset
-        links.put("run", "/datasets/new_untitled?parentDataset=" + dottedFullPath + "&newVersion=" + DatasetVersion.newVersion()); //create new dataset
+        final DatasetVersion datasetVersion = DatasetVersion.newVersion();
+        links.put("run", "/datasets/new_untitled?parentDataset=" + dottedFullPath + "&newVersion="
+          + (datasetVersion == null ? datasetVersion : encodeURIComponent(datasetVersion.toString()))); //create new dataset
         break;
       case PHYSICAL_DATASET_HOME_FILE:
         links.put("run", "/home/" + fullPath.get(0) + "new_untitled_from_file" + fullPathString);

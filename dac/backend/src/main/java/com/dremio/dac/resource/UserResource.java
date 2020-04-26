@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,24 +36,19 @@ import javax.ws.rs.core.Response;
 import javax.ws.rs.core.Response.Status;
 import javax.ws.rs.core.SecurityContext;
 
-import com.dremio.common.exceptions.UserException;
 import com.dremio.dac.annotations.RestResource;
 import com.dremio.dac.annotations.Secured;
 import com.dremio.dac.homefiles.HomeFileTool;
 import com.dremio.dac.model.common.DACUnauthorizedException;
-import com.dremio.dac.model.spaces.HomeName;
-import com.dremio.dac.model.spaces.HomePath;
 import com.dremio.dac.model.usergroup.UserForm;
 import com.dremio.dac.model.usergroup.UserName;
 import com.dremio.dac.model.usergroup.UserResourcePath;
 import com.dremio.dac.model.usergroup.UserUI;
 import com.dremio.dac.server.GenericErrorMessage;
 import com.dremio.dac.service.errors.ClientErrorException;
+import com.dremio.dac.service.users.UserServiceHelper;
 import com.dremio.service.namespace.NamespaceException;
-import com.dremio.service.namespace.NamespaceKey;
-import com.dremio.service.namespace.NamespaceNotFoundException;
 import com.dremio.service.namespace.NamespaceService;
-import com.dremio.service.namespace.space.proto.HomeConfig;
 import com.dremio.service.users.SimpleUser;
 import com.dremio.service.users.User;
 import com.dremio.service.users.UserNotFoundException;
@@ -70,15 +65,17 @@ public class UserResource {
 
   private final UserService userService;
   private final NamespaceService namespaceService;
+  private final UserServiceHelper userServiceHelper;
   private final SecurityContext securityContext;
   private final HomeFileTool fileStore;
 
   @Inject
   public UserResource(UserService userService, NamespaceService namespaceService, HomeFileTool fileStore,
-                      @Context SecurityContext securityContext) {
+                      UserServiceHelper userServiceHelper, @Context SecurityContext securityContext) {
     this.userService = userService;
     this.namespaceService = namespaceService;
     this.fileStore = fileStore;
+    this.userServiceHelper = userServiceHelper;
     this.securityContext = securityContext;
   }
 
@@ -100,9 +97,11 @@ public class UserResource {
   @POST
   @Produces(MediaType.APPLICATION_JSON)
   @Consumes(MediaType.APPLICATION_JSON)
+  @Deprecated
   public UserUI updateUser(UserForm userForm, @PathParam("userName") UserName userName)
     throws IOException, IllegalArgumentException, NamespaceException, UserNotFoundException, DACUnauthorizedException {
     checkUser(userName, "update");
+
     User userConfig = userForm.getUserConfig();
     if (userConfig != null && userConfig.getUserName() != null && !userConfig.getUserName().equals(userName.getName())) {
       final UserName newUserName = new UserName(userForm.getUserConfig().getUserName());
@@ -123,26 +122,13 @@ public class UserResource {
   @PUT
   @Produces(MediaType.APPLICATION_JSON)
   @Consumes(MediaType.APPLICATION_JSON)
+  @Deprecated
   public UserUI createUser(UserForm userForm, @PathParam("userName") UserName userName)
     throws IOException, IllegalArgumentException, NamespaceException, DACUnauthorizedException {
     checkUser(userName, "create");
-    User newUser = SimpleUser.newBuilder(userForm.getUserConfig()).setCreatedAt(System.currentTimeMillis()).build();
-    newUser = userService.createUser(newUser, userForm.getPassword());
-    try {
-      namespaceService.addOrUpdateHome(new HomePath(HomeName.getUserHomePath(userName.getName())).toNamespaceKey(),
-        new HomeConfig().setCtime(System.currentTimeMillis()).setOwner(userName.getName()));
-    } catch (Exception e) {
-      try {
-        userService.deleteUser(newUser.getUserName(), newUser.getVersion());
-      } catch (UserNotFoundException e1) {
-        logger.warn("Could not delete a user {} after failing to create corresponding home space", userName.getName());
-      } finally {
-        throw UserException.unsupportedError()
-          .message("Unable to create user '%s'.There may already be a user with the same name but different casing", newUser.getUserName())
-          .addContext("Cause", e.getMessage())
-          .build();
-      }
-    }
+    User newUser = com.dremio.dac.api.UserResource.addUser(userForm.getUserConfig(), userForm.getPassword(),
+      userService, namespaceService);
+
     return new UserUI(new UserResourcePath(userName), userName, newUser);
   }
 
@@ -159,30 +145,7 @@ public class UserResource {
           new GenericErrorMessage("Deletion of the user account of currently logged in user is not allowed.")).build();
     }
 
-    userService.deleteUser(userName.getName(), version);
-
-    boolean namespaceDeleteSuccessful = true;
-    try {
-      final NamespaceKey homeKey = new HomePath(HomeName.getUserHomePath(userName.getName())).toNamespaceKey();
-      final HomeConfig homeConfig = namespaceService.getHome(homeKey);
-      namespaceService.deleteHome(homeKey, homeConfig.getTag());
-    } catch (NamespaceNotFoundException ex) {
-      logger.debug("Home space is not found", ex);
-    } catch (NamespaceException ex) {
-      namespaceDeleteSuccessful = false;
-      logger.error("Failed to delete home space for user '{}'", userName.getName(), ex);
-    }
-
-    // delete the home contents
-    boolean uploadsDeleteSuccessful;
-    try {
-      uploadsDeleteSuccessful = fileStore.deleteHomeAndContents(HomeName.getUserHomePath(userName.getName()).getName());
-    } catch (Exception e) {
-      uploadsDeleteSuccessful = false;
-      logger.error("Failed to delete user home contents '{}", userName.getName(), e);
-    }
-
-    if (!namespaceDeleteSuccessful || !uploadsDeleteSuccessful) {
+    if (!userServiceHelper.deleteUser(userName.getName(), version)) {
       return Response.serverError().build();
     }
 

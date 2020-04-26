@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,19 +15,25 @@
  */
 package com.dremio.exec.work.rpc;
 
+import javax.inject.Inject;
+import javax.inject.Provider;
+
 import com.dremio.exec.proto.CoordinationProtos.NodeEndpoint;
-import com.dremio.services.fabric.api.FabricRunnerFactory;
+import com.dremio.sabot.rpc.Protocols;
+import com.dremio.services.fabric.api.FabricService;
 
 public class CoordToExecTunnelCreator {
 
-  private final FabricRunnerFactory factory;
+  private final Provider<FabricService> factory;
 
-  public CoordToExecTunnelCreator(FabricRunnerFactory factory) {
+  @Inject
+  public CoordToExecTunnelCreator(Provider<FabricService> factory) {
     super();
     this.factory = factory;
   }
 
   public CoordToExecTunnel getTunnel(NodeEndpoint ep){
-    return new CoordToExecTunnel(ep, factory.getCommandRunner(ep.getAddress(), ep.getFabricPort()));
+    return new CoordToExecTunnel(ep, factory.get().getProtocol(Protocols.COORD_TO_EXEC)
+            .getCommandRunner(ep.getAddress(), ep.getFabricPort()));
   }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,7 +39,7 @@ describe('routes', () => {
             {getSourceRoute(rootType, renderLink)}
           </Route>
         </Router>
-        );
+      );
 
       expect(isLinkActive(wrapper)).to.equal(true);
     });
@@ -51,7 +51,7 @@ describe('routes', () => {
             {getSourceRoute(rootType, renderLink)}
           </Route>
         </Router>
-        );
+      );
 
       expect(isLinkActive(wrapper)).to.equal(true);
     });
@@ -64,7 +64,7 @@ describe('routes', () => {
             {getSourceRoute(otherRootName, renderLink)}
           </Route>
         </Router>
-        );
+      );
 
       expect(isLinkActive(wrapper)).to.equal(false);
     });

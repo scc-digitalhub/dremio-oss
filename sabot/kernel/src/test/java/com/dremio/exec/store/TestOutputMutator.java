@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -137,8 +137,11 @@ public class TestOutputMutator implements OutputMutator, Iterable<VectorWrapper<
     return container;
   }
 
-  @Override
-  public boolean isSchemaChanged() {
+  public boolean getAndResetSchemaChanged() {
+    return false;
+  }
+
+  public boolean getSchemaChanged() {
     return false;
   }
 

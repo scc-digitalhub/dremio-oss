@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,17 +39,22 @@ public class TaskLeaderStatusListener implements NodeStatusListener, AutoCloseab
   private volatile CoordinationProtos.NodeEndpoint taskLeaderNode = null;
   private volatile boolean taskLeaderUp;
   private volatile boolean shutdown = false;
+  private CoordinatorLostHandle leaderUnregisteredHandle;
 
   public TaskLeaderStatusListener(String taskName,
                                   Provider<ClusterCoordinator> clusterCoordinator) {
-    this(taskName, clusterCoordinator, false);
+    this(taskName, clusterCoordinator, false, null);
   }
 
   public TaskLeaderStatusListener(String taskName,
-                                  Provider<ClusterCoordinator> clusterCoordinator, boolean isLeader) {
+                                  Provider<ClusterCoordinator> clusterCoordinator, boolean isLeader, CoordinatorLostHandle leaderUnregisteredHandle) {
     this.taskName = taskName;
     this.clusterCoordinator = clusterCoordinator;
     this.taskLeaderUp = isLeader;
+    this.leaderUnregisteredHandle = leaderUnregisteredHandle;
+    if (!taskLeaderUp && leaderUnregisteredHandle != null) {
+      leaderUnregisteredHandle.handleMasterDown(this);
+    }
   }
 
   public boolean isTaskLeaderUp() {
@@ -90,6 +95,9 @@ public class TaskLeaderStatusListener implements NodeStatusListener, AutoCloseab
         taskLeaderNode = null;
         taskLeaderUp = false;
         taskLeaderLock.notifyAll();
+        if (leaderUnregisteredHandle != null) {
+          leaderUnregisteredHandle.handleMasterDown(this);
+        }
       }
     }
   }
@@ -119,7 +127,6 @@ public class TaskLeaderStatusListener implements NodeStatusListener, AutoCloseab
       taskLeaderNode = endpoint;
       taskLeaderUp = true;
       taskLeaderLock.notifyAll();
-
     }
   }
 

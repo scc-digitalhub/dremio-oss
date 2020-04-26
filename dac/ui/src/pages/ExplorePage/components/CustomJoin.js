@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,8 +19,8 @@ import Radium from 'radium';
 
 import PropTypes from 'prop-types';
 
-import { CONTAINER_ENTITY_TYPES } from 'constants/Constants';
-import { PHYSICAL_DATASET_TYPES } from 'constants/datasetTypes';
+import { CONTAINER_ENTITY_TYPES } from '@app/constants/Constants';
+import { PHYSICAL_DATASET_TYPES } from '@app/constants/datasetTypes';
 import ExistingForm from 'components/formsForAddData/ExistingForm';
 import { constructFullPath, splitFullPath } from 'utils/pathUtils';
 import InnerJoinController from './JoinTypes/InnerJoinController';

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { DATASET_TYPES_TO_ICON_TYPES } from 'constants/datasetTypes';
+import { DATASET_TYPES_TO_ICON_TYPES } from '@app/constants/datasetTypes';
 import { formatMessage } from './locale';
 
 const FILE_TYPES_TO_ICON_TYPES = {
@@ -84,6 +84,13 @@ export function getIconByEntityType(type) {
   }
 }
 
+export function getIconTypeByEntityTypeAndStatus(entityType, sourceStatus) {
+  const iconType = sourceStatus === null ?
+    getIconByEntityType(entityType) :
+    getIconStatusDatabase(sourceStatus);
+  return iconType;
+}
+
 export function getFormatMessageIdByEntityIconType(iconType) {
   switch (iconType) {
   case 'VirtualDataset':
@@ -107,9 +114,13 @@ export function getFormatMessageIdByEntityIconType(iconType) {
   }
 }
 
+export function getIconAltTextByEntityIconType(iconType) {
+  return formatMessage(getFormatMessageIdByEntityIconType(iconType));
+}
+
 export function getArtPropsByEntityIconType(iconType) {
   return {
     src: `${iconType}.svg`,
-    alt: formatMessage(getFormatMessageIdByEntityIconType(iconType))
+    alt: getIconAltTextByEntityIconType(iconType)
   };
 }

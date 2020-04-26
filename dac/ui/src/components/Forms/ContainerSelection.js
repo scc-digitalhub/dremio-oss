@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,44 +20,92 @@ import FormUtils from 'utils/FormUtils/FormUtils';
 import FormSection from 'components/Forms/FormSection';
 import FormElement from 'components/Forms/FormElement';
 import Radio from 'components/Fields/Radio';
+import FieldWithError from 'components/Fields/FieldWithError';
 
+import Select from '@app/components/Fields/Select';
+import {selectWrapper, selectBody, selectFieldWithError} from '@app/components/Forms/Wrappers/FormWrappers.less';
 import { rowOfInputsSpacing, rowOfRadio } from '@app/uiTheme/less/forms.less';
 import { componentContainer, topLabel} from './ContainerSelection.less';
 
 export default class ContainerSelection extends Component {
   static propTypes = {
     fields: PropTypes.object,
-    elementConfig: PropTypes.object
+    elementConfig: PropTypes.object,
+    disabled: PropTypes.bool
+  };
+
+  renderRadioSelector = (elementConfig, selectedValue, radioProps) => {
+    const label = elementConfig.getConfig().label;
+    return (
+      <div className={classNames(rowOfRadio, rowOfInputsSpacing)}>
+        {label && <div className={topLabel}>{label}</div>}
+        {elementConfig.getOptions().map((option, index) => {
+          return (
+            <Radio radioValue={option.value}
+              value={selectedValue}
+              key={index}
+              label={option.label || option.value}
+              {...radioProps}/>
+          );
+        })}
+      </div>
+    );
+  };
+
+  renderSelectSelector = (elementConfig, selectedValue, radioProps) => {
+    const tooltip = elementConfig.getConfig().tooltip;
+    const label = elementConfig.getConfig().label;
+    const hoverHelpText = (tooltip) ? {hoverHelpText: tooltip} : null;
+    const isDisabled = (elementConfig.getConfig().disabled || this.props.disabled) ?
+      {disabled: true} : null;
+
+    return <div style={{marginTop: 6}}>
+      <FieldWithError errorPlacement='top'
+        {...hoverHelpText}
+        label={label}
+        labelClass={selectFieldWithError} >
+        <div className={selectWrapper}>
+          <Select
+            {...isDisabled}
+            items={elementConfig.getConfig().options}
+            className={selectBody}
+            valueField='value'
+            value={selectedValue}
+            {...radioProps}
+          />
+        </div>
+      </FieldWithError>
+    </div>;
+  };
+
+  findSelectedOption = (elementConfig, value) => {
+    return elementConfig.getOptions().find(option => option.value === value);
   };
 
   render() {
     const {fields, elementConfig} = this.props;
     const radioField = FormUtils.getFieldByComplexPropName(fields, elementConfig.getPropName());
-    // radioField usually has a value. If not, use 1st option value
 
     const { value, ...radioProps } = radioField;
-    const selectedValue = value || elementConfig.getOptions()[0].value;
-    const selectedOptionObj = elementConfig.getOptions().find(option => option.value === selectedValue);
+    const firstValue = elementConfig.getOptions()[0].value;
+    // radioField usually has a value. If not, use 1st option value
+    let selectedValue = value || firstValue;
+    let selectedOptionObj = this.findSelectedOption(elementConfig, selectedValue);
+
+    if (!selectedOptionObj) {
+      // the value is not in the options -> default to the 1st option
+      selectedValue = firstValue;
+      selectedOptionObj = this.findSelectedOption(elementConfig, firstValue);
+    }
 
     const container = selectedOptionObj.container;
-    const label = elementConfig.getConfig().label;
     const containerHelp = container.getConfig && container.getConfig().help;
+    const selectorType = elementConfig.getConfig().selectorType;
 
-    // implementing default selector (radio) for now. TODO: other selectors
     return (
       <div className={componentContainer}>
-        {label && <div className={topLabel}>{label}</div>}
-        <div className={classNames(rowOfRadio, rowOfInputsSpacing)}>
-          {elementConfig.getOptions().map((option, index) => {
-            return (
-              <Radio radioValue={option.value}
-                     value={selectedValue}
-                     key={index}
-                     label={option.label || option.value}
-                     {...radioProps}/>
-            );
-          })}
-        </div>
+        {selectorType === 'select' && this.renderSelectSelector(elementConfig, selectedValue, radioProps)}
+        {(!selectorType || selectorType === 'radio') && this.renderRadioSelector(elementConfig, selectedValue, radioProps)}
         {container.getPropName &&
         <FormElement fields={fields} elementConfig={container}/>
         }

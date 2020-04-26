@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -48,6 +48,13 @@ public class TestDDLAliases {
   public void createVDS() throws SqlParseException {
     parse("CREATE VDS MY_VDS AS SELECT * FROM SYS.OPTIONS");
   }
+
+  @Test //DX-17257
+  public void createVDSWithWhereRowIn() throws  SqlParseException
+  {
+    parse("CREATE VDS FILTERED_VDS AS SELECT * FROM SYS.OPTIONS WHERE ROW(col1, col2) in (ROW('aa', 'bb'))");
+  }
+
 
   @Test
   public void dropVDS() throws SqlParseException {
