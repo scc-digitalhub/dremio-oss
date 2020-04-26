@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -79,6 +79,7 @@ import com.dremio.service.namespace.space.proto.HomeConfig;
 import com.dremio.service.namespace.space.proto.SpaceConfig;
 import com.dremio.service.reflection.ReflectionSettings;
 import com.google.common.base.Optional;
+import com.google.common.collect.ImmutableList;
 
 /**
  * Test for CatalogServiceHelper
@@ -144,7 +145,7 @@ public class TestCatalogServiceHelper {
     sourceConfig.setId(new EntityId("source-id"));
     when(sourceService.getSources()).thenReturn(Arrays.asList(sourceConfig));
 
-    List<CatalogItem> topLevelCatalogItems = catalogServiceHelper.getTopLevelCatalogItems();
+    List<CatalogItem> topLevelCatalogItems = catalogServiceHelper.getTopLevelCatalogItems(Collections.EMPTY_LIST);
     assertEquals(topLevelCatalogItems.size(), 3);
 
     int homeCount = 0;
@@ -200,7 +201,7 @@ public class TestCatalogServiceHelper {
     when(dremioTable.getDatasetConfig()).thenReturn(datasetConfig);
     when(catalog.getTable(any(String.class))).thenReturn(dremioTable);
 
-    Optional<CatalogEntity> entity = catalogServiceHelper.getCatalogEntityById(datasetConfig.getId().getId());
+    Optional<CatalogEntity> entity = catalogServiceHelper.getCatalogEntityById(datasetConfig.getId().getId(), ImmutableList.of());
 
     assertTrue(entity.isPresent());
 
@@ -226,7 +227,7 @@ public class TestCatalogServiceHelper {
     // for children listing, we just send the space back to keep it simple
     when(namespaceService.list(new NamespaceKey(spaceConfig.getName()))).thenReturn(Collections.singletonList(namespaceContainer));
 
-    Optional<CatalogEntity> catalogEntityById = catalogServiceHelper.getCatalogEntityById(spaceConfig.getId().getId());
+    Optional<CatalogEntity> catalogEntityById = catalogServiceHelper.getCatalogEntityById(spaceConfig.getId().getId(), ImmutableList.of());
 
     assertTrue(catalogEntityById.isPresent());
 

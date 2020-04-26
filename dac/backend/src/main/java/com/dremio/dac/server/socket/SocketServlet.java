@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,15 +36,18 @@ import org.eclipse.jetty.websocket.servlet.WebSocketServletFactory;
 import com.dremio.dac.model.usergroup.UserName;
 import com.dremio.dac.server.socket.SocketMessage.JobDetailsUpdate;
 import com.dremio.dac.server.socket.SocketMessage.JobProgressUpdate;
+import com.dremio.dac.server.socket.SocketMessage.JobRecordsUpdate;
 import com.dremio.dac.server.socket.SocketMessage.ListenDetails;
 import com.dremio.dac.server.socket.SocketMessage.ListenProgress;
+import com.dremio.dac.server.socket.SocketMessage.ListenRecords;
 import com.dremio.dac.server.socket.SocketMessage.Payload;
 import com.dremio.dac.server.tokens.TokenManager;
 import com.dremio.dac.server.tokens.TokenUtils;
 import com.dremio.dac.util.JSONUtil;
+import com.dremio.service.job.JobSummary;
 import com.dremio.service.job.proto.JobId;
 import com.dremio.service.jobs.ExternalStatusListener;
-import com.dremio.service.jobs.Job;
+import com.dremio.service.jobs.JobsProtoUtil;
 import com.dremio.service.jobs.JobsService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectReader;
@@ -154,6 +157,9 @@ public class SocketServlet extends WebSocketServlet {
         } else if (msg instanceof ListenProgress) {
           JobId id = ((ListenProgress) msg).getId();
           jobsService.registerListener(id, new ProgressListener(id, this));
+        } else if (msg instanceof ListenRecords) {
+          JobId id = ((ListenRecords) msg).getId();
+          jobsService.registerListener(id, new RecordsListener(id, this));
         }
       } catch (Exception e) {
         logger.warn("Failure handling socket message of {}.", message, e);
@@ -201,17 +207,16 @@ public class SocketServlet extends WebSocketServlet {
     }
 
     @Override
-    public void profileUpdated(Job job) {
-      final JobDetailsUpdate update = new JobDetailsUpdate(job.getJobId());
+    public void queryProgressed(JobSummary jobSummary) {
+      final JobDetailsUpdate update = new JobDetailsUpdate(JobsProtoUtil.toStuff(jobSummary.getJobId()));
       socket.send(update);
     }
 
     @Override
-    public void queryCompleted(Job job) {
-      final JobDetailsUpdate update = new JobDetailsUpdate(job.getJobId());
+    public void queryCompleted(JobSummary jobSummary) {
+      final JobDetailsUpdate update = new JobDetailsUpdate(JobsProtoUtil.toStuff(jobSummary.getJobId()));
       socket.send(update);
     }
-
   }
 
   private class ProgressListener implements ExternalStatusListener {
@@ -226,17 +231,33 @@ public class SocketServlet extends WebSocketServlet {
     }
 
     @Override
-    public void profileUpdated(Job job) {
-      final JobProgressUpdate update = new JobProgressUpdate(job);
+    public void queryProgressed(JobSummary jobSummary) {
+      final JobProgressUpdate update = new JobProgressUpdate(jobSummary);
       socket.send(update);
     }
 
     @Override
-    public void queryCompleted(Job job) {
-      final JobProgressUpdate update = new JobProgressUpdate(job);
+    public void queryCompleted(JobSummary jobSummary) {
+      final JobProgressUpdate update = new JobProgressUpdate(jobSummary);
       socket.send(update);
     }
-
   }
 
+  private class RecordsListener implements ExternalStatusListener {
+
+    private final DremioSocket socket;
+    private final JobId jobId;
+
+    public RecordsListener(JobId jobId, DremioSocket socket) {
+      super();
+      this.socket = socket;
+      this.jobId = jobId;
+    }
+
+    @Override
+    public void queryProgressed(JobSummary jobSummary) {
+      final JobRecordsUpdate update = new JobRecordsUpdate(JobsProtoUtil.toStuff(jobSummary.getJobId()), jobSummary.getRecordCount());
+      socket.send(update);
+    }
+  }
 }

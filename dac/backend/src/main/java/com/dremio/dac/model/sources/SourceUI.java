@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ import com.dremio.dac.model.namespace.NamespaceTree;
 import com.dremio.exec.catalog.ConnectionReader;
 import com.dremio.exec.catalog.conf.ConnectionConf;
 import com.dremio.service.jobs.JobIndexKeys;
+import com.dremio.service.namespace.NamespaceAttribute;
 import com.dremio.service.namespace.SourceState;
 import com.dremio.service.namespace.proto.EntityId;
 import com.dremio.service.namespace.source.proto.SourceConfig;
@@ -86,6 +87,10 @@ public class SourceUI implements AddressableResource, DatasetContainer {
 
   public void clearSecrets() {
     config.clearSecrets();
+  }
+
+  public NamespaceAttribute[] getNamespaceAttributes() {
+    return new NamespaceAttribute[0];
   }
 
   /**

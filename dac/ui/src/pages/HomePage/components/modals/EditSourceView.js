@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,6 +36,19 @@ import { viewStateWrapper } from 'uiTheme/less/forms.less';
 
 export const VIEW_ID = 'EditSourceView';
 
+
+export const processUiConfig = (uiConfig) => {
+  if (!uiConfig || !uiConfig.elements) return uiConfig;
+
+  return {
+    ...uiConfig,
+    elements: uiConfig.elements.map(el => ({
+      ...el,
+      propertyName: FormUtils.addFormPrefixToPropName(el.propertyName)
+    }))
+  };
+};
+
 @pureRender
 @EditSourceViewMixin
 export class EditSourceView extends Component {
@@ -69,7 +82,7 @@ export class EditSourceView extends Component {
 
   state = {
     didLoadFail: false
-  }
+  };
 
   componentWillMount() {
     const { sourceName, sourceType } = this.props;
@@ -78,11 +91,9 @@ export class EditSourceView extends Component {
   }
 
   setStateWithSourceTypeConfigFromServer(typeCode) {
-    ApiUtils.fetch(`source/type/${typeCode}`).then(response => {
-      response.json().then((result) => {
-        const conbinedConfig = SourceFormJsonPolicy.getCombinedConfig(typeCode, result);
-        this.setState({isTypeSelected:true, isConfigLoaded: true, selectedFormType: conbinedConfig});
-      });
+    ApiUtils.fetchJson(`source/type/${typeCode}`, json => {
+      const combinedConfig = SourceFormJsonPolicy.getCombinedConfig(typeCode, processUiConfig(json));
+      this.setState({isTypeSelected: true, isConfigLoaded: true, selectedFormType: combinedConfig});
     }, () => {
       this.setState({didLoadFail: true});
     });
@@ -101,12 +112,12 @@ export class EditSourceView extends Component {
       method: 'POST',
       body: JSON.stringify(sourceModel)
     }, 2)
-    .then((response) => response.json())
-    .catch((response) => {
-      return response.json().then((error) => {
-        throw error;
+      .then((response) => response.json())
+      .catch((response) => {
+        return response.json().then((error) => {
+          throw error;
+        });
       });
-    });
   };
 
   submitEdit = (form) => {
@@ -117,22 +128,22 @@ export class EditSourceView extends Component {
     return ApiUtils.attachFormSubmitHandlers(new Promise((resolve, reject) => {
       const sourceModel = sourcesMapper.newSource(sourceType, form);
       this.checkIsMetadataImpacting(sourceModel)
-      .then((data) => {
-        if (data && data.isMetadataImpacting) {
-          this.props.showConfirmationDialog({
-            title: la('Warning'),
-            text: la('You made a metadata impacting change.  This change will cause Dremio to clear permissions, formats and reflections on all datasets in this source.'),
-            confirmText: la('Confirm'),
-            dataQa: 'metadata-impacting',
-            confirm: () => {
-              this.reallySubmitEdit(form, sourceType).then(resolve).catch(reject);
-            },
-            cancel: reject
-          });
-        } else {
-          this.reallySubmitEdit(form, sourceType).then(resolve).catch(reject);
-        }
-      }).catch(reject);
+        .then((data) => {
+          if (data && data.isMetadataImpacting) {
+            this.props.showConfirmationDialog({
+              title: la('Warning'),
+              text: la('You made a metadata impacting change.  This change will cause Dremio to clear permissions, formats and reflections on all datasets in this source.'),
+              confirmText: la('Confirm'),
+              dataQa: 'metadata-impacting',
+              confirm: () => {
+                this.reallySubmitEdit(form, sourceType).then(resolve).catch(reject);
+              },
+              cancel: reject
+            });
+          } else {
+            this.reallySubmitEdit(form, sourceType).then(resolve).catch(reject);
+          }
+        }).catch(reject);
     }));
   };
 
@@ -166,15 +177,15 @@ export class EditSourceView extends Component {
       {this.renderMessages()}
       {this.state.isConfigLoaded &&
       <ConfigurableSourceForm sourceFormConfig={this.state.selectedFormType}
-                              ref='form'
-                              onFormSubmit={this.submitEdit}
-                              onCancel={hide}
-                              key={sourceType}
-                              editing
-                              updateFormDirtyState={updateFormDirtyState}
-                              fields={FormUtils.getFieldsFromConfig(this.state.selectedFormType)}
-                              validate={FormUtils.getValidationsFromConfig(this.state.selectedFormType)}
-                              initialValues={initValues}
+        ref='form'
+        onFormSubmit={this.submitEdit}
+        onCancel={hide}
+        key={sourceType}
+        editing
+        updateFormDirtyState={updateFormDirtyState}
+        fields={FormUtils.getFieldsFromConfig(this.state.selectedFormType)}
+        validate={FormUtils.getValidationsFromConfig(this.state.selectedFormType)}
+        initialValues={initValues}
       />}
     </ViewStateWrapper>;
   }

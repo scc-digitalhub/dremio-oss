@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,8 +43,8 @@ public abstract class ElasticFunction {
   }
 
   protected static Iterable<NullReference> nulls(FunctionRender... renders){
-    return FluentIterable.of(renders).transformAndConcat(new Function<FunctionRender, Iterable<NullReference>>(){
-
+    return FluentIterable.from(renders).
+      transformAndConcat(new Function<FunctionRender, Iterable<NullReference>>(){
       @Override
       public Iterable<NullReference> apply(FunctionRender input) {
         return input.getNulls();

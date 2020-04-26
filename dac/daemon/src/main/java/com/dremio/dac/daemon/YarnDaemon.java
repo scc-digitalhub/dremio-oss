@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,7 +37,9 @@ import com.dremio.common.scanner.ClassPathScanner;
 import com.dremio.config.DremioConfig;
 import com.dremio.dac.server.DACConfig;
 import com.dremio.dac.server.LivenessService;
+import com.dremio.dac.server.liveness.ClasspathHealthMonitor;
 import com.dremio.exec.util.GuavaPatcher;
+import com.dremio.provision.yarn.YarnContainerHealthMonitor;
 import com.dremio.provision.yarn.YarnWatchdog;
 import com.google.common.base.Throwables;
 
@@ -124,6 +126,9 @@ public class YarnDaemon implements Runnable, AutoCloseable {
       logger.error("Failed to start liveness service, dremio will exit.");
       System.exit(1);
     }
+
+    livenessService.addHealthMonitor(new YarnContainerHealthMonitor());
+    livenessService.addHealthMonitor(new ClasspathHealthMonitor());
 
     DremioConfig dremioConfig = daemon.getDACConfig().getConfig();
     final long watchedPID = Integer.parseInt(ManagementFactory.getRuntimeMXBean().getName().split("@")[0]);

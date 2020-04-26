@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.SingleRel;
 
 import com.dremio.exec.planner.logical.CreateTableEntry;
+import com.dremio.exec.planner.sql.CalciteArrowHelper;
 import com.dremio.exec.store.RecordWriter;
 
 /** Base class for logical and physical Writer implemented in Dremio. */
@@ -35,7 +36,7 @@ public abstract class WriterRelBase extends SingleRel {
     assert input.getConvention() == convention;
     this.createTableEntry = createTableEntry;
 
-    rowType = RecordWriter.SCHEMA.toCalciteRecordType(getCluster().getTypeFactory());
+    rowType = CalciteArrowHelper.wrap(RecordWriter.SCHEMA).toCalciteRecordType(getCluster().getTypeFactory());
   }
 
   public CreateTableEntry getCreateTableEntry() {

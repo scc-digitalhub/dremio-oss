@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ import ReplacePatternForm from 'pages/ExplorePage/components/Transform/component
 import ExtractListForm from 'pages/ExplorePage/components/Transform/components/forms/ExtractListForm';
 import ExtractMapForm from 'pages/ExplorePage/components/Transform/components/forms/ExtractMapForm';
 
-import { LIST, MAP } from 'constants/DataTypes';
+import { LIST, MAP } from '@app/constants/DataTypes';
 
 import cards from './mocks/cards.json';
 import fields from './mocks/fields.json';
@@ -139,7 +139,7 @@ describe('TransformView', () => {
       const instance = shallow(<TransformView {...commonProps}
         subTitles={subTitles}
         transform={transform}/>).instance();
-      sinon.stub(instance, 'renderSubHeadersTitle', (subtitle) => (subtitle));
+      sinon.stub(instance, 'renderSubHeadersTitle').callsFake((subtitle) => (subtitle));
       expect(instance.filterSubtitles()[0]).to.eql([{types: ['type1']}]);
     });
   });

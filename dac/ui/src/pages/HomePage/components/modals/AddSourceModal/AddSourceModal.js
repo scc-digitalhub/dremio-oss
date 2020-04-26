@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ import SelectSourceType from 'pages/HomePage/components/modals/AddSourceModal/Se
 import ConfigurableSourceForm from 'pages/HomePage/components/modals/ConfigurableSourceForm';
 
 import AddSourceModalMixin from 'dyn-load/pages/HomePage/components/modals/AddSourceModal/AddSourceModalMixin';
+import { processUiConfig } from '@app/pages/HomePage/components/modals/EditSourceView';
 
 
 const VIEW_ID = 'ADD_SOURCE_MODAL';
@@ -73,22 +74,18 @@ export class AddSourceModal extends Component {
   }
 
   setStateWithSourceTypeListFromServer() {
-    ApiUtils.fetch('source/type').then(response => {
-      response.json().then((result) => {
-        const combinedListConfig = SourceFormJsonPolicy.combineDefaultAndLoadedList(result.data, DEFAULT_VLHF_LIST);
-        this.setState({sourceTypes: combinedListConfig});
-      });
+    ApiUtils.fetchJson('source/type', (result) => {
+      const combinedListConfig = SourceFormJsonPolicy.combineDefaultAndLoadedList(result.data, DEFAULT_VLHF_LIST);
+      this.setState({sourceTypes: combinedListConfig});
     }, () => {
       this.setState({didSourceTypeLoadFail: true});
     });
   }
 
   setStateWithSourceTypeConfigFromServer(typeCode) {
-    ApiUtils.fetch(`source/type/${typeCode}`).then(response => {
-      response.json().then((result) => {
-        const conbinedConfig = SourceFormJsonPolicy.getCombinedConfig(typeCode, result);
-        this.setState({isTypeSelected: true, selectedFormType: conbinedConfig});
-      });
+    ApiUtils.fetchJson(`source/type/${typeCode}`, json => {
+      const combinedConfig = SourceFormJsonPolicy.getCombinedConfig(typeCode, processUiConfig(json));
+      this.setState({isTypeSelected: true, selectedFormType: combinedConfig});
     }, () => {
       this.setState({didSourceTypeLoadFail: true});
     });
@@ -194,15 +191,15 @@ export class AddSourceModal extends Component {
         <ViewStateWrapper viewState={viewState}>
           {!this.state.isTypeSelected
             ? <SelectSourceType sourceTypes={this.state.sourceTypes}
-                                onSelectSource={this.handleSelectSource}/>
+              onSelectSource={this.handleSelectSource}/>
             : <ConfigurableSourceForm sourceFormConfig={this.state.selectedFormType}
-                                      ref='form'
-                                      onFormSubmit={this.handleAddSourceSubmit}
-                                      onCancel={this.hide}
-                                      updateFormDirtyState={updateFormDirtyState}
-                                      footerChildren={this.renderLongSubmitLabel()}
-                                      fields={FormUtils.getFieldsFromConfig(this.state.selectedFormType)}
-                                      validate={FormUtils.getValidationsFromConfig(this.state.selectedFormType)}
+              ref='form'
+              onFormSubmit={this.handleAddSourceSubmit}
+              onCancel={this.hide}
+              updateFormDirtyState={updateFormDirtyState}
+              footerChildren={this.renderLongSubmitLabel()}
+              fields={FormUtils.getFieldsFromConfig(this.state.selectedFormType)}
+              validate={FormUtils.getValidationsFromConfig(this.state.selectedFormType)}
             />
           }
         </ViewStateWrapper>

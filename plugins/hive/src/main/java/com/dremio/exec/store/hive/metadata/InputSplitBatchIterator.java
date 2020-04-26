@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,8 +28,7 @@ import com.google.common.collect.Lists;
 /**
  * Manages a list of Hive InputSplit objects to help generate Dremio PartitionChunk objects.
  * <p>
- * The list is broken up into batches of
- * {@link com.dremio.exec.store.hive.HivePluginOptions#HIVE_MAX_INPUTSPLITS_PER_PARTITION_VALIDATOR}
+ * The list is broken up into batches of HIVE_MAX_INPUTSPLITS_PER_PARTITION_VALIDATOR
  * elements to be iterated over by the caller.
  */
 public class InputSplitBatchIterator extends AbstractIterator<List<InputSplit>> {

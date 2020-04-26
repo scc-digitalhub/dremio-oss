@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,16 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { CALL_API } from 'redux-api-middleware';
+import { RSAA } from 'redux-api-middleware';
 
 import schemaUtils from 'utils/apiUtils/schemaUtils';
-import { API_URL_V2 } from 'constants/Api';
 
 import { arrayOf } from 'normalizr';
 import userSchema from 'schemas/user';
 
-
-import {makeUncachebleURL} from 'ie11.js';
+import { APIV2Call } from '@app/core/APICall';
 
 export const SOURCE_NODES_START = 'SOURCE_NODES_START';
 export const SOURCE_NODES_SUCCESS = 'SOURCE_NODES_SUCCESS';
@@ -32,15 +30,18 @@ export const SOURCE_NODES_FAILURE = 'SOURCE_NODES_FAILURE';
 
 function fetchNodeCredentials(viewId) {
   const meta = {viewId};
+
+  const apiCall = new APIV2Call().paths('system/nodes');
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         {type: SOURCE_NODES_START, meta},
         {type: SOURCE_NODES_SUCCESS, meta},
         {type: SOURCE_NODES_FAILURE, meta}
       ],
       method: 'GET',
-      endpoint: `${API_URL_V2}/system/nodes`
+      endpoint: apiCall
     }
   };
 }
@@ -62,17 +63,29 @@ export const LOAD_FILTERED_USER_FAILURE = 'LOAD_FILTERED_USER_FAILURE';
 
 // todo: backend doesn't actually do filtering yet
 function fetchFilteredUsers(value = '') {
-  const encodedValue = encodeURIComponent(value);
   const meta = {viewId: USERS_VIEW_ID}; // todo: see need ability to list users from anywhere
+
+  const apiCall = new APIV2Call();
+
+  if (value) {
+    apiCall
+      .paths('users/search')
+      .params({filter: value});
+  } else {
+    apiCall
+      .paths('users/all')
+      .uncachable();
+  }
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         {type: LOAD_FILTERED_USER_START, meta},
         schemaUtils.getSuccessActionTypeWithSchema(LOAD_FILTERED_USER_SUCCESS, { users: arrayOf(userSchema) }, meta),
         {type: LOAD_FILTERED_USER_FAILURE, meta}
       ],
       method: 'GET',
-      endpoint: `${API_URL_V2}/users/${!encodedValue ? makeUncachebleURL('all') : `search?filter=${encodedValue}`}` // todo: why isn't the search uncacheable if 'all' is?
+      endpoint: apiCall
     }
   };
 }
@@ -84,85 +97,37 @@ export function searchUsers(value) {
 }
 
 
-export const ADD_NEW_USER_START = 'ADD_NEW_USER_START';
-export const ADD_NEW_USER_SUCCESS = 'ADD_NEW_USER_SUCCESS';
-export const ADD_NEW_USER_FAILURE = 'ADD_NEW_USER_FAILURE';
+export const CREATE_FIRST_USER_START = 'CREATE_FIRST_USER_START';
+export const CREATE_FIRST_USER_SUCCESS = 'CREATE_FIRST_USER_SUCCESS';
+export const CREATE_FIRST_USER_FAILURE = 'CREATE_FIRST_USER_FAILURE';
 
-function putUser(form, meta) {
-  const { isFirstUser, viewId } = meta || {};
+export function createFirstUser(form, meta) {
+  const { viewId } = meta || {};
   const metaSuccess = {
     invalidateViewIds: [USERS_VIEW_ID],
     notification: {
       message: la('Successfully created.'),
       level: 'success'
     },
-    isFirstUser,
     form
   };
-  const endpoint = !isFirstUser
-    ? `${API_URL_V2}/user/${encodeURIComponent(form.userName)}`
-    : `${API_URL_V2}/bootstrap/firstuser`;
+
+  const apiCall = new APIV2Call().paths('bootstrap/firstuser');
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
-        { type: ADD_NEW_USER_START, meta: {isFirstUser, form} },
-        { type: ADD_NEW_USER_SUCCESS, meta: metaSuccess },
-        { type: ADD_NEW_USER_FAILURE, meta: {viewId} }
+        { type: CREATE_FIRST_USER_START },
+        { type: CREATE_FIRST_USER_SUCCESS, meta: metaSuccess },
+        { type: CREATE_FIRST_USER_FAILURE, meta: {viewId} }
       ],
       method: 'PUT',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(form),
-      endpoint
+      endpoint: apiCall
     }
   };
 }
-
-export function createNewUser(values) {
-  return (dispatch) => {
-    return dispatch(putUser(values));
-  };
-}
-
-export function createFirstUser(values, meta) {
-  return (dispatch) => {
-    return dispatch(putUser(values, {...meta, isFirstUser: true }));
-  };
-}
-
-
-export const EDIT_USER_START = 'EDIT_USER_START';
-export const EDIT_USER_SUCCESS = 'EDIT_USER_SUCCESS';
-export const EDIT_USER_FAILURE = 'EDIT_USER_FAILURE';
-
-function postEditUser(values, oldName) {
-  const meta = {
-    invalidateViewIds: [USERS_VIEW_ID],
-    notification: {
-      message: la('Successfully updated.'),
-      level: 'success'
-    }
-  };
-  return {
-    [CALL_API]: {
-      types: [
-        EDIT_USER_START,
-        { type: EDIT_USER_SUCCESS, meta },
-        EDIT_USER_FAILURE
-      ],
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(values),
-      endpoint: `${API_URL_V2}/user/${oldName}`
-    }
-  };
-}
-
-export function editUser(values, oldName) {
-  return (dispatch) => {
-    return dispatch(postEditUser(values, oldName));
-  };
-}
-
 
 export const REMOVE_USER_START = 'REMOVE_USER_START';
 export const REMOVE_USER_SUCCESS = 'REMOVE_USER_SUCCESS';
@@ -176,8 +141,13 @@ function deleteUser(user) {
       level: 'success'
     }
   };
+
+  const apiCall = new APIV2Call()
+    .paths(user.getIn(['links', 'self']))
+    .params({version: user.getIn(['userConfig', 'version'])});
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         REMOVE_USER_START,
         { type: REMOVE_USER_SUCCESS, meta },
@@ -185,7 +155,7 @@ function deleteUser(user) {
       ],
       method: 'DELETE',
       headers: {'Content-Type': 'application/json'},
-      endpoint: `${API_URL_V2}${user.getIn(['links', 'self'])}?version=${user.getIn(['userConfig', 'version'])}`
+      endpoint: apiCall
     }
   };
 }

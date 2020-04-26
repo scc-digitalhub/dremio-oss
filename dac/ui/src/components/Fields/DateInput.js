@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ import { SelectView } from '@app/components/Fields/SelectView';
 import FontIcon from 'components/Icon/FontIcon';
 
 import { PALE_NAVY } from 'uiTheme/radium/colors';
-import { dateTypeToFormat, TIME, DATE } from 'constants/DataTypes';
+import { dateTypeToFormat, TIME, DATE } from '@app/constants/DataTypes';
 
 import TimePicker from './TimePicker';
 
@@ -34,7 +34,8 @@ export default class DateInput extends PureComponent {
     onChange: PropTypes.func,
     value: PropTypes.string,
     disabled: PropTypes.bool,
-    type: PropTypes.string
+    type: PropTypes.string,
+    style: PropTypes.object
   };
 
   static mergeDateWithTime(dateMoment, timeMoment, type) {

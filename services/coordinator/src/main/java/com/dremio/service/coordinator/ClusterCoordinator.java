@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,6 +41,9 @@ public abstract class ClusterCoordinator implements Service {
     public static final String ZK_SESSION_TIMEOUT = "dremio.exec.zk.session.timeout";
     public static final String ZK_ELECTION_TIMEOUT = "dremio.exec.zk.election.timeout";
     public static final String ZK_ELECTION_POLLING = "dremio.exec.zk.election.polling";
+    public static final String ZK_RETRY_UNLIMITED ="dremio.exec.zk.retry.unlimited";
+    public static final String ZK_RETRY_LIMIT = "dremio.exec.zk.retry.limit";
+    public static final String ZK_INITIAL_TIMEOUT_MS = "dremio.exec.zk.retry.initial_timeout_ms";
 
   }
 

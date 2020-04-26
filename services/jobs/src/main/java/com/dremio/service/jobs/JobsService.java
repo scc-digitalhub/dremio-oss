@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,18 +15,22 @@
  */
 package com.dremio.service.jobs;
 
-import java.security.AccessControlException;
-import java.util.List;
-import java.util.concurrent.CompletableFuture;
-
-import com.dremio.common.utils.protos.ExternalIdHelper;
-import com.dremio.datastore.SearchTypes.SortOrder;
-import com.dremio.exec.proto.UserBitShared.ExternalId;
 import com.dremio.exec.proto.UserBitShared.QueryProfile;
 import com.dremio.service.Service;
+import com.dremio.service.job.CancelJobRequest;
+import com.dremio.service.job.JobCounts;
+import com.dremio.service.job.JobCountsRequest;
+import com.dremio.service.job.JobDetails;
+import com.dremio.service.job.JobDetailsRequest;
+import com.dremio.service.job.JobStats;
+import com.dremio.service.job.JobStatsRequest;
+import com.dremio.service.job.JobSummary;
+import com.dremio.service.job.JobSummaryRequest;
+import com.dremio.service.job.JobsWithParentDatasetRequest;
+import com.dremio.service.job.QueryProfileRequest;
+import com.dremio.service.job.SearchJobsRequest;
+import com.dremio.service.job.SubmitJobRequest;
 import com.dremio.service.job.proto.JobId;
-import com.dremio.service.namespace.NamespaceKey;
-import com.dremio.service.namespace.dataset.DatasetVersion;
 
 /**
  * Job Service interface. Submit job, maintain job states
@@ -34,165 +38,79 @@ import com.dremio.service.namespace.dataset.DatasetVersion;
 public interface JobsService extends Service {
 
   /**
-   * Submit a job to the execution engine.
-   *
-   * @param id              external id
-   * @param jobRequest      job request
-   * @param statusListener  a listener to notify for change of status. Must not be null
-   * @return {@link CompletableFuture} of the submitted Job
-   */
-  CompletableFuture<Job> submitJob(ExternalId id, JobRequest jobRequest, JobStatusListener statusListener);
-
-  /**
    * Submit a job to the execution engine. Generates a random externalId for the job
    *
    * @param jobRequest      job request
    * @param statusListener  a listener to notify for change of status. Must not be null
-   * @return {@link CompletableFuture} of the submitted Job
+   * @return {@link JobId} of submitted job
    */
-  default CompletableFuture<Job> submitJob(JobRequest jobRequest, JobStatusListener statusListener) {
-    return submitJob(ExternalIdHelper.generateExternalId(), jobRequest, statusListener);
-  }
+  JobId submitJob(SubmitJobRequest jobRequest, JobStatusListener statusListener);
 
   /**
-   * Get details of the job.
-   *
-   * @param jobId job id
-   * @return details of the job for given id
+   * Get details of a job.
+   * @param jobDetailsRequest JobDetails Request
+   * @return                  Job for given request
    * @throws JobNotFoundException if job is not found
    */
-  Job getJob(JobId jobId) throws JobNotFoundException;
+  JobDetails getJobDetails(JobDetailsRequest jobDetailsRequest) throws JobNotFoundException;
 
   /**
-   * Get details of the job, from the kvStore.
-   * This is useful if we don't want the details to change while we are consuming them.
+   * Get job summary for the job
    *
-   * @param jobId job id
-   * @return details of the job for given id
+   * @param jobSummaryRequest JobSummaryRequest
+   * @return              JobSummary for a given request
    * @throws JobNotFoundException if job is not found
    */
-  Job getJobFromStore(JobId jobId) throws JobNotFoundException;
+  JobSummary getJobSummary(JobSummaryRequest jobSummaryRequest) throws JobNotFoundException;
 
   /**
-   * Get details of the job.
+   * Get the number of jobs run for the given request.
    *
-   * @param jobId    job id
-   * @param userName username for permission check
-   * @return details of the job for given id
-   * @throws JobNotFoundException if job is not found
-   * @throws AccessControlException if user does not have access to the job
+   * @param request job counts request
+   * @return number of jobs run
    */
-  Job getJob(JobId jobId, String userName) throws JobNotFoundException;
+  JobCounts getJobCounts(JobCountsRequest request);
 
   /**
-   * Get all jobs including running jobs.
+   * Get the number of jobs run sorted by job type given a date range.
    *
-   * @param filterString How to filter jobs.
-   * @param sortColumn   Column to sort the results on.
-   * @param sortOrder    Order for sorting.
-   * @param offset       start listing jobs from offset
-   * @param limit        number of jobs to return
-   * @param userName     filter jobs for given user
-   * @return Jobs associated with the conditions in the expected.
+   * @param request job stats request
+   * @return job stats
    */
-  Iterable<Job> getAllJobs(String filterString, String sortColumn, SortOrder sortOrder, int offset, int limit,
-                           String userName);
+  JobStats getJobStats(JobStatsRequest request);
 
   /**
-   * Get the number of jobs run for a given path and version.
+   * Search jobs.
    *
-   * @param datasetPath Path of Dataset (any version)
-   * @return The count of jobs.
+   * @param request request
+   * @return jobs that match
    */
-  int getJobsCount(NamespaceKey datasetPath);
-
-  /**
-   * Get the number of jobs run for given datasets.
-   *
-   * @param datasetPaths list of dataset paths.
-   * @return list of counts
-   */
-  List<Integer> getJobsCount(List<NamespaceKey> datasetPaths);
-
-  /**
-   * Get the number of jobs run for a given path and version.
-   *
-   * @param datasetPath    Path of Dataset
-   * @param datasetVersion Version for Dataset (or null for all versions)
-   * @return The count of jobs.
-   */
-  int getJobsCountForDataset(NamespaceKey datasetPath, DatasetVersion datasetVersion);
-
-
-  /**
-   * Get the number of jobs run sorted by job type given a date range
-   *
-   * @param startDate Start date (inclusive)
-   * @param endDate   End date (inclusive)
-   * @return The count of jobs.
-   */
-  List<JobTypeStats> getJobStats(long startDate, long endDate);
-
-  /**
-   * Get list of jobs run for a given path.
-   *
-   * @param datasetPath Path of Dataset
-   * @return The list of jobs.
-   */
-  Iterable<Job> getJobsForDataset(NamespaceKey datasetPath, int limit);
-
-  /**
-   * Get list of jobs run for a given path and version.
-   * <p>
-   * Sorted in descending order by:
-   * - START_TIME
-   * - FINISH_TIME
-   * - JOBID
-   *
-   * @param datasetPath Path of dataset
-   * @param version     Version for dataset (or null for all versions)
-   * @return The list of jobs.
-   */
-  Iterable<Job> getJobsForDataset(NamespaceKey datasetPath, DatasetVersion version, int limit);
-
-  /**
-   * Get list of jobs run for a given path and version and user
-   *
-   * @param datasetPath
-   * @param version
-   * @param user
-   * @param limit
-   * @return
-   */
-  Iterable<Job> getJobsForDataset(NamespaceKey datasetPath, DatasetVersion version, String user, int limit);
+  Iterable<JobSummary> searchJobs(SearchJobsRequest request);
 
   /**
    * Get list of jobs that have the provided parent
    *
-   * @param datasetPath the path of the parent
+   * @param jobsForParentRequest
    * @return the corresponding jobs
    */
-  Iterable<Job> getJobsForParent(NamespaceKey datasetPath, int limit);
+  Iterable<JobDetails> getJobsForParent(JobsWithParentDatasetRequest jobsForParentRequest);
 
 
   /**
    * Retrieve the query profile of jobId and attempt
    *
-   * @param jobId
-   * @param attempt attempt number
+   * @param queryProfileRequest request for QueryProfile
    * @return
    */
-  QueryProfile getProfile(JobId jobId, int attempt) throws JobNotFoundException;
-
+  QueryProfile getProfile(QueryProfileRequest queryProfileRequest) throws JobNotFoundException;
   /**
    * Cancel the provided jobId as the provided user.
    *
-   * @param username The user causing the cancellation (to be used for security verification)
-   * @param jobId    The job id to cancel
-   * @param reason   Reason why job is cancelled
-   * @return The outcome of the cancellation attempt. (Cancellation is asynchronous.)
+   * Cancellation is asynchronous.
+   *
+   * @param request cancellation request
    */
-  void cancel(String username, JobId jobId, String reason) throws JobException;
+  void cancel(CancelJobRequest request) throws JobException;
 
   /**
    * Register a listener that listens for events associated with a particular job.
@@ -203,6 +121,12 @@ public interface JobsService extends Service {
    * @param listener The listener to be informed of job update events.
    */
   void registerListener(JobId jobId, ExternalStatusListener listener);
+
+  /**
+   * Get the Jobs client currently attached to this JobsService.
+   * @return Jobs Client
+   */
+  JobsClient getJobsClient();
 }
 
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,11 +15,11 @@
  */
 package com.dremio.exec.rpc;
 
+import com.google.common.util.concurrent.ListenableFuture;
+
 import io.netty.buffer.ByteBuf;
 
-import com.google.common.util.concurrent.CheckedFuture;
-
-public interface RpcFuture<T> extends CheckedFuture<T,RpcException> {
+public interface RpcFuture<T> extends ListenableFuture<T> {
   static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(RpcFuture.class);
 
   public ByteBuf getBuffer();

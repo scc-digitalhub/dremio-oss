@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,14 +22,20 @@ import java.sql.ResultSet;
 import java.sql.Statement;
 import java.sql.Types;
 import java.util.TimeZone;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.Ignore;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TestRule;
 
+import com.dremio.common.util.TestTools;
 import com.google.common.base.Function;
 
 public class TestJdbcQuery extends JdbcTestQueryBase {
 //  private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(TestJdbcQuery.class);
+  @Rule
+  public TestRule TIMEOUT = TestTools.getTimeoutRule(70, TimeUnit.SECONDS);
 
   // TODO:  Purge nextUntilEnd(...) and calls when remaining fragment race
   // conditions are fixed (not just DRILL-2245 fixes).

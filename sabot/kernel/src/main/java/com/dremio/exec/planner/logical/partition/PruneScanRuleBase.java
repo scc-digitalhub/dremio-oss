@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import javax.annotation.Nullable;
@@ -62,6 +63,8 @@ import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexUtil;
+import org.apache.calcite.sql.SqlKind;
+import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.util.BitSets;
 
 import com.dremio.common.expression.CompleteType;
@@ -72,6 +75,7 @@ import com.dremio.common.types.TypeProtos.MajorType;
 import com.dremio.common.types.Types;
 import com.dremio.datastore.SearchQueryUtils;
 import com.dremio.datastore.SearchTypes.SearchQuery;
+import com.dremio.exec.catalog.StoragePluginId;
 import com.dremio.exec.catalog.conf.SourceType;
 import com.dremio.exec.expr.ExpressionTreeMaterializer;
 import com.dremio.exec.expr.HashVisitor;
@@ -98,8 +102,8 @@ import com.dremio.service.Pointer;
 import com.dremio.service.namespace.NamespaceException;
 import com.dremio.service.namespace.PartitionChunkMetadata;
 import com.dremio.service.namespace.dataset.proto.PartitionProtobuf.PartitionValue;
+import com.github.slugify.Slugify;
 import com.google.common.base.Function;
-import com.google.common.base.Preconditions;
 import com.google.common.base.Predicate;
 import com.google.common.base.Stopwatch;
 import com.google.common.collect.ArrayListMultimap;
@@ -114,6 +118,7 @@ import com.google.common.collect.Maps;
 public abstract class PruneScanRuleBase<T extends ScanRelBase & PruneableScan> extends RelOptRule {
   static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(PruneScanRuleBase.class);
 
+  private static final Slugify SLUGIFY = new Slugify();
   private static final long MIN_TO_LOG_INFO_MS = 10000;
 
   public static final int PARTITION_BATCH_SIZE = Character.MAX_VALUE;
@@ -172,6 +177,12 @@ public abstract class PruneScanRuleBase<T extends ScanRelBase & PruneableScan> e
   }
 
   public static class PruneScanRuleFilterOnProject<T extends ScanRelBase & PruneableScan> extends PruneScanRuleBase<T> {
+    public PruneScanRuleFilterOnProject(StoragePluginId pluginId, Class<T> clazz, OptimizerRulesContext optimizerContext) {
+      super(pluginId.getType(), RelOptHelper.some(FilterRel.class, RelOptHelper.some(ProjectRel.class, RelOptHelper.any(clazz))),
+        pluginId.getType().value() + "NewPruneScanRule:Filter_On_Project."
+          + SLUGIFY.slugify(pluginId.getName()) + "." + UUID.randomUUID().toString(), optimizerContext);
+    }
+
     public PruneScanRuleFilterOnProject(SourceType pluginType, Class<T> clazz, OptimizerRulesContext optimizerContext) {
       super(pluginType, RelOptHelper.some(FilterRel.class, RelOptHelper.some(ProjectRel.class, RelOptHelper.any(clazz))),
           pluginType.value() + "NewPruneScanRule:Filter_On_Project", optimizerContext);
@@ -204,6 +215,12 @@ public abstract class PruneScanRuleBase<T extends ScanRelBase & PruneableScan> e
   }
 
   public static class PruneScanRuleFilterOnScan<T extends ScanRelBase & PruneableScan> extends PruneScanRuleBase<T> {
+    public PruneScanRuleFilterOnScan(StoragePluginId pluginId, Class<T> clazz, OptimizerRulesContext optimizerContext) {
+      super(pluginId.getType(), RelOptHelper.some(FilterRel.class, RelOptHelper.any(clazz)),
+        pluginId.getType().value() + "NewPruneScanRule:Filter_On_Scan."
+          + SLUGIFY.slugify(pluginId.getName()) + "." + UUID.randomUUID().toString(), optimizerContext);
+    }
+
     public PruneScanRuleFilterOnScan(SourceType pluginType, Class<T> clazz, OptimizerRulesContext optimizerContext) {
       super(pluginType, RelOptHelper.some(FilterRel.class, RelOptHelper.any(clazz)), pluginType.value() + "NewPruneScanRule:Filter_On_Scan", optimizerContext);
     }
@@ -245,20 +262,32 @@ public abstract class PruneScanRuleBase<T extends ScanRelBase & PruneableScan> e
     final FindSimpleFilters.StateHolder holder = pruneCondition.accept(new FindSimpleFilters(builder, true));
     TableMetadata datasetPointer = scanRel.getTableMetadata();
 
-    if(!holder.hasConditions()){
+    // index based matching does not support decimals, the values(literal/index) are not scaled
+    // at this point. TODO : DX-17748
+    Pointer<Boolean> hasDecimalCols = new Pointer<>(false);
+    holder.getConditions().stream().forEach(condition -> condition.getOperands().stream().forEach(
+            (operand -> {
+              if(operand.getKind().equals(SqlKind.INPUT_REF) && operand.getType().getSqlTypeName
+                      ().equals(SqlTypeName.DECIMAL)){
+                hasDecimalCols.value = true;
+              }
+            })));
+
+
+    if(!holder.hasConditions() || hasDecimalCols.value) {
       datasetOutput.value = datasetPointer;
       outputCondition.value = pruneCondition;
       return false;
     }
 
     final ImmutableList<RexCall> conditions = holder.getConditions();
-    final RelDataType rowType = filterRel.getRowType();
+    final RelDataType incomingRowType = scanRel.getRowType();
     final List<FilterProperties> filters = FluentIterable
       .from(conditions)
       .transform(new Function<RexCall, ParquetFilterCondition.FilterProperties>() {
         @Override
         public ParquetFilterCondition.FilterProperties apply(RexCall input) {
-          return new FilterProperties(input, rowType);
+          return new FilterProperties(input, incomingRowType);
         }
       }).toList();
 
@@ -500,7 +529,8 @@ public abstract class PruneScanRuleBase<T extends ScanRelBase & PruneableScan> e
 
       // do index-based pruning
       Stopwatch stopwatch = Stopwatch.createStarted();
-      final boolean sargPruned = doSargPruning(filterRel, pruneCondition, scanRel, fieldMap, dataset, outputCondition);
+      boolean sargPruned = doSargPruning(filterRel, pruneCondition, scanRel, fieldMap,
+                dataset, outputCondition);
       stopwatch.stop();
       logger.debug("Partition pruning using search index took {} ms", stopwatch.elapsed(TimeUnit.MILLISECONDS));
       final boolean evalPruned;
@@ -703,7 +733,6 @@ public abstract class PruneScanRuleBase<T extends ScanRelBase & PruneableScan> e
         DecimalVector decimal = (DecimalVector) vv;
         if(pv.hasBinaryValue()){
           byte[] bytes = pv.getBinaryValue().toByteArray();
-          Preconditions.checkArgument(bytes.length == 16, "Expected 16 bytes, received %d", bytes.length);
           /* set the bytes in LE format in the buffer of decimal vector, we will swap
            * the bytes while writing into the vector.
            */

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,10 +16,10 @@
 package com.dremio.dac.resource;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
@@ -34,22 +34,23 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.dremio.common.exceptions.UserException;
+import com.dremio.common.util.DremioVersionInfo;
 import com.dremio.dac.annotations.RestResource;
 import com.dremio.dac.annotations.Secured;
-import com.dremio.dac.model.job.JobDataFragment;
-import com.dremio.dac.model.job.JobUI;
-import com.dremio.dac.proto.model.system.NodeInfo;
+import com.dremio.dac.model.system.Nodes.NodeInfo;
+import com.dremio.dac.server.BufferAllocatorFactory;
 import com.dremio.exec.proto.CoordinationProtos.NodeEndpoint;
 import com.dremio.exec.server.ClusterResourceInformation;
 import com.dremio.exec.server.SabotContext;
-import com.dremio.service.job.proto.QueryType;
-import com.dremio.service.jobs.JobRequest;
+import com.dremio.exec.server.options.ProjectOptionManager;
+import com.dremio.exec.store.sys.NodeInstance;
+import com.dremio.exec.work.NodeStatsListener;
+import com.dremio.service.executor.ExecutorServiceClientFactory;
 import com.dremio.service.jobs.JobsService;
-import com.dremio.service.jobs.NoOpJobStatusListener;
-import com.dremio.service.jobs.SqlQuery;
+import com.dremio.services.fabric.api.FabricService;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
-
+import com.google.protobuf.Empty;
 
 /**
  * Resource for system info
@@ -58,19 +59,34 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 @Secured
 @RolesAllowed({"admin", "user"})
 @Path("/system")
-public class SystemResource {
+public class SystemResource extends BaseResourceWithAllocator {
 
   private static final Logger logger = LoggerFactory.getLogger(SystemResource.class);
 
   private final Provider<JobsService> jobsService;
   private final SecurityContext securityContext;
   private final Provider<SabotContext> context;
+  private final Provider<FabricService> fabric;
+  private final ProjectOptionManager projectOptionManager;
+  private final Provider<ExecutorServiceClientFactory> executorServiceClientFactoryProvider;
 
   @Inject
-  public SystemResource(Provider<SabotContext> context, Provider<JobsService> jobsService, SecurityContext securityContext) {
+  public SystemResource (
+    Provider<SabotContext> context,
+    Provider<FabricService> fabric,
+    Provider<JobsService> jobsService,
+    Provider<ExecutorServiceClientFactory> executorServiceClientFactoryProvider,
+    SecurityContext securityContext,
+    BufferAllocatorFactory allocatorFactory,
+    ProjectOptionManager projectOptionManager
+  ) {
+    super(allocatorFactory);
     this.jobsService = jobsService;
     this.securityContext = securityContext;
     this.context = context;
+    this.fabric = fabric;
+    this.projectOptionManager = projectOptionManager;
+    this.executorServiceClientFactoryProvider = executorServiceClientFactoryProvider;
   }
 
   @GET
@@ -82,7 +98,7 @@ public class SystemResource {
 
     ResourceInfo result;
     result = new ResourceInfo(clusterResourceInformation.getAverageExecutorMemory(),
-      clusterResourceInformation.getAverageExecutorCores(context.get().getOptionManager()),
+      clusterResourceInformation.getAverageExecutorCores(projectOptionManager),
       clusterResourceInformation.getExecutorNodeCount());
     return result;
   }
@@ -123,116 +139,68 @@ public class SystemResource {
   @Path("/nodes")
   @Produces(MediaType.APPLICATION_JSON)
   public List<NodeInfo> getNodes(){
-
-
-    List<NodeInfo> result = new ArrayList<>();
-    Map<String, NodeEndpoint> map = new HashMap<>();
+    final List<NodeInfo> result = new ArrayList<>();
+    final Map<String, NodeEndpoint> map = new HashMap<>();
 
     // first get the coordinator nodes (in case there are no executors running)
     for(NodeEndpoint ep : context.get().getCoordinators()){
       map.put(ep.getAddress() + ":" + ep.getFabricPort(), ep);
-      logger.info("address: " + ep.getAddress() + " fabric port: " + ep.getFabricPort());
     }
 
     // try to get any executor nodes, but don't throw a UserException if we can't find any
     try {
-      String sql = "select\n" +
-        "   'green' as status,\n" +
-        "   nodes.hostname name,\n" +
-        "   nodes.ip_address ip,\n" +
-        "   nodes.fabric_port port,\n" +
-        "   cpu cpu,\n" +
-        "   memory memory \n" +
-        "from\n" +
-        "   sys.nodes,\n" +
-        "   (select\n" +
-        "      hostname,\n" +
-        "      fabric_port,\n" +
-        "      sum(cast(cpuTime as float) / cores) cpu \n" +
-        "   from\n" +
-        "      sys.threads \n" +
-        "   group by\n" +
-        "      hostname,\n" +
-        "      fabric_port) cpu,\n" +
-        "   (select\n" +
-        "      hostname,\n" +
-        "      fabric_port,\n" +
-        "      direct_current * 100.0 / direct_max as memory \n" +
-        "   from\n" +
-        "      sys.memory) memory  \n" +
-        "where\n" +
-        "   nodes.hostname = cpu.hostname \n" +
-        "   and nodes.fabric_port = cpu.fabric_port  \n" +
-        "   and nodes.hostname = memory.hostname \n" +
-        "   and nodes.fabric_port = memory.fabric_port \n" +
-        "order by\n" +
-        "   name,\n" +
-        "   port";
+      NodeStatsListener nodeStatsListener = new NodeStatsListener(context.get().getExecutors().size());
+      context.get().getExecutors().forEach(
+        ep -> {
 
-      // TODO: Truncate the results to 500, this will change in DX-3333
-      final JobDataFragment pojo = JobUI.getJobData(
-        jobsService.get().submitJob(
-          JobRequest.newBuilder()
-            .setSqlQuery(new SqlQuery(sql, Collections.singletonList("sys"), securityContext))
-            .setQueryType(QueryType.UI_INTERNAL_RUN)
-            .build(),
-          NoOpJobStatusListener.INSTANCE)
-      ).truncate(500);
+          executorServiceClientFactoryProvider.get().getClientForEndpoint(ep).getNodeStats(Empty.newBuilder().build(),
+                  nodeStatsListener);
+        }
+      );
+
+      try {
+        nodeStatsListener.waitForFinish();
+      } catch (Exception ex) {
+        throw UserException.connectionError(ex).message("Error while collecting node statistics")
+          .build(logger);
+      }
+
+      ConcurrentHashMap<String, NodeInstance> nodeStats = nodeStatsListener.getResult();
 
       for (NodeEndpoint ep : context.get().getExecutors()) {
         map.put(ep.getAddress() + ":" + ep.getFabricPort(), ep);
       }
 
-      for (int i = 0; i < pojo.getReturnedRowCount(); i++) {
-
-        String name = pojo.extractString("name", i);
-        String port = pojo.extractString("port", i);
-        String key = name + ":" + port;
-        NodeEndpoint ep = map.remove(key);
+      for (Map.Entry<String, NodeInstance> statsEntry : nodeStats.entrySet()) {
+        NodeInstance stat = statsEntry.getValue();
+        NodeEndpoint ep = map.remove(statsEntry.getKey());
         if (ep == null) {
-          logger.warn("Unable to find node with identity: {}", key);
+          logger.warn("Unable to find node with identity: {}", statsEntry.getKey());
           continue;
         }
-
-        NodeInfo nodeInfo = new NodeInfo();
-        boolean exec = ep.getRoles().getJavaExecutor();
-        boolean coord = ep.getRoles().getSqlQuery();
-
-        port = Integer.toString(ep.getUserPort());
-        if (exec && coord) {
-          name += " (c + e)";
-        } else if (exec) {
-          name += " (e)";
-        } else {
-          name += " (c)";
-        }
-
-
-        nodeInfo.setName(name);
-        nodeInfo.setIp(pojo.extractString("ip", i));
-        nodeInfo.setCpu(pojo.extractString("cpu", i));
-        nodeInfo.setPort(port);
-        nodeInfo.setMemory(pojo.extractString("memory", i));
-        nodeInfo.setStatus(pojo.extractString("status", i));
-        result.add(nodeInfo);
+        result.add(NodeInfo.fromNodeInstance(stat));
       }
     } catch (UserException e) {
       logger.warn(e.getMessage());
-    } catch (Exception e) {
-      throw e;
     }
 
-    List<NodeInfo> finalList = new ArrayList<>();
+    final List<NodeInfo> finalList = new ArrayList<>();
 
-    for(NodeEndpoint ep : map.values()){
-      NodeInfo nodeInfo = new NodeInfo();
-      nodeInfo.setName(ep.getAddress() + " (c)");
-      nodeInfo.setIp(ep.getAddress());
-      nodeInfo.setCpu("0");
-      nodeInfo.setPort(Integer.toString(ep.getUserPort()));
-      nodeInfo.setMemory("0");
-      nodeInfo.setStatus("green");
-      nodeInfo.setCpu("0");
+    for (NodeEndpoint ep : map.values()){
+      NodeInfo nodeInfo = new NodeInfo(
+        ep.getAddress() + " (c)",
+        ep.getAddress(),
+        ep.getAddress(),
+        ep.getUserPort(),
+        0d,
+        0d,
+        "green",
+        true,
+        false,
+        ep.getNodeTag(),
+        DremioVersionInfo.getVersion(),
+        ep.getStartTime()
+      );
       finalList.add(nodeInfo);
     }
 

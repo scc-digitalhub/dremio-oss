@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 package com.dremio.sabot.op.common.ht2;
 
 import org.apache.arrow.memory.BufferAllocator;
+import org.apache.arrow.memory.util.LargeMemoryUtil;
 
 import com.dremio.common.util.Numbers;
 import com.google.common.annotations.VisibleForTesting;
@@ -71,6 +72,11 @@ public class FixedBlockVector implements AutoCloseable {
     if(count > capacity){
       resizeBuffer(count);
     }
+  }
+
+  // Compute the direct memory required for one fixed block.
+  public static int computeSizeForSingleBlock(final int batchSize, final int blockWidth) {
+    return Numbers.nextPowerOfTwo(Numbers.nextPowerOfTwo(batchSize) * blockWidth);
   }
 
   private void resizeBuffer(int newCapacity) {
@@ -129,10 +135,10 @@ public class FixedBlockVector implements AutoCloseable {
   }
 
   public int getBufferLength() {
-    return buf.writerIndex();
+    return LargeMemoryUtil.checkedCastToInt(buf.writerIndex());
   }
 
   int getCapacity() {
-    return buf != null ? buf.capacity() : 0;
+    return buf != null ? LargeMemoryUtil.checkedCastToInt(buf.capacity()) : 0;
   }
 }

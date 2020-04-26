@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,15 +22,17 @@ import { connect } from 'react-redux';
 import { loadProvision, removeProvision, openAddProvisionModal, openEditProvisionModal, editProvision }
   from 'actions/resources/provisioning';
 import { showConfirmationDialog } from 'actions/confirmation';
+import { addNotification } from '@app/actions/notification';
 import { getViewState } from 'selectors/resources';
 import { getAllProvisions } from 'selectors/provision';
-import { PROVISION_MANAGERS } from 'constants/provisioningPage/provisionManagers';
+import { PROVISION_MANAGERS } from 'dyn-load/constants/provisioningPage/provisionManagers';
 import Header from 'pages/AdminPage/components/Header';
 import ViewStateWrapper from 'components/ViewStateWrapper';
 import Button from 'components/Buttons/Button';
 import * as ButtonTypes from 'components/Buttons/ButtonTypes';
 import { formDescription } from 'uiTheme/radium/typography';
 import { page, pageContent } from 'uiTheme/radium/general';
+import ApiUtils from 'utils/apiUtils/apiUtils';
 
 import ClusterListView from './ClusterListView';
 import SelectClusterType from './SelectClusterType';
@@ -48,16 +50,17 @@ export class ProvisioningPage extends Component {
     openAddProvisionModal: PropTypes.func,
     openEditProvisionModal: PropTypes.func,
     showConfirmationDialog: PropTypes.func,
+    addNotification: PropTypes.func,
     editProvision: PropTypes.func
   };
 
   state = {
     showProvisionList: false
-  }
+  };
 
-  pollId = 0
+  pollId = 0;
 
-  _isUnmounted = false
+  _isUnmounted = false;
 
   componentWillMount() {
     this.startPollingProvisionData(true);
@@ -69,32 +72,38 @@ export class ProvisioningPage extends Component {
   }
 
   removeProvision = (entity) => {
-    this.props.removeProvision(entity.get('id'), VIEW_ID).then(() => {
-      this.props.loadProvision('yarn', VIEW_ID);
+    ApiUtils.attachFormSubmitHandlers(
+      this.props.removeProvision(entity.get('id'), VIEW_ID)
+    ).then(() => {
+      this.props.loadProvision(null, VIEW_ID);
+    }).catch(e => {
+      const message = e &&  e._error && e._error.message;
+      const errorMessage = message && message.get('errorMessage') || la('Failed to remove provision');
+      this.props.addNotification(<span>{errorMessage}</span>, 'error');
     });
-  }
+  };
 
   handleRemoveProvision = (entity) => {
     this.props.showConfirmationDialog({
-      title: la('Remove Cluster'),
-      text: la('Are you sure you want to remove this cluster?'),
+      title: la('Remove Engine'),
+      text: la('Are you sure you want to remove this engine?'),
       confirmText: la('Remove'),
       confirm: () => this.removeProvision(entity)
     });
-  }
+  };
 
   handleStopProvision = (confirmCallback) => {
     this.props.showConfirmationDialog({
-      title: la('Stop Cluster'),
+      title: la('Stop Engine'),
       text: [
         la('Existing jobs will be halted.'),
-        la('Are you sure you want to stop the cluster?')
+        la('Are you sure you want to stop the engine?')
       ],
-      cancelText: la('Don\'t Stop Cluster'),
-      confirmText: la('Stop Cluster'),
+      cancelText: la('Don\'t Stop Engine'),
+      confirmText: la('Stop Engine'),
       confirm: confirmCallback
     });
-  }
+  };
 
   // todo: consolidate with handleEditProvision
   handleChangeProvisionState = (desiredState, entity, viewId) => {
@@ -115,19 +124,24 @@ export class ProvisioningPage extends Component {
     } else {
       commitChange();
     }
-  }
+  };
 
   handleEditProvision = (entity) => {
     this.props.openEditProvisionModal(entity.get('id'), entity.get('clusterType'));
-  }
+  };
 
   openAddProvisionModal = () => {
-    this.props.openAddProvisionModal(null);
-  }
+    // use cluster type to open form for this type if there is only one choice
+    let clusterType = null;
+    if (PROVISION_MANAGERS.length === 1) {
+      clusterType = PROVISION_MANAGERS[0].clusterType;
+    }
+    this.props.openAddProvisionModal(clusterType);
+  };
 
   handleSelectClusterType = (clusterType) => {
     this.props.openAddProvisionModal(clusterType);
-  }
+  };
 
   stopPollingProvisionData() {
     clearTimeout(this.pollId);
@@ -140,8 +154,8 @@ export class ProvisioningPage extends Component {
         this.pollId = setTimeout(this.startPollingProvisionData, PROVISION_POLL_INTERVAL);
       }
     };
-    this.props.loadProvision('yarn', VIEW_ID).then(pollAgain, pollAgain);
-  }
+    this.props.loadProvision(null, VIEW_ID).then(pollAgain, pollAgain);
+  };
 
   renderContent(isInFirstLoad) {
     const { viewState, provisions } = this.props;
@@ -180,7 +194,7 @@ export class ProvisioningPage extends Component {
     />;
     return (
       <div id='admin-provisioning' style={page}>
-        <Header title={la('Provisioning')} endChildren={addNewButton} />
+        <Header title={la('Elastic Engines')} endChildren={addNewButton}/>
         <ViewStateWrapper
           viewState={viewState}
           style={pageContent}
@@ -207,6 +221,7 @@ export default connect(mapStateToProps, {
   openAddProvisionModal,
   openEditProvisionModal,
   showConfirmationDialog,
+  addNotification,
   editProvision
 })(ProvisioningPage);
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -67,6 +67,7 @@ describe('performTransform saga', () => {
       next = gen.next(); // getFetchDatasetMetaAction call
       next = gen.next({ apiAction }); // cancelDataLoad call
       expect(next.value).to.be.eql(call(cancelDataLoad));
+      next = gen.next(); // initializeExploreJobProgress
       next = gen.next(); // transformThenNavigate call
       expect(next.value).to.be.eql(call(transformThenNavigate, apiAction, undefined, undefined));
       next = gen.next(datasetResponse); // loadTableData call
@@ -296,16 +297,17 @@ describe('performTransform saga', () => {
       });
 
       it('should call loadDataset if it is existent dataset without transformation is passed as argument along with forceDataLoad = true', () => {
+        const forceDataLoad = true;
         gen = getFetchDatasetMetaAction({
           isRun: false,
           dataset,
           currentSql,
           queryContext,
           viewId,
-          forceDataLoad: true
+          forceDataLoad
         });
         goToTransformData();
-        expect(next.value).to.be.eql(call(loadDataset, dataset, viewId));
+        expect(next.value).to.be.eql(call(loadDataset, dataset, viewId, forceDataLoad));
 
         const mockApiAction = 'mock api call';
         next = gen.next(mockApiAction);

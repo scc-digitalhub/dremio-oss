@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,11 +15,11 @@
  */
 package com.dremio.service.reflection.proto;
 
-import "../../../../../services/jobs/src/main/protobuf/job.proto";
+import "job.proto";
 
 import "reflection-common.proto";
 import "reflection-intent.proto";
-import "../../../../../services/namespace/src/main/protobuf/dataset.proto";
+import "dataset.proto";
 
 option java_package = "com.dremio.service.reflection.proto";
 option optimize_for = SPEED;

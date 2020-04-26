@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,9 +15,16 @@
  */
 package com.dremio.service;
 
+import com.google.inject.Injector;
+
 /**
  * Something that allows bindings to be created and provided.
  */
 public interface Binder extends BindingCreator, BindingProvider {
-
+  /**
+   * Temporary way to register a Guice Injector with Binder as a fallback mechanism
+   *
+   * @param injector the Guice instance to use as an fallback
+   */
+  void registerGuiceInjector(Injector injector);
 }

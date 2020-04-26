@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 package com.dremio.common.memory;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.memory.OutOfMemoryException;
@@ -56,9 +57,10 @@ public class TestRootAllocator {
     try {
       return alloc.buffer(requestSize);
     } catch (OutOfMemoryException e) {
-      UserException.Builder b = UserException.memoryError(e);
-      rootAllocator.addUsageToExceptionContext(b);
-      throw b.build(logger);
+      throw UserException
+        .memoryError(e)
+        .addContext(MemoryDebugInfo.getDetailsOnAllocationFailure(e, alloc))
+        .build(logger);
     }
   }
 
@@ -69,7 +71,7 @@ public class TestRootAllocator {
   public void testRootWithChildrenLimit() throws Exception {
     thrownException.expect(new UserExceptionMatcher(UserBitShared.DremioPBError.ErrorType.OUT_OF_MEMORY,
       "Query was cancelled because it exceeded the memory limits set by the administrator.",
-      "Allocator(ROOT)", "Allocator(child1)", "Allocator(child2)"));
+      "Allocator(child1)"));
     try (BufferAllocator child1 = rootAllocator.newChildAllocator("child1", 0, 4 * 1024);
          BufferAllocator child2 = rootAllocator.newChildAllocator("child2", 0, 8 * 1024)) {
       allocateHelper(child1, 8 * 1024);
@@ -108,6 +110,16 @@ public class TestRootAllocator {
   }
 
   @Test
+  public void ensureZeroBufferIsValid() throws Exception {
+    try(RollbackCloseable closeables = new RollbackCloseable(true)) {
+      BufferAllocator alloc = closeables.add(this.rootAllocator.newChildAllocator("child", 0, Long.MAX_VALUE));
+      ArrowBuf buffer = alloc.buffer(0);
+      assertTrue(buffer.memoryAddress() != 0);
+      closeables.add(buffer);
+    }
+  }
+
+  @Test
   public void ensureZeroAfterFailedAlloc() throws Exception {
     try(RollbackCloseable closeables = new RollbackCloseable(true)) {
       BufferAllocator alloc = closeables.add(this.rootAllocator.newChildAllocator("child", 0, 1));
@@ -128,10 +140,10 @@ public class TestRootAllocator {
     thrownException.expect(new UserExceptionMatcher(UserBitShared.DremioPBError.ErrorType.OUT_OF_MEMORY,
       "Query was cancelled because it exceeded the memory limits set by the administrator.",
       "Allocator(ROOT)", "Allocator(child1)", "Allocator(child2)"));
-    try (BufferAllocator child1 = rootAllocator.newChildAllocator("child1", 0, 12 * 1024);
-         BufferAllocator child2 = rootAllocator.newChildAllocator("child2", 0, 12 * 1024);
+    try (BufferAllocator child1 = rootAllocator.newChildAllocator("child1", 0, 16 * 1024);
+         BufferAllocator child2 = rootAllocator.newChildAllocator("child2", 0, 16 * 1024);
          ArrowBuf buf1 = allocateHelper(child1,8 * 1024)) {
-      allocateHelper(child2, 10 * 1024);
+      allocateHelper(child2, 16 * 1024);
     }
   }
 
@@ -143,11 +155,11 @@ public class TestRootAllocator {
     thrownException.expect(new UserExceptionMatcher(UserBitShared.DremioPBError.ErrorType.OUT_OF_MEMORY,
       "Query was cancelled because it exceeded the memory limits set by the administrator.",
       "Allocator(ROOT)", "Allocator(child1)", "Allocator(child2)"));
-    try (BufferAllocator child1 = rootAllocator.newChildAllocator("child1", 0, 12 * 1024);
-         BufferAllocator child2 = rootAllocator.newChildAllocator("child2", 0, 12 * 1024)) {
-      try (BufferAllocator child11 = child1.newChildAllocator("child11", 0, 8 * 1024);
-           BufferAllocator child21 = child2.newChildAllocator("child21", 0, 8 * 1024)) {
-          allocateHelper(child21, 10 * 1024);
+    try (BufferAllocator child1 = rootAllocator.newChildAllocator("child1", 0, 32 * 1024);
+         BufferAllocator child2 = rootAllocator.newChildAllocator("child2", 0, 32 * 1024)) {
+      try (BufferAllocator child11 = child1.newChildAllocator("child11", 0, 32 * 1024);
+           BufferAllocator child21 = child2.newChildAllocator("child21", 0, 32 * 1024)) {
+          allocateHelper(child21, 32 * 1024);
       }
     }
   }

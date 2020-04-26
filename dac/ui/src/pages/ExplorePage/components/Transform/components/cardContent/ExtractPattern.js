@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -94,7 +94,7 @@ class ExtractPattern extends Component {
             items={this.items}
             style={{width: 200, ...bodySmall}}
             {...value.value}
-            />
+          />
           {(value.value.value === 'CAPTURE_GROUP' || value.value.value === 'INDEX') &&
           <FieldWithError {...value.index} errorPlacement='right'>
             <input
@@ -103,14 +103,14 @@ class ExtractPattern extends Component {
               style={[styles.input, {marginLeft: 10, width: 100}]}
               {...value.index}/>
           </FieldWithError>
-            }
+          }
         </div>
         <div style={styles.item}>
           <FieldWithError
             {...pattern}
             errorPlacement='bottom'
             label='Regular Expression'
-            >
+          >
             <TextField
               data-qa='PatternExpression'
               {...pattern}

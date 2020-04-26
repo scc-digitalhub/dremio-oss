@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,22 +29,22 @@ import org.apache.arrow.vector.SimpleIntVector;
 import org.apache.arrow.vector.ValueVector;
 import org.apache.arrow.vector.complex.impl.VectorContainerWriter;
 import org.apache.arrow.vector.types.Types.MinorType;
+import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.commons.collections.CollectionUtils;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
 import org.apache.parquet.column.ColumnDescriptor;
 import org.apache.parquet.column.ColumnReader;
+import org.apache.parquet.compression.CompressionCodecFactory;
 import org.apache.parquet.filter.RecordFilter;
 import org.apache.parquet.filter.UnboundRecordFilter;
-import org.apache.parquet.hadoop.CodecFactory;
 import org.apache.parquet.hadoop.ColumnChunkIncReadStore;
 import org.apache.parquet.hadoop.metadata.BlockMetaData;
 import org.apache.parquet.hadoop.metadata.ColumnChunkMetaData;
 import org.apache.parquet.hadoop.metadata.ColumnPath;
 import org.apache.parquet.hadoop.metadata.ParquetMetadata;
 import org.apache.parquet.io.ColumnIOFactory;
+import org.apache.parquet.io.InvalidRecordException;
 import org.apache.parquet.io.MessageColumnIO;
 import org.apache.parquet.io.RecordReader;
 import org.apache.parquet.schema.GroupType;
@@ -60,8 +60,11 @@ import com.dremio.common.expression.SchemaPath;
 import com.dremio.exec.expr.TypeHelper;
 import com.dremio.exec.store.parquet.AbstractParquetReader;
 import com.dremio.exec.store.parquet.InputStreamProvider;
+import com.dremio.exec.store.parquet.ParquetColumnResolver;
+import com.dremio.exec.store.parquet.ParquetScanProjectedColumns;
 import com.dremio.exec.store.parquet.SchemaDerivationHelper;
-import com.dremio.parquet.reader.ParquetDirectByteBufferAllocator;
+import com.dremio.io.file.FileSystem;
+import com.dremio.io.file.Path;
 import com.dremio.sabot.exec.context.OperatorContext;
 import com.dremio.sabot.op.scan.OutputMutator;
 import com.google.common.base.Preconditions;
@@ -73,9 +76,11 @@ public class ParquetRowiseReader extends AbstractParquetReader {
   private final int rowGroupIndex;
   private final String path;
   private final InputStreamProvider inputStreamProvider;
+  private final CompressionCodecFactory codec;
 
   // same as the DEFAULT_RECORDS_TO_READ_IF_NOT_FIXED_WIDTH in DeprecatedParquetVectorizedReader
 
+  private ParquetScanProjectedColumns projectedColumns;
   private ParquetMetadata footer;
   private MessageType schema;
   private FileSystem fileSystem;
@@ -85,6 +90,7 @@ public class ParquetRowiseReader extends AbstractParquetReader {
   private ParquetRecordMaterializer recordMaterializer;
   private long recordCount;
   private OperatorContext operatorContext;
+  private boolean readEvenIfSchemaChanges;
 
   // For columns not found in the file, we need to return a schema element with the correct number of values
   // at that position in the schema. Currently this requires a vector be present. Here is a list of all of these vectors
@@ -102,46 +108,41 @@ public class ParquetRowiseReader extends AbstractParquetReader {
   private VectorizedBasedFilter vectorizedBasedFilter;
 
   public ParquetRowiseReader(OperatorContext context, ParquetMetadata footer, int rowGroupIndex, String path,
-                             List<SchemaPath> columns, FileSystem fileSystem, SchemaDerivationHelper schemaHelper,
-                             SimpleIntVector deltas, InputStreamProvider inputStreamProvider) {
-    super(context, columns, deltas);
+                              ParquetScanProjectedColumns projectedColumns, FileSystem fileSystem, SchemaDerivationHelper schemaHelper,
+                              SimpleIntVector deltas, InputStreamProvider inputStreamProvider, CompressionCodecFactory codec,
+                              boolean readEvenIfSchemaChanges) {
+    super(context, projectedColumns.getBatchSchemaProjectedColumns(), deltas);
     this.footer = footer;
     this.fileSystem = fileSystem;
     this.rowGroupIndex = rowGroupIndex;
     this.path = path;
     this.schemaHelper = schemaHelper;
     this.inputStreamProvider = inputStreamProvider;
+    this.codec = codec;
+    this.projectedColumns = projectedColumns;
+    this.readEvenIfSchemaChanges = readEvenIfSchemaChanges;
   }
 
   public ParquetRowiseReader(OperatorContext context, ParquetMetadata footer, int rowGroupIndex, String path,
-                             List<SchemaPath> columns, FileSystem fileSystem, SchemaDerivationHelper schemaHelper,
-                             InputStreamProvider inputStreamProvider) {
-    this(context, footer, rowGroupIndex, path, columns, fileSystem, schemaHelper, null, inputStreamProvider);
+                             ParquetScanProjectedColumns projectedColumns, FileSystem fileSystem, SchemaDerivationHelper schemaHelper,
+                             SimpleIntVector deltas, InputStreamProvider inputStreamProvider, CompressionCodecFactory codec) {
+    this(context, footer, rowGroupIndex, path, projectedColumns, fileSystem, schemaHelper, deltas, inputStreamProvider, codec, false);
   }
 
-  /**
-   * Converts {@link ColumnDescriptor} to {@link SchemaPath} and converts any parquet LOGICAL LIST to something
-   * the execution engine can understand (removes the extra 'list' and 'element' fields from the name)
-   */
-  private static SchemaPath convertColumnDescriptor(final MessageType schema, final ColumnDescriptor columnDescriptor) {
-    List<String> path = Lists.newArrayList(columnDescriptor.getPath());
+  public ParquetRowiseReader(OperatorContext context, ParquetMetadata footer, int rowGroupIndex, String path,
+                             ParquetScanProjectedColumns projectedColumns, FileSystem fileSystem, SchemaDerivationHelper schemaHelper,
+                             InputStreamProvider inputStreamProvider, CompressionCodecFactory codec) {
+    this(context, footer, rowGroupIndex, path, projectedColumns, fileSystem, schemaHelper, null, inputStreamProvider, codec);
+  }
 
-    // go through the path and find all logical lists
-    int index = 0;
-    Type type = schema;
-    while (!type.isPrimitive()) { // don't bother checking the last element in the path as it is a primitive type
-      type = type.asGroupType().getType(path.get(index));
-      if (type.getOriginalType() == OriginalType.LIST && LogicalListL1Converter.isSupportedSchema(type.asGroupType())) {
-        // remove 'list'
-        type = type.asGroupType().getType(path.get(index+1));
-        path.remove(index+1);
-        // remove 'element'
-        type = type.asGroupType().getType(path.get(index+1));
-        path.remove(index+1);
-      }
-      index++;
-    }
+  public ParquetRowiseReader(OperatorContext context, ParquetMetadata footer, int rowGroupIndex, String path,
+                             ParquetScanProjectedColumns projectedColumns, FileSystem fileSystem, SchemaDerivationHelper schemaHelper,
+                             InputStreamProvider inputStreamProvider, CompressionCodecFactory codec, boolean readEvenIfSchemaChanges) {
+    this(context, footer, rowGroupIndex, path, projectedColumns, fileSystem, schemaHelper, null, inputStreamProvider, codec, readEvenIfSchemaChanges);
+  }
 
+  public static SchemaPath convertColumnDescriptor(ParquetColumnResolver columnResolver, final MessageType schema, final ColumnDescriptor columnDescriptor) {
+    List<String> path = columnResolver.convertColumnDescriptor(schema, columnDescriptor);
     String[] schemaColDesc = new String[path.size()];
     path.toArray(schemaColDesc);
     return SchemaPath.getCompoundPath(schemaColDesc);
@@ -149,6 +150,7 @@ public class ParquetRowiseReader extends AbstractParquetReader {
 
   private static MessageType getProjection(MessageType schema,
                                           Collection<SchemaPath> columns,
+                                          ParquetColumnResolver columnResolver,
                                           List<SchemaPath> columnsNotFound) {
     MessageType projection = null;
 
@@ -179,7 +181,7 @@ public class ParquetRowiseReader extends AbstractParquetReader {
     // to the projection columns
     List<SchemaPath> schemaPaths = Lists.newLinkedList();
     for (ColumnDescriptor columnDescriptor : schemaColumns) {
-      schemaPaths.add(convertColumnDescriptor(schema, columnDescriptor));
+      schemaPaths.add(convertColumnDescriptor(columnResolver, schema, columnDescriptor));
     }
 
     // loop through projection columns and add any columns that are missing from parquet schema to columnsNotFound list
@@ -221,6 +223,7 @@ public class ParquetRowiseReader extends AbstractParquetReader {
     try {
       this.operatorContext = context;
       schema = footer.getFileMetaData().getSchema();
+      ParquetColumnResolver columnResolver = this.projectedColumns.getColumnResolver(schema);
       Schema arrowSchema;
       try {
         arrowSchema = DremioArrowSchema.fromMetaData(footer.getFileMetaData().getKeyValueMetaData());
@@ -228,13 +231,18 @@ public class ParquetRowiseReader extends AbstractParquetReader {
         arrowSchema = null;
         logger.warn("Invalid Arrow Schema", e);
       }
+
+      if (!schemaHelper.isAllowMixedDecimals()) {
+        verifyDecimalTypesAreSame(output, columnResolver);
+      }
+
       MessageType projection;
 
       if (isStarQuery()) {
         projection = schema;
       } else {
         columnsNotFound = new ArrayList<>();
-        projection = getProjection(schema, getColumns(), columnsNotFound);
+        projection = getProjection(schema, columnResolver.getProjectedParquetColumns(), columnResolver, columnsNotFound);
         if(projection == null){
             projection = schema;
         }
@@ -246,17 +254,26 @@ public class ParquetRowiseReader extends AbstractParquetReader {
                               MinorType.INT.getType(), null),
                       (Class<? extends ValueVector>) TypeHelper.getValueVectorClass(MinorType.INT)));
           }
-          if (output.isSchemaChanged()) {
-            logger.info("Detected schema change. Not initializing further readers.");
-            return;
-          }
         }
         if(columnsNotFound.size()==getColumns().size()){
           noColumnsFound=true;
         }
       }
 
+      if(!noColumnsFound) {
+        writer = new VectorContainerWriter(output);
+        // Discard the columns not found in the schema when create ParquetRecordMaterializer, since they have been added to output already.
+        final Collection<SchemaPath> columns = columnsNotFound == null || columnsNotFound.size() == 0 ? columnResolver.getProjectedParquetColumns():
+          CollectionUtils.subtract(columnResolver.getProjectedParquetColumns(), columnsNotFound);
+        recordMaterializer = new ParquetRecordMaterializer(columnResolver, output, writer, projection, columns, context.getOptions(), arrowSchema, schemaHelper);
+      }
+
       logger.debug("Requesting schema {}", projection);
+
+      if (output.getSchemaChanged() && !readEvenIfSchemaChanges) {
+        logger.info("Detected schema change. Not initializing further readers.");
+        return;
+      }
 
       boolean schemaOnly = (operatorContext == null) || (footer.getBlocks().size() == 0);
 
@@ -268,16 +285,15 @@ public class ParquetRowiseReader extends AbstractParquetReader {
           paths.put(md.getPath(), md);
         }
 
-        Path filePath = new Path(path);
+        Path filePath = Path.of(path);
 
         BlockMetaData blockMetaData = footer.getBlocks().get(rowGroupIndex);
 
         recordCount = blockMetaData.getRowCount();
 
         pageReadStore = new ColumnChunkIncReadStore(recordCount,
-          CodecFactory.createDirectCodecFactory(fileSystem.getConf(),
-            new ParquetDirectByteBufferAllocator(operatorContext.getAllocator()), 0), operatorContext.getAllocator(),
-          fileSystem, filePath, inputStreamProvider);
+          codec, operatorContext.getAllocator(),
+          filePath, inputStreamProvider);
 
         for (String[] path : projection.getPaths()) {
           Type type = schema.getType(path);
@@ -289,24 +305,19 @@ public class ParquetRowiseReader extends AbstractParquetReader {
 
       }
 
-      if(!noColumnsFound) {
+      if (!schemaOnly && !noColumnsFound) {
         ColumnIOFactory factory = new ColumnIOFactory(false);
         MessageColumnIO columnIO = factory.getColumnIO(projection, schema);
-        writer = new VectorContainerWriter(output);
-        // Discard the columns not found in the schema when create ParquetRecordMaterializer, since they have been added to output already.
-        final Collection<SchemaPath> columns = columnsNotFound == null || columnsNotFound.size() == 0 ? getColumns(): CollectionUtils.subtract(getColumns(), columnsNotFound);
-        recordMaterializer = new ParquetRecordMaterializer(output, writer, projection, columns, context.getOptions(), arrowSchema, schemaHelper);
-        if (!schemaOnly) {
-          if (deltas != null) {
-            recordReader = columnIO.getRecordReader(pageReadStore, recordMaterializer, new UnboundRecordFilter() {
-              @Override
-              public RecordFilter bind(Iterable<ColumnReader> readers) {
-                return vectorizedBasedFilter = new VectorizedBasedFilter(readers, deltas);
-              }
-            });
-          } else {
-            recordReader = columnIO.getRecordReader(pageReadStore, recordMaterializer);
-          }
+
+        if (deltas != null) {
+          recordReader = columnIO.getRecordReader(pageReadStore, recordMaterializer, new UnboundRecordFilter() {
+            @Override
+            public RecordFilter bind(Iterable<ColumnReader> readers) {
+              return vectorizedBasedFilter = new VectorizedBasedFilter(readers, deltas);
+            }
+          });
+        } else {
+          recordReader = columnIO.getRecordReader(pageReadStore, recordMaterializer);
         }
       }
     } catch (Exception e) {
@@ -314,10 +325,44 @@ public class ParquetRowiseReader extends AbstractParquetReader {
     }
   }
 
+  private void verifyDecimalTypesAreSame(OutputMutator output, ParquetColumnResolver columnResolver) {
+    for (ValueVector vector : output.getVectors()) {
+      Field fieldInSchema = vector.getField();
+      if (fieldInSchema.getType().getTypeID() == ArrowType.ArrowTypeID.Decimal) {
+        ArrowType.Decimal typeInTable = (ArrowType.Decimal) fieldInSchema.getType();
+        Type typeInParquet = null;
+        // the field in arrow schema may not be present in hive schema
+        try {
+          typeInParquet  = schema.getType(columnResolver.getParquetColumnName(fieldInSchema.getName()));
+        } catch (InvalidRecordException e) {
+        }
+        if (typeInParquet == null) {
+          continue;
+        }
+        boolean schemaMisMatch = true;
+        OriginalType originalType = typeInParquet.getOriginalType();
+        if (originalType.equals(OriginalType.DECIMAL) ) {
+          int precision = typeInParquet
+            .asPrimitiveType().getDecimalMetadata().getPrecision();
+          int scale = typeInParquet.asPrimitiveType().getDecimalMetadata().getScale();
+          ArrowType decimalType = new ArrowType.Decimal(precision, scale);
+          if (decimalType.equals(typeInTable)) {
+            schemaMisMatch = false;
+          }
+        }
+        if (schemaMisMatch) {
+          throw UserException.schemaChangeError().message("Mixed types "+ fieldInSchema.getType()
+            + " , " + typeInParquet + " is not supported.")
+            .build(logger);
+        }
+      }
+    }
+  }
+
   protected void handleAndRaise(String s, Exception e) {
     close();
     String message = "Error in parquet reader (complex).\nMessage: " + s +
-      "\nParquet Metadata: " + footer;
+      "\nFile path: " + path + "\nParquet Metadata: " + footer;
     throw new RuntimeException(message, e);
   }
 
@@ -421,8 +466,10 @@ public class ParquetRowiseReader extends AbstractParquetReader {
 
     public void reset() {
       index = 0;
-      runningDelta = deltas.get(0);
       maxIndex = deltas.getValueCount();
+      if (maxIndex > 0) {
+        runningDelta = deltas.get(0);
+      }
     }
 
     @Override

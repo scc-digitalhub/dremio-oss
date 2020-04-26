@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -65,5 +65,19 @@ describe('ConfirmCancelFooter', () => {
     expect(wrapper.find('SimpleButton').at(1).props().submitting).to.be.false;
     wrapper.setProps({submitting: true});
     expect(wrapper.find('SimpleButton').at(1).props().submitting).to.be.true;
+  });
+
+  it('should disable submit button if canSubmit is false', () => {
+    const wrapper = shallow(<ConfirmCancelFooter {...commonProps}/>);
+    expect(wrapper.find('SimpleButton').at(1).props().disabled).to.be.false;
+    wrapper.setProps({canSubmit: false});
+    expect(wrapper.find('SimpleButton').at(1).props().disabled).to.be.true;
+  });
+
+  it('should disable cancel button if canCancel is false', () => {
+    const wrapper = shallow(<ConfirmCancelFooter {...commonProps}/>);
+    expect(wrapper.find('SimpleButton').at(0).props().disabled).to.be.false;
+    wrapper.setProps({canCancel: false});
+    expect(wrapper.find('SimpleButton').at(0).props().disabled).to.be.true;
   });
 });

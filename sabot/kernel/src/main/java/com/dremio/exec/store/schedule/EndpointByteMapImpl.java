@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,20 +19,20 @@ import java.util.Iterator;
 
 import com.carrotsearch.hppc.ObjectLongHashMap;
 import com.carrotsearch.hppc.cursors.ObjectLongCursor;
-import com.dremio.exec.proto.CoordinationProtos.NodeEndpoint;
+import com.google.common.net.HostAndPort;
 
 public class EndpointByteMapImpl implements EndpointByteMap{
   static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(EndpointByteMapImpl.class);
 
-  private final ObjectLongHashMap<NodeEndpoint> map = new ObjectLongHashMap<>();
+  private final ObjectLongHashMap<HostAndPort> map = new ObjectLongHashMap<>();
 
   private long maxBytes;
 
-  public boolean isSet(NodeEndpoint endpoint){
+  public boolean isSet(HostAndPort endpoint){
     return map.containsKey(endpoint);
   }
 
-  public long get(NodeEndpoint endpoint){
+  public long get(HostAndPort endpoint){
     return map.get(endpoint);
   }
 
@@ -40,7 +40,7 @@ public class EndpointByteMapImpl implements EndpointByteMap{
     return map.isEmpty();
   }
 
-  public void add(NodeEndpoint endpoint, long bytes){
+  public void add(HostAndPort endpoint, long bytes){
     assert endpoint != null;
     maxBytes = Math.max(maxBytes, map.putOrAdd(endpoint, bytes, bytes)+1);
   }
@@ -50,7 +50,7 @@ public class EndpointByteMapImpl implements EndpointByteMap{
   }
 
   @Override
-  public Iterator<ObjectLongCursor<NodeEndpoint>> iterator() {
+  public Iterator<ObjectLongCursor<HostAndPort>> iterator() {
     return map.iterator();
   }
 

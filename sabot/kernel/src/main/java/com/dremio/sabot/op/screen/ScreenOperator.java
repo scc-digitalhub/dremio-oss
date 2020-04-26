@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,6 +40,7 @@ public class ScreenOperator implements TerminalOperator {
   private final OperatorContext context;
   private final OperatorStats stats;
   private final AccountingExecToCoordTunnel execToCoord;
+  private final Screen config;
 
   private State state = State.NEEDS_SETUP;
   private VectorAccessible incoming;
@@ -59,6 +60,7 @@ public class ScreenOperator implements TerminalOperator {
     this.execToCoord = tunnelProvider.getCoordTunnel();
     this.context = context;
     this.stats = context.getStats();
+    this.config = operator;
   }
 
   @Override

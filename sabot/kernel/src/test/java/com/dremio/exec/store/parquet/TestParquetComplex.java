@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -266,5 +266,22 @@ public class TestParquetComplex extends BaseTestQuery {
   @Test
   public void testZeroRowParquetFile() throws Exception {
     test("select * from cp.\"store/parquet/complex/zero-rows.parquet\" p");
+  }
+
+  @Test
+  public void nestedComplexProjection() throws Exception {
+    String query = "SELECT col2, " +
+      "col1[0][0][0].\"f1\"[0][0][0] f1, " +
+      "col1[0][0][0].\"f2\".\"sub_f1\"[0][0][0] sub_f1, " +
+      "col1[0][0][0].\"f2\".\"sub_f2\"[0][0][0].\"sub_sub_f1\" sub_sub_f1, " +
+      "col1[0][0][0].\"f2\".\"sub_f2\"[0][0][0].\"sub_sub_f2\" sub_sub_f2 " +
+      "FROM cp.\"/parquet/very_complex.parquet\"";
+    testBuilder()
+      .sqlQuery(query)
+      .ordered()
+      .baselineColumns("col2", "f1", "sub_f1", "sub_sub_f1", "sub_sub_f2")
+      .baselineValues(3, 1, 2, 1, "abc")
+      .build()
+      .run();
   }
 }

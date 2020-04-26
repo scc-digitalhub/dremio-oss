@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,20 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { CALL_API } from 'redux-api-middleware';
-import { replace, push } from 'react-router-redux';
+import { RSAA } from 'redux-api-middleware';
+import { push, replace } from 'react-router-redux';
 import Immutable from 'immutable';
 import { normalize } from 'normalizr';
-
-import { API_URL_V2 } from 'constants/Api';
-import param from 'jquery-param';
 
 import schemaUtils from 'utils/apiUtils/schemaUtils';
 import jobDetailsSchema from 'schemas/jobDetails';
 import { renderQueryState, renderQueryStateForServer } from 'utils/jobsQueryState';
 import { addNotification } from 'actions/notification';
 import localStorageUtils from '@app/utils/storageUtils/localStorageUtils';
-import { addParameterToUrl } from '@app/utils/urlUtils';
+import { APIV2Call } from '@app/core/APICall';
 
 export const UPDATE_JOB_DETAILS = 'UPDATE_JOB_DETAILS';
 
@@ -55,17 +52,18 @@ export const FILTER_JOBS_FAILURE = 'FILTER_JOBS_FAILURE';
 function filterJobsAction(queryState, viewId) {
   const meta = { viewId };
   const query = renderQueryStateForServer(queryState);
-  const href = `/jobs/?${query}`;
+
+  const apiCall = new APIV2Call().fullpath(`jobs/?${query}`);
 
   return {
-    [CALL_API]:{
+    [RSAA]:{
       types: [
         {type: FILTER_JOBS_REQUEST, meta},
         {type: FILTER_JOBS_SUCCESS, meta},
         {type: FILTER_JOBS_FAILURE, meta}
       ],
       method: 'GET',
-      endpoint: `${API_URL_V2}${href}`
+      endpoint: apiCall
     }
   };
 }
@@ -81,15 +79,17 @@ export const LOAD_NEXT_JOBS_SUCCESS = 'LOAD_NEXT_JOBS_SUCCESS';
 export const LOAD_NEXT_JOBS_FAILURE = 'LOAD_NEXT_JOBS_FAILURE';
 
 function fetchNextJobs(href) {
+  const apiCall = new APIV2Call().fullpath(href);
+
   return {
-    [CALL_API]:{
+    [RSAA]:{
       types: [
         LOAD_NEXT_JOBS_REQUEST,
         LOAD_NEXT_JOBS_SUCCESS,
         LOAD_NEXT_JOBS_FAILURE
       ],
       method: 'GET',
-      endpoint: `${API_URL_V2}${href}`
+      endpoint: apiCall
     }
   };
 }
@@ -105,12 +105,12 @@ export const ITEMS_FOR_FILTER_JOBS_SUCCESS = 'ITEMS_FOR_FILTER_JOBS_SUCCESS';
 export const ITEMS_FOR_FILTER_JOBS_FAILURE = 'ITEMS_FOR_FILTER_JOBS_FAILURE';
 
 function fetchItemsForFilter(tag, filter = '', limit = '') {
-  let params = '';
-  if (filter || limit) {
-    params = param({filter, limit});
-  }
+  const apiCall = new APIV2Call()
+    .paths(`jobs/filters/${tag}`)
+    .params({filter, limit});
+
   return {
-    [CALL_API]:{
+    [RSAA]:{
       types: [
         ITEMS_FOR_FILTER_JOBS_REQUEST,
         {
@@ -120,7 +120,7 @@ function fetchItemsForFilter(tag, filter = '', limit = '') {
         ITEMS_FOR_FILTER_JOBS_FAILURE
       ],
       method: 'GET',
-      endpoint: `${API_URL_V2}/jobs/filters/${tag}${params}`
+      endpoint: apiCall
     }
   };
 }
@@ -135,24 +135,24 @@ export const JOB_DETAILS_REQUEST = 'JOB_DETAILS_REQUEST';
 export const JOB_DETAILS_SUCCESS = 'JOB_DETAILS_SUCCESS';
 export const JOB_DETAILS_FAILURE = 'JOB_DETAILS_FAILURE';
 
-function fetchJobDetails(jobId, viewId) {
+export function loadJobDetails(jobId, viewId) {
   const meta = { jobId, viewId };
+
+  const apiCall = new APIV2Call()
+    .path('job')
+    .path(jobId)
+    .path('details');
+
   return {
-    [CALL_API]:{
+    [RSAA]:{
       types: [
         {type: JOB_DETAILS_REQUEST, meta},
         schemaUtils.getSuccessActionTypeWithSchema(JOB_DETAILS_SUCCESS, jobDetailsSchema, meta),
         {type: JOB_DETAILS_FAILURE, meta}
       ],
       method: 'GET',
-      endpoint: `${API_URL_V2}/job/${jobId}/details`
+      endpoint: apiCall
     }
-  };
-}
-
-export function loadJobDetails(jobId, viewId) {
-  return (dispatch) => {
-    return dispatch(fetchJobDetails(jobId, viewId));
   };
 }
 
@@ -160,17 +160,21 @@ export const CANCEL_JOB_REQUEST = 'CANCEL_JOB_REQUEST';
 export const CANCEL_JOB_SUCCESS = 'CANCEL_JOB_SUCCESS';
 export const CANCEL_JOB_FAILURE = 'CANCEL_JOB_FAILURE';
 
-const cancelJob = (jobId) => ({
-  [CALL_API]: {
-    types: [
-      CANCEL_JOB_REQUEST,
-      CANCEL_JOB_SUCCESS,
-      CANCEL_JOB_FAILURE
-    ],
-    method: 'POST',
-    endpoint: `${API_URL_V2}/job/${jobId}/cancel`
-  }
-});
+const cancelJob = (jobId) => {
+  const apiCall = new APIV2Call().paths(`job/${jobId}/cancel`);
+
+  return {
+    [RSAA]: {
+      types: [
+        CANCEL_JOB_REQUEST,
+        CANCEL_JOB_SUCCESS,
+        CANCEL_JOB_FAILURE
+      ],
+      method: 'POST',
+      endpoint: apiCall
+    }
+  };
+};
 
 export const cancelJobAndShowNotification = (jobId) => (dispatch) => {
   return dispatch(cancelJob(jobId))
@@ -183,9 +187,10 @@ export const ASK_GNARLY_SUCCESS = 'ASK_GNARLY_SUCCESS';
 export const ASK_GNARLY_FAILURE = 'ASK_GNARLY_FAILURE';
 
 function fetchAskGnarly(jobId) {
-  const href = '/support/' + jobId;
+  const apiCall = new APIV2Call().paths(`support/${jobId}`);
+
   return {
-    [CALL_API]:{
+    [RSAA]:{
       types: [
         {
           type: ASK_GNARLY_STARTED,
@@ -223,7 +228,7 @@ function fetchAskGnarly(jobId) {
         }
       ],
       method: 'POST',
-      endpoint: `${API_URL_V2}${href}`
+      endpoint: apiCall
     }
   };
 }
@@ -236,12 +241,15 @@ export function askGnarly(jobId) {
 
 export function showJobProfile(profileUrl) {
   return (dispatch, getState) => {
+    const apiCall = new APIV2Call()
+      .fullpath(profileUrl)
+      .param('Authorization', localStorageUtils.getAuthToken());
+
     const location = getState().routing.locationBeforeTransitions;
     return dispatch(
       push({...location, state: {
         modal: 'JobProfileModal',
-        profileUrl: `${API_URL_V2}${addParameterToUrl(profileUrl, 'Authorization',
-          localStorageUtils.getAuthToken())}`
+        profileUrl: apiCall.toString()
       }})
     );
   };

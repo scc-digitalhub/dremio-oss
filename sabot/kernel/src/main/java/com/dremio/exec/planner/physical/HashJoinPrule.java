@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,6 @@ import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.util.trace.CalciteTrace;
 import org.slf4j.Logger;
 
-import com.dremio.exec.planner.common.JoinRelBase;
 import com.dremio.exec.planner.logical.JoinRel;
 import com.dremio.exec.planner.logical.RelOptHelper;
 import com.dremio.exec.work.foreman.UnsupportedRelOperatorException;
@@ -69,10 +68,10 @@ public class HashJoinPrule extends JoinPruleBase {
     try {
 
       if (isDist) {
-        createDistBothPlan(call, join, PhysicalJoinType.HASH_JOIN,
+        createDistBothPlan(call, join,
             left, right, null /* left collation */, null /* right collation */, hashSingleKey);
       } else {
-        if (checkBroadcastConditions(call.getPlanner(), join, left, right, PhysicalJoinType.HASH_JOIN)) {
+        if (checkBroadcastConditions(call.getPlanner(), join, left, right)) {
           createBroadcastPlan(call, join, join.getCondition(), left, right, null, null);
         }
       }
@@ -91,13 +90,12 @@ public class HashJoinPrule extends JoinPruleBase {
 
     final RelNode convertedLeft = convert(left, left.getTraitSet().plus(Prel.PHYSICAL));
     final RelNode convertedRight = convert(right, right.getTraitSet().plus(Prel.PHYSICAL).plus(DistributionTrait.BROADCAST));
-    call.transformTo(HashJoinPrel.create(join.getCluster(), convertedLeft.getTraitSet(), convertedLeft, convertedRight, joinCondition,
-        join.getJoinType()));
+    call.transformTo(PrelUtil.addPartialProjectOnJoin(HashJoinPrel.create(join.getCluster(), convertedLeft.getTraitSet(), convertedLeft, convertedRight, joinCondition,
+        join.getJoinType(), null), join.getProjectedFields()));
   }
 
   @Override
   protected void createDistBothPlan(RelOptRuleCall call, JoinRel join,
-                                  PhysicalJoinType physicalJoinType,
                                   RelNode left, RelNode right,
                                   RelCollation collationLeft, RelCollation collationRight,
                                   DistributionTrait hashLeftPartition, DistributionTrait hashRightPartition) throws InvalidRelException {
@@ -107,10 +105,8 @@ public class HashJoinPrule extends JoinPruleBase {
     final RelNode convertedLeft = convert(left, traitsLeft);
     final RelNode convertedRight = convert(right, traitsRight);
 
-    JoinRelBase newJoin = HashJoinPrel.create(join.getCluster(), traitsLeft,
-        convertedLeft, convertedRight, join.getCondition(),
-        join.getJoinType());
-
-    call.transformTo(newJoin);
+    call.transformTo(PrelUtil.addPartialProjectOnJoin(HashJoinPrel.create(join.getCluster(), traitsLeft,
+      convertedLeft, convertedRight, join.getCondition(),
+      join.getJoinType(), null), join.getProjectedFields()));
   }
 }

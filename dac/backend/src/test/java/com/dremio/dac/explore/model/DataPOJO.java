@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,14 +15,18 @@
  */
 package com.dremio.dac.explore.model;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import org.apache.arrow.vector.types.pojo.Field;
 
 import com.dremio.dac.model.job.JobDataFragment;
 import com.dremio.dac.proto.model.dataset.DataType;
 import com.dremio.dac.util.JSONUtil;
 import com.dremio.service.job.proto.JobId;
+import com.dremio.service.jobs.RecordBatchHolder;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -67,6 +71,15 @@ public class DataPOJO implements JobDataFragment {
   @Override
   public List<Column> getColumns() {
     return columns;
+  }
+
+  @Override
+  public List<Field> getFields() {
+    return Collections.emptyList();  }
+
+  @Override
+  public List<RecordBatchHolder> getRecordBatches() {
+    return Collections.emptyList();
   }
 
   @Override

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,7 +50,7 @@ public final class MetadataProtoUtils {
     }
 
     if (value instanceof PartitionValue.BinaryPartitionValue) {
-      builder.setBinaryValue(toProtobuf(((PartitionValue.BinaryPartitionValue) value).getValue()));
+      builder.setBinaryValue(ByteString.copyFrom(((PartitionValue.BinaryPartitionValue) value).getValue()));
     } else if (value instanceof PartitionValue.BooleanPartitionValue) {
       builder.setBitValue(((PartitionValue.BooleanPartitionValue) value).getValue());
     } else if (value instanceof PartitionValue.DoublePartitionValue) {

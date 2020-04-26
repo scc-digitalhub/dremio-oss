@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,8 +16,6 @@
 package com.dremio.sabot.op.aggregate.vectorized.nospill;
 
 import java.math.BigDecimal;
-
-
 import java.nio.ByteBuffer;
 
 import org.apache.arrow.memory.BufferManager;
@@ -27,7 +25,6 @@ import org.apache.arrow.vector.FieldVector;
 
 import com.dremio.exec.util.DecimalUtils;
 import com.dremio.sabot.op.common.ht2.LBlockHashTableNoSpill;
-
 import com.yahoo.memory.Memory;
 import com.yahoo.sketches.hll.HllSketch;
 import com.yahoo.sketches.hll.Union;
@@ -47,6 +44,7 @@ public class NdvAccumulatorsNoSpill {
       super(input, output, bufferManager);
     }
 
+    @Override
     public void accumulate(final long memoryAddr, final int count) {
       final long maxAddr = memoryAddr + count * 4;
       final long incomingBit = getInput().getValidityBufferAddress();
@@ -81,6 +79,7 @@ public class NdvAccumulatorsNoSpill {
       super(input, output, bufferManager);
     }
 
+    @Override
     public void accumulate(final long memoryAddr, final int count) {
       final long maxAddr = memoryAddr + count * 4;
       final long incomingBit = getInput().getValidityBufferAddress();
@@ -128,6 +127,7 @@ public class NdvAccumulatorsNoSpill {
       super(input, output, bufferManager);
     }
 
+    @Override
     public void accumulate(final long memoryAddr, final int count) {
       final long maxAddr = memoryAddr + count * 4;
       final long incomingBit = getInput().getValidityBufferAddress();
@@ -164,6 +164,7 @@ public class NdvAccumulatorsNoSpill {
       super(input, output, bufferManager);
     }
 
+    @Override
     public void accumulate(final long memoryAddr, final int count) {
       final long maxAddr = memoryAddr + count * 4;
       final long incomingBit = getInput().getValidityBufferAddress();
@@ -202,6 +203,7 @@ public class NdvAccumulatorsNoSpill {
       super(input, output, bufferManager);
     }
 
+    @Override
     public void accumulate(final long memoryAddr, final int count) {
       final long maxAddr = memoryAddr + count * 4;
       final long incomingBit = getInput().getValidityBufferAddress();
@@ -239,6 +241,7 @@ public class NdvAccumulatorsNoSpill {
       super(input, output, bufferManager);
     }
 
+    @Override
     public void accumulate(final long memoryAddr, final int count) {
       final long maxAddr = memoryAddr + count * WIDTH_ORDINAL;
       FieldVector inputVector = getInput();
@@ -279,6 +282,7 @@ public class NdvAccumulatorsNoSpill {
       super(input, output, bufferManager);
     }
 
+    @Override
     public void accumulate(final long memoryAddr, final int count) {
       final long maxAddr = memoryAddr + count * WIDTH_ORDINAL;
       FieldVector inputVector = getInput();
@@ -320,6 +324,7 @@ public class NdvAccumulatorsNoSpill {
       super(input, output, bufferManager);
     }
 
+    @Override
     public void accumulate(final long memoryAddr, final int count) {
       FieldVector inputVector = getInput();
       final long incomingBit = inputVector.getValidityBufferAddress();
@@ -372,6 +377,7 @@ public class NdvAccumulatorsNoSpill {
       super(input, output, bufferManager);
     }
 
+    @Override
     public void accumulate(final long memoryAddr, final int count) {
       final long maxAddr = memoryAddr + count * WIDTH_ORDINAL;
       FieldVector inputVector = getInput();
@@ -407,6 +413,7 @@ public class NdvAccumulatorsNoSpill {
       super(input, output, bufferManager);
     }
 
+    @Override
     public void accumulate(final long memoryAddr, final int count) {
       final long maxAddr = memoryAddr + count * 4;
       final long incomingBit = getInput().getValidityBufferAddress();

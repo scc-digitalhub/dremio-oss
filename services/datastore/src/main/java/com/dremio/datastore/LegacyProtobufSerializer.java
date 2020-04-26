@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
  */
 package com.dremio.datastore;
 
+import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
 
@@ -88,6 +89,11 @@ public class LegacyProtobufSerializer<T extends Message> extends ProtobufSeriali
    */
   public static <M extends Message> M parseFrom(Parser<M> parser, byte[] bytes)
       throws InvalidProtocolBufferException {
+    return rewriteProtostuff(parser.parseFrom(bytes));
+  }
+
+  public static <M extends Message> M parseFrom(Parser<M> parser, ByteBuffer bytes)
+    throws InvalidProtocolBufferException {
     return rewriteProtostuff(parser.parseFrom(bytes));
   }
 

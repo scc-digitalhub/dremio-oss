@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,18 +18,24 @@ package com.dremio.datastore.indexed;
 import javax.inject.Provider;
 
 import org.apache.arrow.memory.BufferAllocator;
-import org.apache.arrow.memory.RootAllocator;
 import org.junit.After;
+import org.junit.Ignore;
+import org.junit.Rule;
+import org.junit.Test;
 
 import com.dremio.common.AutoCloseables;
-import com.dremio.datastore.KVStoreProvider;
 import com.dremio.datastore.LocalKVStoreProvider;
 import com.dremio.datastore.RemoteKVStoreProvider;
+import com.dremio.datastore.api.IndexedStore;
+import com.dremio.datastore.api.KVStoreProvider;
+import com.dremio.datastore.indexed.doughnut.Doughnut;
+import com.dremio.datastore.indexed.doughnut.DoughnutIndexedStore;
 import com.dremio.exec.proto.CoordinationProtos.NodeEndpoint;
 import com.dremio.exec.rpc.CloseableThreadPool;
 import com.dremio.service.DirectProvider;
 import com.dremio.services.fabric.FabricServiceImpl;
 import com.dremio.services.fabric.api.FabricService;
+import com.dremio.test.AllocatorRule;
 import com.dremio.test.DremioTest;
 
 /**
@@ -45,14 +51,17 @@ public class TestRemoteIndexedStore extends AbstractTestIndexedStore {
 
   private FabricService localFabricService;
   private FabricService remoteFabricService;
-  private LocalKVStoreProvider localKVStoreProvider;
-  private RemoteKVStoreProvider remoteKVStoreProvider;
+  private KVStoreProvider localKVStoreProvider;
+  private KVStoreProvider remoteKVStoreProvider;
   private BufferAllocator allocator;
   private CloseableThreadPool pool;
 
+  @Rule
+  public final AllocatorRule allocatorRule = AllocatorRule.defaultAllocator();
+
   @Override
-  KVStoreProvider createKKStoreProvider() throws Exception {
-    allocator = new RootAllocator(20 * 1024 * 1024);
+  protected KVStoreProvider createKVStoreProvider() throws Exception {
+    allocator = allocatorRule.newAllocator("test-remote-indexed-store", 0, 20 * 1024 * 1024);
     pool = new CloseableThreadPool("test-remoteindexedkvstore");
     localFabricService = new FabricServiceImpl(HOSTNAME, 45678, true, THREAD_COUNT, allocator, RESERVATION,
         MAX_ALLOCATION, TIMEOUT, pool);
@@ -66,17 +75,22 @@ public class TestRemoteIndexedStore extends AbstractTestIndexedStore {
     final Provider<FabricService> rfab = () -> remoteFabricService;
 
     localKVStoreProvider = new LocalKVStoreProvider(DremioTest.CLASSPATH_SCAN_RESULT, fab, allocator,
-        HOSTNAME, null, true, true, true, false);
+        HOSTNAME, null, true, true);
     localKVStoreProvider.start();
     remoteKVStoreProvider = new RemoteKVStoreProvider(
         DremioTest.CLASSPATH_SCAN_RESULT,
         DirectProvider.wrap(NodeEndpoint.newBuilder()
-            .setAddress(HOSTNAME)
-            .setFabricPort(localFabricService.getPort())
-            .build()),
+          .setAddress(HOSTNAME)
+          .setFabricPort(localFabricService.getPort())
+          .build()),
         rfab, allocator, HOSTNAME);
     remoteKVStoreProvider.start();
     return remoteKVStoreProvider;
+  }
+
+  @Override
+  protected IndexedStore<String, Doughnut> supplyStore() {
+    return getProvider().getStore(DoughnutIndexedStore.class);
   }
 
   @After
@@ -84,5 +98,11 @@ public class TestRemoteIndexedStore extends AbstractTestIndexedStore {
   public void after() throws Exception {
     AutoCloseables.close(remoteKVStoreProvider, localKVStoreProvider, remoteFabricService, localFabricService, pool,
         allocator);
+  }
+
+  @Ignore("[DX-9909] Not query doesn't work as expected for RocksDB.")
+  @Test
+  @Override
+  public void not() {
   }
 }

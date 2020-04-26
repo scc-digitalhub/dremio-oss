@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,11 +30,16 @@ import static org.apache.calcite.sql.fun.SqlStdOperatorTable.OR;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 
+import java.util.concurrent.TimeUnit;
+
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlOperator;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
+import org.junit.ClassRule;
 import org.junit.Test;
+import org.junit.rules.TestRule;
 
+import com.dremio.common.util.TestTools;
 import com.dremio.exec.planner.RexBuilderTestBase;
 
 /**
@@ -42,6 +47,9 @@ import com.dremio.exec.planner.RexBuilderTestBase;
  */
 public class TestORCFindRelevantFilters extends RexBuilderTestBase {
   private final ORCFindRelevantFilters finder = new ORCFindRelevantFilters(builder);
+
+  @ClassRule
+  public static final TestRule CLASS_TIMEOUT = TestTools.getTimeoutRule(100000, TimeUnit.SECONDS);
 
   @Test
   public void equal() {

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -51,7 +51,7 @@ public final class ProxyServerFactory {
     Server proxy = new Server();
     logger.info("Setting up HTTPS connector for web server");
 
-    final SslContextFactory sslContextFactory = new SslContextFactory();
+    final SslContextFactory sslContextFactory = new SslContextFactory.Client();
 
     sslContextFactory.setKeyStorePath(keystoreFile.getAbsolutePath());
     sslContextFactory.setKeyStorePassword(keystorePassword);

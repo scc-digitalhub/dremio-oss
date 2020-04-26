@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,8 +19,8 @@ import pureRender from 'pure-render-decorator';
 
 import PropTypes from 'prop-types';
 
-import { LIST, MAP, TEXT } from 'constants/DataTypes';
-import { ALL_TYPES } from 'constants/columnTypeGroups';
+import { LIST, MAP, TEXT } from '@app/constants/DataTypes';
+import { ALL_TYPES } from '@app/constants/columnTypeGroups';
 
 import ColumnMenuItem from './../ColumnMenus/ColumnMenuItem';
 

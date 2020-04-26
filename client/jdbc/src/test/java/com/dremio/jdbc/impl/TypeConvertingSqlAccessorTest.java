@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,11 +17,6 @@ package com.dremio.jdbc.impl;
 
 import static org.junit.Assert.*;
 
-import org.junit.After;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import com.dremio.common.types.Types;
@@ -33,7 +28,6 @@ import com.dremio.exec.vector.accessor.SqlAccessor;
 import com.dremio.jdbc.SQLConversionOverflowException;
 import com.dremio.jdbc.impl.TypeConvertingSqlAccessor;
 
-import static org.junit.Assert.fail;
 import static org.junit.Assert.assertThat;
 import static org.hamcrest.CoreMatchers.*;
 
@@ -47,8 +41,7 @@ public class TypeConvertingSqlAccessorTest {
    * Base test stub(?) for accessors underlying TypeConvertingSqlAccessor.
    * Carries type and (Object form of) one value.
    */
-  private static abstract class BaseStubAccessor extends AbstractSqlAccessor
-                                                 implements SqlAccessor {
+  private static abstract class BaseStubAccessor extends AbstractSqlAccessor implements SqlAccessor {
     private final MajorType type;
     private final Object value;
 

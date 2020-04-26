@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package com.dremio;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.ClassRule;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.rules.TestRule;
 
@@ -87,6 +88,7 @@ public class TestBugFixes extends BaseTestQuery {
   }
 
   @Test (expected = UserException.class)
+  @Ignore
   // Should be "Failure while parsing sql. SabotNode [rel#26:Subset#6.LOGICAL.ANY([]).[]] could not be implemented;".
   // Dremio will hit CanNotPlan, until we add code fix to transform the local LHS filter in left outer join properly.
   public void testDRILL1337_LocalLeftFilterLeftOutJoin() throws Exception {

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,13 +16,16 @@
 package com.dremio.service.commandpool;
 
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 import com.dremio.common.concurrent.CloseableSchedulerThreadPool;
+import com.dremio.common.concurrent.ContextMigratingExecutorService;
 import com.dremio.common.concurrent.NamedThreadFactory;
+import com.dremio.telemetry.api.metrics.Metrics;
+
+import io.opentracing.Tracer;
 
 /**
  * Bound implementation of {@link CommandPool}.<br>
@@ -32,33 +35,40 @@ import com.dremio.common.concurrent.NamedThreadFactory;
 class BoundCommandPool implements CommandPool {
   private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(BoundCommandPool.class);
 
-  private final ExecutorService executorService;
+  private final ContextMigratingExecutorService<ThreadPoolExecutor> executorService;
 
-  BoundCommandPool(final int poolSize) {
-    this.executorService = new ThreadPoolExecutor(
+
+  BoundCommandPool(final int poolSize, Tracer tracer) {
+    this.executorService = new ContextMigratingExecutorService<>(new ThreadPoolExecutor(
       poolSize, poolSize, // limited pool of threads
       0, TimeUnit.SECONDS, // doesn't matter as number of threads never exceeds core size
       new PriorityBlockingQueue<>(),
       new NamedThreadFactory("bound-command")
-    );
+    ), tracer);
   }
 
   @Override
-  public <V> CompletableFuture<V> submit(Priority priority, String descriptor, Command<V> command) {
+  public <V> CompletableFuture<V> submit(Priority priority, String descriptor, Command<V> command, boolean runInSameThread) {
     final long time = System.currentTimeMillis();
     final CommandWrapper<V> wrapper = new CommandWrapper<>(priority, descriptor, time, command);
     logger.debug("command {} created", descriptor);
-    executorService.execute(wrapper);
+    if (runInSameThread) {
+      logger.debug("running command {} in the same calling thread", descriptor);
+      wrapper.run();
+    } else {
+      executorService.execute(wrapper);
+    }
     return wrapper.getFuture();
   }
 
   @Override
   public void start() throws Exception {
+    Metrics.newGauge(Metrics.join("jobs","command_pool", "active_threads"), () -> executorService.getDelegate().getActiveCount());
+    Metrics.newGauge(Metrics.join("jobs","command_pool", "queue_size"), () -> executorService.getDelegate().getQueue().size());
   }
 
   @Override
   public void close() throws Exception {
     CloseableSchedulerThreadPool.close(executorService, logger);
   }
-
 }

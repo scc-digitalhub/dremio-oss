@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,11 +18,21 @@
 // see DX-5388 Clicking on settings button in explore of a physical datasets doesn't work as expected
 // kill with DX-5161 Use classes (reduce bugs, develop faster)
 
-export physicalDataset from './physicalDataset';
-export dataset from './dataset';
-export folder from './folder';
-export file  from './file';
+import physicalDataset from './physicalDataset';
+import dataset from './dataset';
+import folder from './folder';
+import file  from './file';
 
-export home from './home';
-export source from './source';
-export space from './space';
+import home from './home';
+import source from './source';
+import space from './space';
+
+export {
+  physicalDataset,
+  dataset,
+  folder,
+  file,
+  home,
+  source,
+  space
+};

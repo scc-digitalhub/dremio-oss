@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -268,6 +268,14 @@ public class AccumulatorSet implements ResizeListener, AutoCloseable {
   public void resetToMinimumSize() throws Exception {
     for(Accumulator a : children){
       a.resetToMinimumSize();
+    }
+  }
+
+  @Override
+  public void releaseBatch(final int batchIdx)
+  {
+    for(Accumulator a : children){
+      a.releaseBatch(batchIdx);
     }
   }
 

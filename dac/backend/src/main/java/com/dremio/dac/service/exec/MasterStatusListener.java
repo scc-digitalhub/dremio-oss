@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,9 +19,11 @@ import java.util.Set;
 
 import javax.inject.Provider;
 
+import com.dremio.common.config.SabotConfig;
 import com.dremio.exec.proto.CoordinationProtos;
 import com.dremio.service.Service;
 import com.dremio.service.coordinator.ClusterCoordinator;
+import com.dremio.service.coordinator.CoordinatorLostHandle;
 import com.dremio.service.coordinator.NodeStatusListener;
 import com.dremio.service.coordinator.TaskLeaderStatusListener;
 
@@ -30,10 +32,20 @@ import com.dremio.service.coordinator.TaskLeaderStatusListener;
  */
 public class MasterStatusListener implements NodeStatusListener, Service {
   private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(MasterStatusListener.class);
+  public static final String HANDLER_MODULE_CLASS = "dremio.coordinator_lost_handle.module.class";
 
   private TaskLeaderStatusListener taskLeaderStatusListener;
+  private CoordinatorLostHandle masterLostHandler;
+
   public MasterStatusListener(Provider<ClusterCoordinator> clusterCoordinator, boolean isMaster) {
-    taskLeaderStatusListener = new TaskLeaderStatusListener(ClusterCoordinator.Role.MASTER.name(), clusterCoordinator, isMaster);
+    this(clusterCoordinator, null, isMaster);
+  }
+
+  public MasterStatusListener(Provider<ClusterCoordinator> clusterCoordinator, SabotConfig sabotConfig, boolean isMaster) {
+    if (!isMaster && (sabotConfig != null)) {
+      masterLostHandler = sabotConfig.getInstance(HANDLER_MODULE_CLASS, CoordinatorLostHandle.class, CoordinatorLostHandle.NO_OP);
+    }
+    taskLeaderStatusListener = new TaskLeaderStatusListener(ClusterCoordinator.Role.MASTER.name(), clusterCoordinator, isMaster, masterLostHandler);
   }
 
   public CoordinationProtos.NodeEndpoint getMasterNode() {

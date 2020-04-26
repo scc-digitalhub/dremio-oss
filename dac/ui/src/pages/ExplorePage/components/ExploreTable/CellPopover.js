@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ import result from 'lodash/result';
 
 import JSONTree from 'react-json-tree';
 import { FLEX_COL_START } from 'uiTheme/radium/flexStyle';
-import { LIST, MAP } from 'constants/DataTypes';
+import { LIST, MAP } from '@app/constants/DataTypes';
 import exploreUtils from 'utils/explore/exploreUtils';
 import SelectedTextPopover from './SelectedTextPopover';
 import getTheme from './themeTreeMap';
@@ -78,7 +78,7 @@ export default class CellPopover extends Component {
   getMapModel(keyPath) {
     const mapPathList = keyPath.slice().reverse();
     // we need concat item of list with parent like "list[indexOfList]"
-    const path = mapPathList.reduce((prev, cur, curIndex) => {
+    const path = mapPathList.reduce((prev, cur) => {
       if (typeof cur === 'number') {
         prev[prev.length - 1] = prev[prev.length - 1] + `[${cur}]`;
       } else {
@@ -125,7 +125,7 @@ export default class CellPopover extends Component {
     if (this.props.onCurrentPathChange && !this.props.isDumbTable) {
       this.props.onCurrentPathChange(keyPath && keyPath.slice().reverse().join('.'));
     }
-  }
+  };
 
   selectItem(e, keyPath) {
     if (e.target.tagName === 'DIV' || this.props.isDumbTable) {
@@ -164,7 +164,7 @@ export default class CellPopover extends Component {
     const selection = this.getMapValueFromSelection();
     exploreUtils.copySelection(selection);
     this.hideDrop();
-  }
+  };
 
   renderLabel(keyPath) {
     const {isDumbTable} = this.props;

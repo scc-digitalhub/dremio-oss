@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -441,7 +441,7 @@ public class EvaluationVisitor {
       buildInEvaluation: {
         JBlock block = generator.getEvalBlock();
         HoldingContainer eval = e.getEval().accept(EvalVisitor.this, generator);
-        JClass outType = CompleteType.BIT.getHolderType(model);
+        JClass outType = CodeModelArrowHelper.getHolderType(CompleteType.BIT, model);
         JVar var = block.decl(outType, generator.getNextVar("inListResult"), JExpr._new(outType));
         block.assign(var.ref("isSet"), JExpr.lit(1));
         JInvocation valueFound;
@@ -670,7 +670,7 @@ public class EvaluationVisitor {
         throws RuntimeException {
       CompleteType completeType = CompleteType.VARCHAR;
       JBlock setup = generator.getBlock(BlockType.SETUP);
-      JType holderType = completeType.getHolderType(generator.getModel());
+      JType holderType = CodeModelArrowHelper.getHolderType(completeType, generator.getModel());
       JVar var = generator.declareClassField("string", holderType);
       JExpression stringLiteral = JExpr.lit(e.value);
       JExpression buffer = JExpr.direct("context").invoke("getManagedBuffer");
@@ -684,7 +684,7 @@ public class EvaluationVisitor {
         throws RuntimeException {
       CompleteType completeType = CompleteType.INTERVAL_DAY_SECONDS;
       JBlock setup = generator.getBlock(BlockType.SETUP);
-      JType holderType = completeType.getHolderType(generator.getModel());
+      JType holderType = CodeModelArrowHelper.getHolderType(completeType, generator.getModel());
       JVar var = generator.declareClassField("intervalday", holderType);
       JExpression dayLiteral = JExpr.lit(e.getIntervalDay());
       JExpression millisLiteral = JExpr.lit(e.getIntervalMillis());
@@ -697,19 +697,16 @@ public class EvaluationVisitor {
 
     @Override
     public HoldingContainer visitDecimalConstant(DecimalExpression e, ClassGenerator<?> generator)
-        throws RuntimeException {
-      CompleteType majorType= e.getCompleteType();
+      throws RuntimeException {
+      CompleteType completeType = CompleteType.fromDecimalPrecisionScale(e.getPrecision(), e.getScale());
       JBlock setup = generator.getBlock(BlockType.SETUP);
-      JType holderType = majorType.getHolderType(generator.getModel());
-      JVar var = generator.declareClassField("dec", holderType);
-      JExpression valueLiteral = JExpr.lit(e.getIntFromDecimal());
-      JExpression scaleLiteral = JExpr.lit(e.getScale());
-      JExpression precisionLiteral = JExpr.lit(e.getPrecision());
-      setup.assign(
-          var,
-          generator.getModel().ref(ValueHolderHelper.class).staticInvoke("getNullableDecimalHolder").arg(valueLiteral)
-              .arg(scaleLiteral).arg(precisionLiteral));
-      return new HoldingContainer(majorType, var, var.ref("value"), var.ref("isSet"));
+      JType holderType = CodeModelArrowHelper.getHolderType(completeType, generator.getModel());
+      JVar var = generator.declareClassField("dec38", holderType);
+      JExpression decimal = JExpr.lit(e.getDecimal().toString());
+      JExpression buffer = JExpr.direct("context").invoke("getManagedBuffer");
+      setup.assign(var, generator.getModel().ref(ValueHolderHelper.class).staticInvoke
+        ("getNullableDecimalHolder").arg(buffer).arg(decimal));
+      return new HoldingContainer(completeType, var, var.ref("value"), var.ref("isSet"));
     }
 
     @Override
@@ -1082,7 +1079,7 @@ public class EvaluationVisitor {
     @Override
     public HoldingContainer visitFunctionHolderExpression(FunctionHolderExpression holder, ClassGenerator<?> generator) throws RuntimeException {
       inc();
-      if (shouldNestMethod()) {
+      if (allowNewMethods && shouldNestMethod()) {
         exprCount.push(0);
         HoldingContainer out = generator.declare(holder.getCompleteType(), false);
         JMethod setupMethod = generator.nestSetupMethod();
@@ -1457,7 +1454,7 @@ public class EvaluationVisitor {
      * HoldingContainder will indicate it's for a constant expression.
      */
     private HoldingContainer renderConstantExpression(ClassGenerator<?> generator, HoldingContainer input) {
-      JVar fieldValue = generator.declareClassField("constant", input.getCompleteType().getHolderType(generator.getModel()));
+      JVar fieldValue = generator.declareClassField("constant", CodeModelArrowHelper.getHolderType(input.getCompleteType(), generator.getModel()));
       generator.getEvalBlock().assign(fieldValue, input.getHolder());
       generator.getMappingSet().exitConstant();
       return new HoldingContainer(input.getCompleteType(), fieldValue, fieldValue.ref("value"), fieldValue.ref("isSet"))

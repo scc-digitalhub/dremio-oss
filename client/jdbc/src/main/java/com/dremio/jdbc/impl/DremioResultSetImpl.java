@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -52,7 +52,6 @@ import org.apache.calcite.avatica.util.Cursor;
 
 import com.dremio.common.exceptions.UserException;
 import com.dremio.common.utils.protos.QueryIdHelper;
-import com.dremio.exec.ExecConstants;
 import com.dremio.exec.client.DremioClient;
 import com.dremio.exec.proto.UserBitShared.QueryId;
 import com.dremio.exec.proto.UserBitShared.QueryResult;
@@ -88,13 +87,12 @@ class DremioResultSetImpl extends AvaticaResultSet implements DremioResultSet {
 
   DremioResultSetImpl(AvaticaStatement statement, QueryState state,
                      Meta.Signature signature, ResultSetMetaData resultSetMetaData,
-                     TimeZone timeZone, Meta.Frame firstFrame) {
+                     TimeZone timeZone, Meta.Frame firstFrame) throws SQLException {
     super(statement, state, signature, resultSetMetaData, timeZone, firstFrame);
     connection = (DremioConnectionImpl) statement.getConnection();
     client = connection.getClient();
     final int batchQueueThrottlingThreshold =
-        client.getConfig().getInt(
-            ExecConstants.JDBC_BATCH_QUEUE_THROTTLING_THRESHOLD );
+        client.getConfig().getInt(DremioCursor.JDBC_BATCH_QUEUE_THROTTLING_THRESHOLD );
     resultsListener = new ResultsListener(batchQueueThrottlingThreshold);
     batchLoader = new RecordBatchLoader(client.getRecordAllocator());
     cursor = new DremioCursor(connection, statement, signature);
@@ -547,7 +545,7 @@ class DremioResultSetImpl extends AvaticaResultSet implements DremioResultSet {
     throwIfClosed();
     // Map Avatica's erroneous zero-based row numbers to 1-based, and return 0
     // after end, per JDBC:
-    return isAfterLast() ? 0 : 1 + super.getRow();
+    return super.getRow();
   }
 
   @Override

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,8 +19,11 @@ import static com.dremio.dac.proto.model.dataset.ExtractRuleType.pattern;
 import static com.dremio.dac.proto.model.dataset.ExtractRuleType.position;
 import static com.google.common.base.Preconditions.checkNotNull;
 
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 import org.apache.calcite.sql.type.SqlTypeName;
 
@@ -30,7 +33,7 @@ import com.dremio.dac.explore.QueryExecutor;
 import com.dremio.dac.explore.model.DatasetPath;
 import com.dremio.dac.model.common.Field;
 import com.dremio.dac.model.common.VisitorException;
-import com.dremio.dac.model.job.JobUI;
+import com.dremio.dac.model.job.JobData;
 import com.dremio.dac.proto.model.dataset.DataType;
 import com.dremio.dac.proto.model.dataset.ExtractRule;
 import com.dremio.dac.proto.model.dataset.ExtractRulePattern;
@@ -48,6 +51,7 @@ import com.dremio.exec.record.BatchSchema;
 import com.dremio.exec.store.NamespaceTable;
 import com.dremio.exec.util.ViewFieldsHelper;
 import com.dremio.service.job.proto.QueryType;
+import com.dremio.service.jobs.CompletionListener;
 import com.dremio.service.jobs.SqlQuery;
 import com.dremio.service.namespace.DatasetHelper;
 import com.dremio.service.namespace.NamespaceException;
@@ -71,21 +75,17 @@ public class DatasetsUtil {
 
   /**
    * Helper method which gets the completed preview data job for given query on given dataset path and version.
-   *
-   * @param query
-   * @param datasetPath
-   * @param version
-   * @return
    */
-  public static JobUI getDatasetPreviewJob(QueryExecutor executor, SqlQuery query, DatasetPath datasetPath, DatasetVersion version) {
+  public static JobData getDatasetPreviewJob(QueryExecutor executor, SqlQuery query, DatasetPath datasetPath, DatasetVersion version) {
     // In most cases we should already have a preview job that ran on the given dataset version. If not it will trigger a job.
-    JobUI job = executor.runQuery(query, QueryType.UI_PREVIEW, datasetPath, version);
+    CompletionListener completionListener = new CompletionListener();
+    JobData jobData = executor.runQueryWithListener(query, QueryType.UI_PREVIEW, datasetPath, version, completionListener);
 
     // Wait for the job to complete (will return immediately if the job already exists, otherwise a blocking call until
     // the job completes).
-    job.getData().loadIfNecessary();
+    completionListener.awaitUnchecked();
 
-    return job;
+    return jobData;
   }
 
   /**
@@ -344,5 +344,21 @@ public class DatasetsUtil {
     }
 
     return fields;
+  }
+
+  public static Set<String> getPartitionedColumns(DatasetConfig datasetConfig) {
+    return datasetConfig.getReadDefinition() != null ?
+      toSet(datasetConfig.getReadDefinition().getPartitionColumnsList()) :
+      Collections.emptySet();
+  }
+
+  public static Set<String> getSortedColumns(DatasetConfig datasetConfig) {
+    return datasetConfig.getReadDefinition() != null ?
+      toSet(datasetConfig.getReadDefinition().getSortColumnsList()) :
+      Collections.emptySet();
+  }
+
+  private static Set<String> toSet(List<String> list) {
+    return list != null ? new HashSet<>(list) : Collections.emptySet();
   }
 }

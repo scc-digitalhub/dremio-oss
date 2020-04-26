@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,13 +20,13 @@ import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
-import org.apache.hadoop.fs.Path;
 
 import com.dremio.exec.planner.logical.Rel;
 import com.dremio.exec.planner.logical.RelOptHelper;
 import com.dremio.exec.planner.logical.WriterRel;
 import com.dremio.exec.store.dfs.FileSystemCreateTableEntry;
 import com.dremio.exec.store.dfs.FileSystemPlugin;
+import com.dremio.io.file.Path;
 
 public class WriterPrule extends Prule {
 //  private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(PlannerSettings.class);
@@ -90,7 +90,7 @@ public class WriterPrule extends Prule {
     // first, resolve our children.
     final String finalPath = fileEntry.getLocation();
     final String userName = fileEntry.getUserName();
-    final Path finalStructuredPath = new Path(finalPath);
+    final Path finalStructuredPath = Path.of(finalPath);
 
     final RelTraitSet traits = writer.getTraitSet()
       .plus(DistributionTrait.SINGLETON)
@@ -100,7 +100,7 @@ public class WriterPrule extends Prule {
 
     if (PrelUtil.getPlannerSettings(rel.getCluster()).options.getOption(PlannerSettings.WRITER_TEMP_FILE)) {
 
-      final String tempPath = new Path(finalStructuredPath.getParent(), "." + finalStructuredPath.getName()).toString() + "-" + System.currentTimeMillis();
+      final String tempPath = finalStructuredPath.getParent().resolve("." + finalStructuredPath.getName()).toString() + "-" + System.currentTimeMillis();
 
       final WriterPrel childWithTempPath = new WriterPrel(child.getCluster(),
         child.getTraitSet(),
@@ -110,10 +110,12 @@ public class WriterPrule extends Prule {
       );
 
       final RelNode newChild = convert(childWithTempPath, traits);
-      return new WriterCommitterPrel(writer.getCluster(), traits, newChild, plugin, tempPath, finalPath, userName);
+      return new WriterCommitterPrel(writer.getCluster(),
+        traits, newChild, plugin, tempPath, finalPath, userName, fileEntry);
     } else {
       final RelNode newChild = convert(child, traits);
-      return new WriterCommitterPrel(writer.getCluster(), traits, newChild, plugin, null, finalPath, userName);
+      return new WriterCommitterPrel(writer.getCluster(),
+        traits, newChild, plugin, null, finalPath, userName, fileEntry);
     }
   }
 }

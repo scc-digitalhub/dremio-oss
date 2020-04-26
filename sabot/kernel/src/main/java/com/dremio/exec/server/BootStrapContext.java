@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,63 +18,70 @@ package com.dremio.exec.server;
 import java.util.concurrent.ExecutorService;
 
 import org.apache.arrow.memory.BufferAllocator;
+import org.apache.arrow.memory.OutOfMemoryException;
 import org.apache.arrow.memory.RootAllocatorFactory;
 
-import com.codahale.metrics.Gauge;
-import com.codahale.metrics.MetricRegistry;
 import com.dremio.common.AutoCloseables;
+import com.dremio.common.concurrent.CloseableExecutorService;
+import com.dremio.common.concurrent.ContextMigratingExecutorService.ContextMigratingCloseableExecutorService;
 import com.dremio.common.config.LogicalPlanPersistence;
 import com.dremio.common.config.SabotConfig;
 import com.dremio.common.exceptions.UserException;
 import com.dremio.common.memory.DremioRootAllocator;
+import com.dremio.common.memory.MemoryDebugInfo;
 import com.dremio.common.scanner.persistence.ScanResult;
 import com.dremio.config.DremioConfig;
 import com.dremio.exec.rpc.CloseableThreadPool;
 import com.dremio.exec.store.sys.MemoryIterator;
-import com.dremio.metrics.Metrics;
+import com.dremio.service.SingletonRegistry;
+import com.dremio.telemetry.api.Telemetry;
+import com.dremio.telemetry.api.metrics.Metrics;
+import com.dremio.telemetry.utils.TracerFacade;
+
+import io.opentracing.Tracer;
 
 public class BootStrapContext implements AutoCloseable {
   private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(BootStrapContext.class);
 
   private final SabotConfig config;
-  private final MetricRegistry metrics;
   private final BufferAllocator allocator;
   private final ScanResult classpathScan;
-  private final CloseableThreadPool executor;
+  private final CloseableExecutorService executor;
   private final LogicalPlanPersistence lpPersistance;
   private final DremioConfig dremioConfig;
   private final NodeDebugContextProvider nodeDebugContextProvider;
 
   public BootStrapContext(DremioConfig config, ScanResult classpathScan) {
+    this(config, classpathScan, new SingletonRegistry());
+  }
+
+  public BootStrapContext(DremioConfig config, ScanResult classpathScan, SingletonRegistry registry) {
+
+    registry.bind(Tracer.class, TracerFacade.INSTANCE);
+    Telemetry.startTelemetry();
+
     this.config = config.getSabotConfig();
     this.classpathScan = classpathScan;
-    this.metrics = Metrics.getInstance();
     this.allocator = RootAllocatorFactory.newRoot(config);
-    this.executor = new CloseableThreadPool("dremio-general-");
+    this.executor = new ContextMigratingCloseableExecutorService<>(new CloseableThreadPool("dremio-general-"), registry.lookup(Tracer.class));
     this.lpPersistance = new LogicalPlanPersistence(config.getSabotConfig(), classpathScan);
     this.dremioConfig = config;
 
     registerMetrics();
 
     this.nodeDebugContextProvider = (allocator instanceof DremioRootAllocator)
-      ? new NodeDebugContextProviderImpl((DremioRootAllocator)allocator)
+      ? new NodeDebugContextProviderImpl((DremioRootAllocator) allocator)
       : NodeDebugContextProvider.NOOP;
   }
 
   private void registerMetrics() {
-    Metrics.registerGauge(MetricRegistry.name("dremio.memory.direct_current"), new Gauge<Long>() {
-      @Override
-      public Long getValue() {
-        return allocator.getAllocatedMemory();
-      }
-    });
+    Metrics.newGauge("dremio.memory.direct_current", allocator::getAllocatedMemory);
 
-    Metrics.registerGauge(MetricRegistry.name("dremio.memory.jvm_direct_current"), new Gauge<Long>() {
-      @Override
-      public Long getValue() {
-        return MemoryIterator.getDirectBean().getMemoryUsed();
-      }
-    });
+    if (allocator instanceof DremioRootAllocator) {
+      Metrics.newGauge("dremio.memory.remaining_heap_allocations", ((DremioRootAllocator) allocator)::getAvailableBuffers);
+    }
+
+    Metrics.newGauge("dremio.memory.jvm_direct_current", MemoryIterator.getDirectBean()::getMemoryUsed);
   }
 
   public DremioConfig getDremioConfig() {
@@ -87,10 +94,6 @@ public class BootStrapContext implements AutoCloseable {
 
   public SabotConfig getConfig() {
     return config;
-  }
-
-  public MetricRegistry getMetrics() {
-    return metrics;
   }
 
   public BufferAllocator getAllocator() {
@@ -117,7 +120,11 @@ public class BootStrapContext implements AutoCloseable {
       logger.warn("failure resetting metrics.", e);
     }
 
-    executor.close();
+    try {
+      executor.close();
+    } catch (Exception e) {
+      logger.warn("Failure while closing dremio-general thread pool", e);
+    }
 
     AutoCloseables.closeNoChecked(allocator);
   }
@@ -131,7 +138,14 @@ public class BootStrapContext implements AutoCloseable {
 
     @Override
     public void addMemoryContext(UserException.Builder exceptionBuilder) {
-      rootAllocator.addUsageToExceptionContext(exceptionBuilder);
+      String detail = MemoryDebugInfo.getSummaryFromRoot(rootAllocator);
+      exceptionBuilder.addContext(detail);
+    }
+
+    @Override
+    public void addMemoryContext(UserException.Builder exceptionBuilder, OutOfMemoryException e) {
+      String detail = MemoryDebugInfo.getDetailsOnAllocationFailure(e, rootAllocator);
+      exceptionBuilder.addContext(detail);
     }
   }
 }

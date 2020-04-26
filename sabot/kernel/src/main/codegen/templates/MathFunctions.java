@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -64,7 +64,7 @@ public class GMathFunctions{
 
     public void eval() {
 
-      <#if func.funcName=='truncate'>
+      <#if func.funcName=='truncate' || func.funcName=='trunc'>
       <#if type.roundingRequired ??>
       java.math.BigDecimal bd = java.math.BigDecimal.valueOf(in.value).setScale(0, java.math.BigDecimal.ROUND_DOWN);
       out.value = <#if type.extraCast ??>(${type.extraCast})</#if>bd.${type.castType}Value();
@@ -128,7 +128,13 @@ public class GMathFunctions{
 
     public void eval() {
       java.math.BigDecimal temp = java.math.BigDecimal.valueOf(input1.value);
+      <#if type.dataType =='BigInt'>
+        out.value = (${type.castType}) temp.setScale(input2.value, java.math.RoundingMode.${func.mode}).longValue();
+      <#elseif type.dataType =='Int'>
+        out.value = (${type.castType}) temp.setScale(input2.value, java.math.RoundingMode.${func.mode}).longValue();
+      <#else>
       out.value = (${type.castType}) temp.setScale(input2.value, java.math.RoundingMode.${func.mode}).doubleValue();
+      </#if>
     }
   }
   </#list>

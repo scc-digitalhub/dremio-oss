@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ import com.google.protobuf.Parser;
  * a Serializer implementation for protostuff generated classes
  * @param <T> a protostuff generated class
  */
-public class ProtobufSerializer<T extends Message> extends Serializer<T> {
+public class ProtobufSerializer<T extends Message> extends Serializer<T, byte[]> {
   private final Class<T> clazz;
   private final Parser<T> parser;
 

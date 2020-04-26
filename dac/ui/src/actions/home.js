@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,15 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { CALL_API } from 'redux-api-middleware';
+import { RSAA } from 'redux-api-middleware';
 
-import { API_URL_V2 } from 'constants/Api';
 import ApiUtils from 'utils/apiUtils/apiUtils';
 
 import folderSchema from 'schemas/folder';
 import schemaUtils from 'utils/apiUtils/schemaUtils';
-import actionUtils from 'utils/actionUtils/actionUtils';
+import actionUtils from '@app/utils/actionUtils/actionUtils';
 import { sidebarMinWidth } from '@app/pages/HomePage/components/Columns.less';
+import * as schemas from '@app/schemas';
+import { APIV2Call } from '@app/core/APICall';
 
 export const CONVERT_FOLDER_TO_DATASET_START = 'CONVERT_FOLDER_TO_DATASET_START';
 export const CONVERT_FOLDER_TO_DATASET_SUCCESS = 'CONVERT_FOLDER_TO_DATASET_SUCCESS';
@@ -29,8 +30,11 @@ export const CONVERT_FOLDER_TO_DATASET_FAILURE = 'CONVERT_FOLDER_TO_DATASET_FAIL
 
 function fetchConvertFolder({folder, values, viewId}) {
   const meta = {viewId, invalidateViewIds: ['HomeContents']};
+
+  const apiCall = new APIV2Call().fullpath(`${folder.getIn(['links', 'format'])}`);
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         CONVERT_FOLDER_TO_DATASET_START,
         schemaUtils.getSuccessActionTypeWithSchema(CONVERT_FOLDER_TO_DATASET_SUCCESS, folderSchema, meta),
@@ -39,7 +43,7 @@ function fetchConvertFolder({folder, values, viewId}) {
       method: 'PUT',
       body: JSON.stringify(values),
       headers: {'Content-Type': 'application/json'},
-      endpoint: `${API_URL_V2}${folder.getIn(['links', 'format'])}`
+      endpoint: apiCall
     }
   };
 }
@@ -60,8 +64,11 @@ function fetchConvertDataset(entity, viewId) {
   const meta = {viewId, folderId: entity.get('id'), invalidateViewIds: ['HomeContents']};
   const successMeta = {...meta, success: true}; // doesn't invalidateViewIds without `success: true`
   const errorMessage = la('There was an error removing the format for the folder.');
+
+  const apiCall = new APIV2Call().fullpath(entity.getIn(['links', 'delete_format']));
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         {type: CONVERT_DATASET_TO_FOLDER_START, meta},
         schemaUtils.getSuccessActionTypeWithSchema(CONVERT_DATASET_TO_FOLDER_SUCCESS, folderSchema, successMeta),
@@ -75,7 +82,7 @@ function fetchConvertDataset(entity, viewId) {
       ],
       method: 'DELETE',
       headers: {'Content-Type': 'application/json'},
-      endpoint: `${API_URL_V2}${entity.getIn(['links', 'delete_format'])}`
+      endpoint: apiCall
     }
   };
 }
@@ -104,8 +111,6 @@ const wikiSuccess = (dispatch, resolvePromise, wikiData, actionDetails) => {
   resolvePromise(data);
 };
 
-
-
 export const loadWiki = (dispatch) => entityId => {
   if (!entityId) return;
   const commonActionProps = { entityId };
@@ -114,27 +119,26 @@ export const loadWiki = (dispatch) => entityId => {
     ...commonActionProps
   });
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     ApiUtils.fetch(`catalog/${entityId}/collaboration/wiki`)
-    .then(response => response.json().then((wikiData) => {
-      wikiSuccess(dispatch, resolve, wikiData, commonActionProps);
-    }), async (response) => {
-      // no error message needed on 404 when wiki is not present for given id
-      if (response.status === 404) {
-        wikiSuccess(dispatch, resolve, {}, commonActionProps);
-        return;
-      }
-      const errorInfo = {
-        errorMessage: await ApiUtils.getErrorMessage(la('Wiki API returned an error'), response),
-        errorId: '' + Math.random()
-      };
-      dispatch({
-        type: wikiActions.failure,
-        ...errorInfo,
-        ...commonActionProps
+      .then(response => response.json().then((wikiData) => {
+        wikiSuccess(dispatch, resolve, wikiData, commonActionProps);
+      }), async (response) => {
+        // no error message needed on 404 when wiki is not present for given id
+        if (response.status === 404) {
+          wikiSuccess(dispatch, resolve, {}, commonActionProps);
+          return;
+        }
+        const errorInfo = {
+          errorMessage: await ApiUtils.getErrorMessage(la('Wiki API returned an error'), response),
+          errorId: '' + Math.random()
+        };
+        dispatch({
+          type: wikiActions.failure,
+          ...errorInfo,
+          ...commonActionProps
+        });
       });
-      reject(errorInfo);
-    });
   });
 };
 
@@ -152,3 +156,26 @@ export const setSidebarSize = size => ({
   type: SET_SIDEBAR_SIZE,
   size: Math.max(MIN_SIDEBAR_WIDTH, size)
 });
+
+export const contentLoadActions = actionUtils.generateRequestActions('HOME_CONTENT_LOAD');
+
+export const loadHomeContent = (getDataUrl, entityType, viewId) => {
+  const entitySchema = schemas[entityType];
+  const meta = { viewId };
+
+  const apiCall = new APIV2Call()
+    .paths(getDataUrl)
+    .uncachable();
+
+  return {
+    [RSAA]: {
+      types: [
+        { type: contentLoadActions.start, meta },
+        { type: contentLoadActions.success, meta: { entitySchema, ...meta } },
+        { type: contentLoadActions.failure, meta }
+      ],
+      method: 'GET',
+      endpoint: apiCall
+    }
+  };
+};

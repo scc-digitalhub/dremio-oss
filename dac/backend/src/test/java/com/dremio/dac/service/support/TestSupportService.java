@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,7 +42,8 @@ import com.dremio.dac.server.BaseTestServer;
 import com.dremio.dac.server.FamilyExpectation;
 import com.dremio.dac.support.SupportResponse;
 import com.dremio.dac.support.SupportService;
-import com.dremio.service.jobs.Job;
+import com.dremio.service.job.JobSummary;
+import com.dremio.service.job.SearchJobsRequest;
 import com.dremio.service.jobs.JobsService;
 import com.dremio.test.TemporarySystemProperties;
 import com.google.common.collect.ImmutableList;
@@ -107,9 +108,14 @@ public class TestSupportService extends BaseTestServer {
     ).buildPost(Entity.entity(new CreateFromSQL("select * from " + badFileName, null), MediaType.APPLICATION_JSON_TYPE));
     expectError(FamilyExpectation.CLIENT_ERROR, invocation, Object.class);
 
-    List<Job> jobs = ImmutableList.copyOf(l(JobsService.class).getAllJobs("*=contains=" + badFileName, null, null, 0, 1, null));
+    final SearchJobsRequest request = SearchJobsRequest.newBuilder()
+        .setFilterString("*=contains=" + badFileName)
+        .setLimit(1)
+        .build();
+
+    List<JobSummary> jobs = ImmutableList.copyOf(l(JobsService.class).searchJobs(request));
     assertEquals(1, jobs.size());
-    Job job = jobs.get(0);
+    JobSummary job = jobs.get(0);
     String url = "/support/" + job.getJobId().getId();
     SupportResponse response = expectSuccess(getBuilder(url).buildPost(null), SupportResponse.class);
     assertTrue(response.getUrl().contains("Unable to upload diagnostics"));

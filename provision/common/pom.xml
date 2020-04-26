@@ -1,6 +1,6 @@
 <!--
 
-    Copyright (C) 2017-2018 Dremio Corporation
+    Copyright (C) 2017-2019 Dremio Corporation
 
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@
   <parent>
     <groupId>com.dremio</groupId>
     <artifactId>dremio-provision-parent</artifactId>
-    <version>3.2.1-201905191350330803-1a33f83</version>
+    <version>4.2.2-202004211133290458-b550b6fa</version>
   </parent>
 
   <groupId>com.dremio.provision</groupId>
@@ -34,13 +34,45 @@
     <dependency>
       <groupId>com.dremio</groupId>
       <artifactId>dremio-common</artifactId>
-      <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>com.dremio.services</groupId>
       <artifactId>dremio-services-datastore</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.modelmapper</groupId>
+      <artifactId>modelmapper</artifactId>
+      <version>2.3.0</version>
+    </dependency>
+    <dependency>
+      <groupId>org.hibernate.validator</groupId>
+      <artifactId>hibernate-validator</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.hibernate.validator</groupId>
+      <artifactId>hibernate-validator-annotation-processor</artifactId>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>javax.el</groupId>
+      <artifactId>javax.el-api</artifactId>
+      <version>3.0.0</version>
+    </dependency>
+    <dependency>
+      <groupId>org.glassfish.web</groupId>
+      <artifactId>javax.el</artifactId>
+      <version>2.2.6</version>
+    </dependency>
+    <dependency>
+      <groupId>com.dremio.services</groupId>
+      <artifactId>dremio-services-options</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <dependency>
+      <groupId>org.modelmapper.extensions</groupId>
+      <artifactId>modelmapper-protobuf</artifactId>
+      <version>2.3.0</version>
+    </dependency>    
     <dependency>
       <groupId>org.apache.zookeeper</groupId>
       <artifactId>zookeeper</artifactId>
@@ -80,7 +112,10 @@
       <artifactId>protobuf-java</artifactId>
       <version>${protobuf.version}</version>
     </dependency>
-
+    <dependency>
+      <groupId>org.apache.hadoop</groupId>
+      <artifactId>hadoop-common</artifactId>
+    </dependency>
     <dependency>
       <groupId>io.protostuff</groupId>
       <artifactId>protostuff-api</artifactId>
@@ -100,21 +135,24 @@
     <dependency>
       <groupId>com.dremio</groupId>
       <artifactId>dremio-dac-common</artifactId>
-      <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>com.dremio</groupId>
       <artifactId>dremio-common</artifactId>
       <classifier>tests</classifier>
-      <version>${project.version}</version>
       <scope>test</scope>
     </dependency>
+    <dependency>
+      <groupId>org.immutables</groupId>
+      <artifactId>value</artifactId>
+      <scope>provided</scope>
+    </dependency>    
   </dependencies>
   <build>
    <plugins>
      <plugin>
-        <groupId>io.protostuff</groupId>
-        <artifactId>protostuff-maven-plugin</artifactId>
+        <groupId>com.dremio.tools</groupId>
+        <artifactId>dremio-protostuff-maven-plugin</artifactId>
         <configuration>
           <protoModules>
             <protoModule>

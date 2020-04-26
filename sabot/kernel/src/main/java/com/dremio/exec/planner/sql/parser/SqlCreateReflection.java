@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ import org.apache.calcite.sql.SqlOperator;
 import org.apache.calcite.sql.SqlSpecialOperator;
 import org.apache.calcite.sql.parser.SqlParserPos;
 
-import com.google.common.base.Objects;
+import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
@@ -72,9 +72,9 @@ public class SqlCreateReflection extends SqlSystemCall {
     super(pos);
     this.tblName = tblName;
     this.isRaw = isRaw;
-    this.displayList = Objects.firstNonNull(displayList, SqlNodeList.EMPTY);
-    this.dimensionList = Objects.firstNonNull(dimensionList, SqlNodeList.EMPTY);
-    this.measureList = Objects.firstNonNull(measureList, SqlNodeList.EMPTY);
+    this.displayList = MoreObjects.firstNonNull(displayList, SqlNodeList.EMPTY);
+    this.dimensionList = MoreObjects.firstNonNull(dimensionList, SqlNodeList.EMPTY);
+    this.measureList = MoreObjects.firstNonNull(measureList, SqlNodeList.EMPTY);
     this.distributionList = distributionList;
     this.partitionList = partitionList;
     this.sortList = sortList;

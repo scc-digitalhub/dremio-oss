@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -85,7 +85,7 @@ public abstract class FlattenRelBase extends SingleRel {
 
     // cost is proportional to the number of rows and number of columns being projected
     double rowCount = this.estimateRowCount(mq);
-    double cpuCost = DremioCost.PROJECT_CPU_COST * rowCount;
+    double cpuCost = DremioCost.PROJECT_CPU_COST * rowCount * getRowType().getFieldCount();
 
     Factory costFactory = (Factory)planner.getCostFactory();
 

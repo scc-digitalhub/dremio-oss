@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,16 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import React, {Component} from 'react';
+import React, { Component } from 'react';
 import PropTypes from 'prop-types';
-import {connect} from 'react-redux';
+import { connect } from 'react-redux';
 import Immutable from 'immutable';
 import invariant from 'invariant';
 
-import {createProvision, editProvision} from 'actions/resources/provisioning';
-import {getEntity} from 'selectors/resources';
-import {showConfirmationDialog} from 'actions/confirmation';
-import {PROVISION_MANAGERS} from 'constants/provisioningPage/provisionManagers';
+import { createProvision, editProvision } from 'actions/resources/provisioning';
+import { getEntity } from 'selectors/resources';
+import { showConfirmationDialog } from 'actions/confirmation';
+import { PROVISION_MANAGERS } from 'dyn-load/constants/provisioningPage/provisionManagers';
 import FormUnsavedWarningHOC from 'components/Modals/FormUnsavedWarningHOC';
 import SelectClusterType from 'pages/AdminPage/subpages/Provisioning/SelectClusterType';
 import Modal from 'components/Modals/Modal';
@@ -73,17 +73,17 @@ export class AddProvisionModal extends Component {
     const { location } = this.props;
     // location.state gets merged into this.props by ModalsContainer
     this.context.router.push({...location, state: {...location.state, clusterType}});
-  }
+  };
 
   promptEditProvisionRestart(values) {
     return new Promise((resolve, reject) => {
       this.props.showConfirmationDialog({
-        title: la('Restart Cluster'),
+        title: la('Restart Engine'),
         confirmText: la('Restart'),
         confirm: () => resolve(this.editProvision(values)),
         cancel: reject,
         text: [
-          la('Saving these settings requires a restart of the cluster. Existing jobs will be halted.'),
+          la('Saving these settings requires a restart of the engine. Existing jobs will be halted.'),
           la('Are you sure you want to continue?')
         ]
       });
@@ -141,7 +141,7 @@ export class AddProvisionModal extends Component {
           style={styles.stepOneStyle}
           onSelectClusterType={this.handleSelectClusterType}
           clusters={Immutable.fromJS(PROVISION_MANAGERS)}
-          />}
+        />}
       </Modal>
     );
   }

@@ -101,7 +101,7 @@
         {
           "type": "boolean",
           "propertyName": "useWhitelist",
-          "label": "Elasticsearch-as-a-service cluster"
+          "label": "Elasticsearch-as-a-service engine"
         },
         {
           "type": "credentials",
@@ -455,38 +455,6 @@
           "propertyName": "port",
           "label": "Port",
           "value": 5432
-        },
-        {
-          "type": "text",
-          "propertyName": "databaseName",
-          "label": "Database name"
-        },
-        {
-          "type": "credentials",
-          "propertyName": "authenticationType"
-        },
-        {
-          "type": "number",
-          "propertyName": "fetchSize",
-          "label": "Record fetch size",
-          "value": "0"
-        }
-      ]
-    },
-    {
-      "label": "IBM DB2",
-      "sourceType": "DB2",
-      "elements": [
-        {
-          "type": "text",
-          "propertyName": "hostname",
-          "label": "Host"
-        },
-        {
-          "type": "number",
-          "propertyName": "port",
-          "label": "Port",
-          "value": 50000
         },
         {
           "type": "text",

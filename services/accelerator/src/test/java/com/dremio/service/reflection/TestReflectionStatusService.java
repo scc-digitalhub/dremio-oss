@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 package com.dremio.service.reflection;
 
 import static org.junit.Assert.assertEquals;
+import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -97,8 +98,8 @@ public class TestReflectionStatusService {
     final ReflectionValidator validator = mock(ReflectionValidator.class);
 
     statusService = new ReflectionStatusServiceImpl(
+      sabotContext::getExecutors,
       DirectProvider.wrap(namespaceService),
-      DirectProvider.wrap(sabotContext),
       DirectProvider.<CacheViewer>wrap(new ConstantCacheViewer(isMaterializationCached)),
       goalsStore,
       entriesStore,
@@ -132,7 +133,7 @@ public class TestReflectionStatusService {
     when(entriesStore.get(reflectionId)).thenReturn(entry);
 
     when(materializationStore.getLastMaterializationDone(reflectionId)).thenReturn(lastMaterialization);
-    when(materializationStore.getAllDoneWhen(Mockito.anyLong())).thenReturn(Collections.singleton(lastMaterialization));
+    when(materializationStore.getAllDone(eq(reflectionId), Mockito.anyLong())).thenReturn(Collections.singleton(lastMaterialization));
 
     when(validator.isValid(goal)).thenReturn(isValid);
     this.expected = expected;
@@ -152,6 +153,19 @@ public class TestReflectionStatusService {
   }
 
   private static Object[] newTestCase(
+    String name,
+    COMBINED_STATUS expected,
+    boolean enabled,
+    boolean manualRefresh,
+    boolean invalid,
+    ReflectionState entryState,
+    int numFailures,
+    MATERIALIZATION_STATE materializationState,
+    boolean hasCachedMaterialization) {
+    return newTestCase(name, expected, enabled, manualRefresh, invalid, entryState, numFailures, materializationState, hasCachedMaterialization, 1L);
+  }
+
+  private static Object[] newTestCase(
       String name,
       COMBINED_STATUS expected,
       boolean enabled,
@@ -160,7 +174,8 @@ public class TestReflectionStatusService {
       ReflectionState entryState,
       int numFailures,
       MATERIALIZATION_STATE materializationState,
-      boolean hasCachedMaterialization) {
+      boolean hasCachedMaterialization,
+      Long expiration) {
 
     // expected, enabled, manualRefresh, isValid, entry, lastMaterialization, isMaterializationCached
     ReflectionEntry entry = null;
@@ -171,8 +186,13 @@ public class TestReflectionStatusService {
     }
 
     Materialization materialization = new Materialization()
-      .setLastRefreshFromPds(0L)
-      .setExpiration(System.currentTimeMillis() + TimeUnit.DAYS.toMillis(1));
+      .setLastRefreshFromPds(0L);
+
+    if (expiration == null) {
+      materialization.setExpiration(null);
+    } else {
+      materialization.setExpiration(System.currentTimeMillis() + TimeUnit.DAYS.toMillis(expiration));
+    }
 
     switch (materializationState) {
       case NOT_FOUND:
@@ -214,7 +234,8 @@ public class TestReflectionStatusService {
       newTestCase("can accelerate, manual refresh", COMBINED_STATUS.CAN_ACCELERATE, true, true, false, ReflectionState.ACTIVE, 0, MATERIALIZATION_STATE.VALID, true),
       newTestCase("cannot accelerate, not cached", COMBINED_STATUS.CANNOT_ACCELERATE_SCHEDULED, true, false, false, ReflectionState.ACTIVE, 0, MATERIALIZATION_STATE.VALID, false),
       newTestCase("cannot accelerate", COMBINED_STATUS.CANNOT_ACCELERATE_SCHEDULED, true, false, false, ReflectionState.ACTIVE, 0, MATERIALIZATION_STATE.NOT_FOUND, false),
-      newTestCase("cannot accelerate manual", COMBINED_STATUS.CANNOT_ACCELERATE_MANUAL, true, true, false, ReflectionState.ACTIVE, 0, MATERIALIZATION_STATE.NOT_FOUND, false)
+      newTestCase("cannot accelerate manual", COMBINED_STATUS.CANNOT_ACCELERATE_MANUAL, true, true, false, ReflectionState.ACTIVE, 0, MATERIALIZATION_STATE.NOT_FOUND, false),
+      newTestCase("null materialization expiration", COMBINED_STATUS.EXPIRED, true, false, false, ReflectionState.ACTIVE, 0, MATERIALIZATION_STATE.EXPIRED, false, null)
     );
   }
 
@@ -230,8 +251,8 @@ public class TestReflectionStatusService {
     final ReflectionValidator validator = mock(ReflectionValidator.class);
 
     ReflectionStatusServiceImpl reflectionStatusService = new ReflectionStatusServiceImpl(
+      sabotContext::getExecutors,
       DirectProvider.wrap(namespaceService),
-      DirectProvider.wrap(sabotContext),
       DirectProvider.<CacheViewer>wrap(new ConstantCacheViewer(false)),
       goalsStore,
       entriesStore,

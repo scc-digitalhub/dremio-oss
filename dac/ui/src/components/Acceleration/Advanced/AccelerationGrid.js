@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,9 +32,10 @@ import Modal from 'components/Modals/Modal';
 import ModalForm from 'components/Forms/ModalForm';
 import FormBody from 'components/Forms/FormBody';
 import Message from 'components/Message';
+import EllipsedText from '@app/components/EllipsedText';
 
 import { formDescription, formLabel } from 'uiTheme/radium/typography';
-import { typeToIconType } from 'constants/DataTypes';
+import { typeToIconType } from '@app/constants/DataTypes';
 
 import LayoutInfo from '../LayoutInfo';
 import { commonStyles } from '../commonStyles';
@@ -75,7 +76,7 @@ export class AccelerationGrid extends Component {
   state = {
     tableWidth: 900,
     visibleLayoutExtraSettingsIndex: -1
-  }
+  };
 
   focusedColumn = undefined;
 
@@ -104,7 +105,7 @@ export class AccelerationGrid extends Component {
     if (this.gridWrapper) {
       this.setState({ tableWidth: this.gridWrapper.getBoundingClientRect().width - GRID_PADDING});
     }
-  }
+  };
 
   renderLeftHeaderCell = () => (
     <div style={styles.flexEnd}>
@@ -121,7 +122,7 @@ export class AccelerationGrid extends Component {
         </div>
       </div>
     </div>
-  )
+  );
 
   renderStatus(fields) {
     const id = fields.id.value;
@@ -227,7 +228,7 @@ export class AccelerationGrid extends Component {
         {this.renderExtraLayoutSettingsModal(columnIndex, name)}
       </div>
     );
-  }
+  };
 
   renderExtraLayoutSettingsModal(columnIndex, name) {
     const fields = this.props.layoutFields[columnIndex];
@@ -278,12 +279,12 @@ export class AccelerationGrid extends Component {
       <div style={{ ...styles.leftCell, backgroundColor, borderBottom }}>
         <div style={styles.column}>
           <FontIcon type={typeToIconType[columns.getIn([rowIndex, 'type', 'name'])]} theme={styles.columnTypeIcon}/>
-          <span style={{ marginLeft: 5 }}>{columns.getIn([rowIndex, 'name'])}</span>
+          <EllipsedText text={columns.getIn([rowIndex, 'name'])} style={{ marginLeft: 5 }}/>
         </div>
         <div>{columns.getIn([rowIndex, 'queries'])}</div>
       </div>
     );
-  }
+  };
 
   render() {
     const { columns, layoutFields, activeTab } = this.props;
@@ -311,7 +312,7 @@ export class AccelerationGrid extends Component {
     return (
       <div
         className='grid-acceleration'
-        style={{ width: '100%', overflow: 'hidden' }}
+        style={{width: '100%', height: '100vh', overflow: 'hidden'}}
         ref={(wrap) => this.gridWrapper = wrap}
       >
         <AutoSizer>
@@ -420,7 +421,8 @@ const styles = {
   column: {
     display: 'flex',
     alignItems: 'center',
-    marginLeft: 4
+    marginLeft: 4,
+    width: '100%'
   },
   columnTypeIcon: {
     Container: {

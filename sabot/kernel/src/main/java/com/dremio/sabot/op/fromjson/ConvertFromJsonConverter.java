@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,8 +21,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
-
-import javax.annotation.Nullable;
 
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.memory.BufferManager;
@@ -46,6 +44,8 @@ import org.apache.calcite.sql.type.SqlTypeFamily;
 import com.dremio.common.exceptions.UserException;
 import com.dremio.common.expression.CompleteType;
 import com.dremio.exec.ExecConstants;
+import com.dremio.exec.catalog.CatalogOptions;
+import com.dremio.exec.catalog.DremioTable;
 import com.dremio.exec.ops.QueryContext;
 import com.dremio.exec.planner.physical.Prel;
 import com.dremio.exec.planner.physical.ProjectPrel;
@@ -57,14 +57,10 @@ import com.dremio.exec.vector.complex.fn.JsonReader;
 import com.dremio.sabot.exec.context.BufferManagerImpl;
 import com.dremio.sabot.op.fromjson.ConvertFromJsonPOP.ConversionColumn;
 import com.dremio.sabot.op.fromjson.ConvertFromJsonPOP.OriginType;
-import com.dremio.service.namespace.NamespaceException;
-import com.dremio.service.namespace.NamespaceKey;
-import com.dremio.service.namespace.NamespaceNotFoundException;
 import com.dremio.service.namespace.dataset.proto.DatasetConfig;
 import com.dremio.service.namespace.dataset.proto.DatasetField;
 import com.google.common.base.Function;
 import com.google.common.base.Preconditions;
-import com.google.common.base.Predicate;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 
@@ -130,12 +126,15 @@ public class ConvertFromJsonConverter extends BasePrelVisitor<Prel, Void, Runtim
 
             final RelColumnOrigin origin = origins.iterator().next();
             final RelOptTable originTable = origin.getOriginTable();
+            final DatasetConfig datasetConfig = originTable.unwrap(DremioTable.class).getDatasetConfig();
 
             final List<String> tableSchemaPath = originTable.getQualifiedName();
             final String tableFieldname = originTable.getRowType().getFieldNames().get(origin.getOriginColumnOrdinal());
             // we are using topRel to construct the newBottomProject rowType, make sure ConvertFromJson refers to that
             final String inputFieldname = topRel.getRowType().getFieldNames().get(fieldId);
-            conversions.add(new ConversionColumn(OriginType.RAW, tableSchemaPath, tableFieldname, inputFieldname, getRawSchema(context, tableSchemaPath, tableFieldname)));
+              conversions.add(new ConversionColumn(
+                OriginType.RAW, tableSchemaPath, tableFieldname, inputFieldname, getRawSchema(datasetConfig, tableFieldname)));
+
             bottomExprs.add(inputRef);
             continue;
           } else {
@@ -179,26 +178,13 @@ public class ConvertFromJsonConverter extends BasePrelVisitor<Prel, Void, Runtim
     return UserException.validationError().message("Using CONVERT_FROM(*, 'JSON') is only supported against string literals and direct table references of types VARCHAR and VARBINARY.").build(logger);
   }
 
-  private static CompleteType getRawSchema(QueryContext context, List<String> path, final String fieldname) {
-    final NamespaceKey key = new NamespaceKey(path);
-    List<DatasetField> datasetFields = null;
-    try {
-      DatasetConfig datasetConfig = context.getNamespaceService().getDataset(key);
-      datasetFields = datasetConfig.getDatasetFieldsList();
-    } catch (NamespaceNotFoundException e) {
-      // we will return a dummy type, below
-    } catch (NamespaceException e) {
-      throw new RuntimeException(e);
-    }
+  private static CompleteType getRawSchema(DatasetConfig datasetConfig, final String fieldname) {
+    List<DatasetField> datasetFields = datasetConfig.getDatasetFieldsList();
 
     if (datasetFields != null) {
       // do we have a known schema for the converted field ?
-      DatasetField datasetField = Iterables.find(datasetFields, new Predicate<DatasetField>() {
-        @Override
-        public boolean apply(@Nullable DatasetField input) {
-          return fieldname.equals(input.getFieldName());
-        }
-      }, null);
+      final DatasetField datasetField =
+        Iterables.find(datasetFields, input -> fieldname.equals(input.getFieldName()), null);
 
       if (datasetField != null) { // yes we do
         return CompleteType.deserialize(datasetField.getFieldSchema().toByteArray());
@@ -220,7 +206,8 @@ public class ConvertFromJsonConverter extends BasePrelVisitor<Prel, Void, Runtim
         ){
       data.writeBytes(bytes);
       final int sizeLimit = Math.toIntExact(context.getOptions().getOption(ExecConstants.LIMIT_FIELD_SIZE_BYTES));
-      JsonReader jsonReader = new JsonReader(bufferManager.getManagedBuffer(), sizeLimit,
+      final int maxLeafLimit = Math.toIntExact(context.getOptions().getOption(CatalogOptions.METADATA_LEAF_COLUMN_MAX));
+      JsonReader jsonReader = new JsonReader(bufferManager.getManagedBuffer(), sizeLimit, maxLeafLimit,
         context.getOptions().getOption(ExecConstants.JSON_READER_ALL_TEXT_MODE_VALIDATOR), false, false);
       jsonReader.setSource(bytes);
 

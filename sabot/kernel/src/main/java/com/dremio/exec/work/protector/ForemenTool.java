@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,9 +15,10 @@
  */
 package com.dremio.exec.work.protector;
 
+import java.util.Optional;
+
 import com.dremio.exec.proto.UserBitShared.ExternalId;
 import com.dremio.exec.proto.UserBitShared.QueryProfile;
-import com.google.common.base.Optional;
 
 /**
  * Tool for interacting with the foremen manager.
@@ -35,7 +36,7 @@ public interface ForemenTool {
 
     @Override
     public Optional<QueryProfile> getProfile(ExternalId id) {
-      return Optional.absent();
+      return Optional.empty();
     }
 
   };

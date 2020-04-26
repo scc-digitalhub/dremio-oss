@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,18 +19,22 @@ import java.io.File;
 import java.io.PrintWriter;
 
 import org.junit.AfterClass;
+import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.ClassRule;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import com.dremio.BaseTestQuery;
+import com.dremio.config.DremioConfig;
 import com.dremio.exec.catalog.CatalogServiceImpl;
 import com.dremio.exec.catalog.ManagedStoragePlugin;
 import com.dremio.exec.catalog.StoragePluginId;
 import com.dremio.service.namespace.NamespaceKey;
 import com.dremio.service.namespace.source.proto.SourceConfig;
 import com.dremio.service.users.SystemUser;
+import com.dremio.test.TemporarySystemProperties;
 import com.google.common.io.Files;
 
 /**
@@ -41,15 +45,24 @@ public class TestSubPathFileSystemPlugin extends BaseTestQuery {
   @ClassRule
   public static TemporaryFolder testFolder = new TemporaryFolder();
 
-  private static File storageBase;
+  protected static File storageBase;
+
+  @Rule
+  public TemporarySystemProperties properties = new TemporarySystemProperties();
+
+  @Before
+  public void before() {
+    properties.set(DremioConfig.LEGACY_STORE_VIEWS_ENABLED, "true");
+  }
 
   @BeforeClass
   public static void setup() throws Exception {
+    testNoResult("alter system set \"%s\" = 1", FileDatasetHandle.DFS_MAX_FILES.getOptionName());
     generateTestData();
     addSubPathDfsPlugin();
   }
 
-  private static void generateTestData() throws Exception {
+  protected static void generateTestData() throws Exception {
     storageBase = testFolder.newFolder("base");
 
     // put some test data under the base
@@ -59,9 +72,18 @@ public class TestSubPathFileSystemPlugin extends BaseTestQuery {
 
     // generate data outside the storage base
     generateTestDataFile(new File(testFolder.getRoot(), "tblOutside.csv"));
+
+    // generate data for a dataset that has too many files
+    Files.createParentDirs(new File(storageBase, "largeDir/tbl1.csv"));
+    generateTestDataFile(new File(storageBase, "largeDir/tbl1.csv"));
+    generateTestDataFile(new File(storageBase, "largeDir/tbl2.csv"));
+
+    // generate data for a mutable dataset
+    Files.createParentDirs(new File(storageBase, "largeDir2/tbl1.csv"));
+    generateTestDataFile(new File(storageBase, "largeDir2/tbl1.csv"));
   }
 
-  private static String generateTestDataFile(File file) throws Exception {
+  protected static String generateTestDataFile(File file) throws Exception {
     PrintWriter printWriter = new PrintWriter(file);
     for (int i = 1; i <= 5; i++) {
       printWriter.println (String.format("%d,key_%d", i, i));
@@ -78,6 +100,9 @@ public class TestSubPathFileSystemPlugin extends BaseTestQuery {
     InternalFileConf nasConf = pluginId.getConnectionConf();
     nasConf.path = storageBase.getPath();
     nasConf.mutability = SchemaMutability.ALL;
+
+    // Add one configuration for testing when internal is true
+    nasConf.isInternal = true;
 
     SourceConfig config = pluginId.getConfig();
     config.setId(null);
@@ -130,9 +155,16 @@ public class TestSubPathFileSystemPlugin extends BaseTestQuery {
         "PERMISSION ERROR: Not allowed to access files outside of the source root");
   }
 
+  @Test
+  public void testTooManyFiles() throws Exception {
+    // Not an error for internal file stores.
+    test("SELECT * FROM subPathDfs.\"largeDir\"");
+  }
+
   @AfterClass
   public static void shutdown() throws Exception {
     SourceConfig config = getSabotContext().getNamespaceService(SystemUser.SYSTEM_USERNAME).getSource(new NamespaceKey("subPathDfs"));
     ((CatalogServiceImpl) getSabotContext().getCatalogService()).getSystemUserCatalog().deleteSource(config);
+    testNoResult("alter system set \"%s\" = %d", FileDatasetHandle.DFS_MAX_FILES.getOptionName(),FileDatasetHandle.DFS_MAX_FILES.getDefault().getNumVal());
   }
 }

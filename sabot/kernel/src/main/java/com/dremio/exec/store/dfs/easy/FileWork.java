@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,12 +15,12 @@
  */
 package com.dremio.exec.store.dfs.easy;
 
-import org.apache.hadoop.fs.FileStatus;
+import com.dremio.io.file.FileAttributes;
 
 public interface FileWork {
   static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(FileWork.class);
 
-  public FileStatus getStatus();
+  public FileAttributes getFileAttributes();
   public long getStart();
   public long getLength();
 }

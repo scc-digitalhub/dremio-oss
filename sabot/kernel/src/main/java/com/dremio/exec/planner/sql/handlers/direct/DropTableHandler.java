@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -58,7 +58,7 @@ public class DropTableHandler extends SimpleDirectHandler {
   RelConversionException, IOException {
     SqlDropTable dropTableNode = SqlNodeUtil.unwrap(sqlNode, SqlDropTable.class);
     NamespaceKey path = catalog.resolveSingle(dropTableNode.getPath());
-    DremioTable table = catalog.getTableNoResolve(path);
+    DremioTable table = catalog.getTableNoColumnCount(path);
 
     if (!dropTableNode.checkTableExistence()) {
       if(table == null) {

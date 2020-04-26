@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,10 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { CALL_API } from 'redux-api-middleware';
+import { RSAA } from 'redux-api-middleware';
 
-import { API_URL_V2 } from 'constants/Api';
 import apiUtils from '@app/utils/apiUtils/apiUtils';
+import { APIV2Call } from '@app/core/APICall';
 
 export const PAGE_SIZE = 100;
 
@@ -26,8 +26,11 @@ export const LOAD_NEXT_ROWS_FAILURE = 'LOAD_NEXT_ROWS_FAILURE';
 
 const fetchNextRows = (datasetVersion, paginationUrl, offset) => {
   const href = `${paginationUrl}?offset=${offset}&limit=${PAGE_SIZE}`;
+
+  const apiCall = new APIV2Call().fullpath(href);
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         LOAD_NEXT_ROWS_START,
         {type: LOAD_NEXT_ROWS_SUCCESS, meta: { datasetVersion, offset }},
@@ -36,19 +39,13 @@ const fetchNextRows = (datasetVersion, paginationUrl, offset) => {
       ],
       method: 'GET',
       headers: apiUtils.getJobDataNumbersAsStringsHeader(),
-      endpoint: `${API_URL_V2}${href}`
+      endpoint: apiCall
     }
   };
 };
 
 export const loadNextRows = (datasetVersion, paginationUrl, offset) => (dispatch) => {
   return dispatch(fetchNextRows(datasetVersion, paginationUrl, offset));
-};
-
-export const DELETE_TABLE_DATA = 'DELETE_TABLE_DATA';
-
-export const deleteTableData = (dataset) => {
-  return { type: DELETE_TABLE_DATA, meta: { datasetVersion: dataset.get('datasetVersion') }};
 };
 
 export const FULL_CELL_VIEW_ID = 'FULL_CELL_VIEW_ID';
@@ -62,15 +59,18 @@ export const CLEAR_FULL_CELL_VALUE = 'CLEAR_FULL_CELL_VALUE';
 
 export const loadFullCellValue = ({ href }) => {
   const meta = { viewId: FULL_CELL_VIEW_ID };
+
+  const apiCall = new APIV2Call().fullpath(href);
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         { type: LOAD_FULL_CELL_VALUE_START, meta },
         { type: LOAD_FULL_CELL_VALUE_SUCCESS, meta },
         { type: LOAD_FULL_CELL_VALUE_FAILURE, meta }
       ],
       method: 'GET',
-      endpoint: `${API_URL_V2}${href}`
+      endpoint: apiCall
     }
   };
 };
@@ -104,4 +104,35 @@ export const explorePageExit = () => ({ type: EXPLORE_PAGE_EXIT });
 export const explorePageLocationChanged = (newRouteState) => ({
   type: EXPLORE_PAGE_LOCATION_CHANGED,
   newRouteState
+});
+
+export const UPDATE_EXPLORE_JOB_PROGRESS = 'UPDATE_EXPLORE_JOB_PROGRESS';
+export const updateExploreJobProgress = (jobUpdate) => ({
+  type: UPDATE_EXPLORE_JOB_PROGRESS,
+  jobUpdate
+});
+
+export const SET_EXPLORE_JOBID_IN_PROGRESS = 'SET_EXPLORE_JOBID_IN_PROGRESS';
+export const setExploreJobIdInProgress = (jobId, datasetVersion) => ({
+  type: SET_EXPLORE_JOBID_IN_PROGRESS,
+  jobId,
+  datasetVersion
+});
+
+export const UPDATE_EXPLORE_JOB_RECORDS = 'UPDATE_EXPLORE_JOB_RECORDS';
+export const updateJobRecordCount = (recordCount) => ({
+  type: UPDATE_EXPLORE_JOB_RECORDS,
+  recordCount
+});
+
+export const INIT_EXPLORE_JOB_PROGRESS = 'INIT_EXPLORE_JOB_PROGRESS';
+// initialize explore job progess
+export const initializeExploreJobProgress = (isRun) => ({
+  type: INIT_EXPLORE_JOB_PROGRESS,
+  isRun
+});
+
+export const FAILED_EXPLORE_JOB_PROGRESS = 'FAILED_EXPLORE_JOB_PROGRESS';
+export const failedExploreJobProgress = () => ({
+  type: FAILED_EXPLORE_JOB_PROGRESS
 });

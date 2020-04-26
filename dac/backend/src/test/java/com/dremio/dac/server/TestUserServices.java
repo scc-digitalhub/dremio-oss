@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -133,7 +133,7 @@ public class TestUserServices extends BaseTestServer {
 
     doc("delete with bad version");
     final GenericErrorMessage errorDelete2 = expectStatus(CONFLICT, getBuilder(getAPIv2().path("user/" + testUserName("test11")).queryParam("version", 1234L)).buildDelete(), GenericErrorMessage.class);
-    assertErrorMessage(errorDelete2, "tried to delete version 1234, found previous version 1");
+    assertErrorMessage(errorDelete2, "Unable to delete source");
 
     doc("delete");
     expectSuccess(getBuilder(getAPIv2().path("user/" + testUserName("test11")).queryParam("version", u2.getUser().getVersion())).buildDelete());
@@ -249,7 +249,7 @@ public class TestUserServices extends BaseTestServer {
     UserLoginSession userLoginToken = expectSuccess(getBuilder(getAPIv2().path("/login")).buildPost(Entity.json(userLogin)), UserLoginSession.class);
     assertEquals(testUserName("test12"), userLoginToken.getUserName());
     assertEquals("test1@dremio.test", userLoginToken.getEmail());
-    assertEquals(true, userLoginToken.getPermissions().isCanChatForSupport());
+    assertEquals(false, userLoginToken.getPermissions().isCanChatForSupport());
     assertEquals(true, userLoginToken.getPermissions().isCanDownloadProfiles());
     assertEquals(true, userLoginToken.getPermissions().isCanEmailForSupport());
     assertEquals(true, userLoginToken.getPermissions().isCanUploadProfiles());

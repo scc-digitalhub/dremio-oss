@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ import SimpleButton from 'components/Buttons/SimpleButton';
 
 import { getViewState } from 'selectors/resources';
 
-import { SERVER_STATUS_OK } from 'constants/serverStatus';
+import { SERVER_STATUS_OK } from '@app/constants/serverStatus';
 
 import {LIGHT_GREY} from 'uiTheme/radium/colors';
 

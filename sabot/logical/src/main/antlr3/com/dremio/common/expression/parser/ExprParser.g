@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2017-2018 Dremio Corporation
+// Copyright (C) 2017-2019 Dremio Corporation
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -288,9 +288,13 @@ arraySegment returns [PathSegment seg]
   :  OBracket Number CBracket ( (Period s1=pathSegment) | s2=arraySegment)? {$seg = new ArraySegment($Number.text, ($s1.seg == null ? $s2.seg : $s1.seg) ); }
   ;
 
+inputReference returns [InputReference e]
+  :  InputReference OParen Number Comma pathSegment CParen { $e = new InputReference(Integer.parseInt($Number.text), new SchemaPath($pathSegment.seg )); }
+  ;
 
 lookup returns [LogicalExpression e]
-  :  functionCall {$e = $functionCall.e ;}
+  : inputReference {$e = $inputReference.e; } 
+  | functionCall {$e = $functionCall.e ;}
   | convertCall {$e = $convertCall.e; }
   | castCall {$e = $castCall.e; }
   | pathSegment {$e = new SchemaPath($pathSegment.seg ); }

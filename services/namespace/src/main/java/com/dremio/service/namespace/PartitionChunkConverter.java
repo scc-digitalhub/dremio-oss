@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,9 +23,9 @@ import static com.dremio.service.namespace.DatasetSplitIndexKeys.SPLIT_SIZE;
 import static com.dremio.service.namespace.DatasetSplitIndexKeys.SPLIT_VERSION;
 import static java.lang.String.format;
 
-import com.dremio.datastore.KVStoreProvider.DocumentConverter;
-import com.dremio.datastore.KVStoreProvider.DocumentWriter;
 import com.dremio.datastore.SearchTypes.SearchFieldSorting.FieldType;
+import com.dremio.datastore.api.DocumentConverter;
+import com.dremio.datastore.api.DocumentWriter;
 import com.dremio.datastore.indexed.IndexKey;
 import com.dremio.service.namespace.dataset.proto.PartitionProtobuf.PartitionChunk;
 import com.dremio.service.namespace.dataset.proto.PartitionProtobuf.PartitionValue;

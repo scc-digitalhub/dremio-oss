@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,6 +36,8 @@ import org.apache.twill.api.RuntimeSpecification;
 import org.apache.twill.api.TwillSpecification;
 import org.apache.twill.api.logging.LogEntry;
 import org.apache.twill.api.logging.LogThrowable;
+import org.junit.AfterClass;
+import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.ClassRule;
 import org.junit.Rule;
@@ -76,6 +78,7 @@ public class TestYarnController {
 
   @BeforeClass
   public static void beforeClass() throws Exception {
+    DacDaemonYarnApplication.isTestingModeOn = true;
     finalPath = tempDir.newFolder("jars", "bundled");
     thirdrdPartyDir = tempDir.newFolder("jars", "3rdparty");
     File filePath = new File(finalPath, "dremio-daemon-bundle.jar");
@@ -84,11 +87,19 @@ public class TestYarnController {
     shimFilePath.createNewFile();
     File randomFilePath = new File(finalPath, "some-jar-to-load.jar");
     randomFilePath.createNewFile();
-    File maprfsJar = new File(thirdrdPartyDir, "maprfs-5.1.0-mapr.jar");
+    File maprfsJar = new File(thirdrdPartyDir, "dremio-maprfs-shaded-5.1.0-mapr.jar");
     maprfsJar.createNewFile();
   }
 
+  @AfterClass
+  public static void afterClass() {
+    DacDaemonYarnApplication.isTestingModeOn = false;
+  }
 
+  @Before
+  public void setup() {
+    properties.set(DremioConfig.PLUGINS_ROOT_PATH_PROPERTY, "./plugins");
+  }
 
   @Rule
   public TemporarySystemProperties properties = new TemporarySystemProperties();
@@ -226,7 +237,7 @@ public class TestYarnController {
 
     String flatNames = names.toString();
     assertTrue(flatNames.contains(SHIM_LOADER_NAME));
-    assertTrue(flatNames.contains("maprfs-5.1.0-mapr.jar"));
+    assertTrue(flatNames.contains("dremio-maprfs-shaded-5.1.0-mapr.jar"));
     assertTrue(flatNames.contains(SOME_JAR_TO_LOAD));
     System.clearProperty("provisioning.yarn.classpath");
   }
@@ -277,7 +288,7 @@ public class TestYarnController {
 
     String flatNames = names.toString();
     assertTrue(flatNames.contains(SHIM_LOADER_NAME));
-    assertTrue(flatNames.contains("maprfs-5.1.0-mapr.jar"));
+    assertTrue(flatNames.contains("dremio-maprfs-shaded-5.1.0-mapr.jar"));
   }
 
   @Test
@@ -290,7 +301,7 @@ public class TestYarnController {
       }
     };
     File shimFilePath = new File(finalPath, SHIM_LOADER_NAME);
-    File maprfsJar = new File(thirdrdPartyDir, "maprfs-5.1.0-mapr.jar");
+    File maprfsJar = new File(thirdrdPartyDir, "dremio-maprfs-shaded-5.1.0-mapr.jar");
 
     try {
       shimFilePath.delete();

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,12 +18,17 @@ package com.dremio;
 import org.apache.hadoop.fs.Path;
 import org.junit.Assert;
 import org.junit.Ignore;
+import org.junit.Rule;
 import org.junit.Test;
 
 import com.dremio.common.exceptions.UserException;
+import com.dremio.config.DremioConfig;
+import com.dremio.test.TemporarySystemProperties;
 
 
 public class TestDropTable extends PlanTestBase {
+  @Rule
+  public TemporarySystemProperties properties = new TemporarySystemProperties();
 
   private static final String CREATE_SIMPLE_TABLE = "create table %s as select 1 from cp.\"employee.json\"";
   private static final String CREATE_SIMPLE_VIEW = "create view %s as select 1 from cp.\"employee.json\"";
@@ -204,6 +209,7 @@ public class TestDropTable extends PlanTestBase {
   public void testDropTableIfExistsWhileItIsAView() throws Exception {
     final String viewName = "test_view";
     try{
+      properties.set(DremioConfig.LEGACY_STORE_VIEWS_ENABLED, "true");
       test("use dfs_test");
 
       // dropping of non existent table without error if the view with such name is existed
@@ -216,6 +222,7 @@ public class TestDropTable extends PlanTestBase {
           .go();
     } finally {
       test(String.format(DROP_VIEW_IF_EXISTS, viewName));
+      properties.clear(DremioConfig.LEGACY_STORE_VIEWS_ENABLED);
     }
   }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,14 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { CALL_API } from 'redux-api-middleware';
+import { RSAA } from 'redux-api-middleware';
 import { push, replace } from 'react-router-redux';
 import urlParse from 'url-parse';
 import { collapseExploreSql } from '@app/actions/explore/ui';
 import { PageTypes } from '@app/pages/ExplorePage/pageTypes';
-import { getPathPart, changePageTypeInUrl } from '@app/pages/ExplorePage/pageTypeUtils';
+import { changePageTypeInUrl, getPathPart } from '@app/pages/ExplorePage/pageTypeUtils';
 
-import { API_URL_V2 } from 'constants/Api';
+import { APIV2Call } from '@app/core/APICall';
 import schemaUtils from 'utils/apiUtils/schemaUtils';
 import apiUtils from '@app/utils/apiUtils/apiUtils';
 
@@ -53,8 +53,11 @@ export function postDatasetOperation({
       level: 'success'
     }
   } : meta;
+
+  const apiCall = new APIV2Call().fullpath(href);
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         { type: RUN_TABLE_TRANSFORM_START, meta: {...meta, ...metas[0]} },
         schemaUtils.getSuccessActionTypeWithSchema(RUN_TABLE_TRANSFORM_SUCCESS, schema,
@@ -69,7 +72,7 @@ export function postDatasetOperation({
         ...apiUtils.getJobDataNumbersAsStringsHeader()
       },
       body: body && JSON.stringify(body),
-      endpoint: `${API_URL_V2}${href}`
+      endpoint: apiCall
     }
   };
 }
@@ -81,16 +84,16 @@ export function _getNextJobId(fullDataset) {
 }
 
 export function navigateToNextDataset(response, {
-    replaceNav,
-    linkName,
-    isSaveAs,
-    preserveTip,
-    // we need to change a pathname only in the following cases
-    // 1) Save as
-    // 2) Edit original sql // handled by navigateAfterReapply
-    // 3) When we write a new query and click Preview/Run to navigate to newUntitled page
-    changePathname
-  } = {}) {
+  replaceNav,
+  linkName,
+  isSaveAs,
+  preserveTip,
+  // we need to change a pathname only in the following cases
+  // 1) Save as
+  // 2) Edit original sql // handled by navigateAfterReapply
+  // 3) When we write a new query and click Preview/Run to navigate to newUntitled page
+  changePathname
+} = {}) {
   return (dispatch, getStore) => {
     changePathname = isSaveAs || changePathname;
     const location = getStore().routing.locationBeforeTransitions;
@@ -99,8 +102,8 @@ export function navigateToNextDataset(response, {
     let keepQuery = false;
     let collapseSqlEditor = false;
 
-    //for graph and wiki we have to keep query parameters and redirect to corresponding page
-    for (const pageType of [PageTypes.graph, PageTypes.wiki]) {
+    //for graph, reflections, and wiki we have to keep query parameters and redirect to corresponding page
+    for (const pageType of [PageTypes.graph, PageTypes.wiki, PageTypes.reflections]) {
       const urlPart = getPathPart(pageType);
       //check if url ends with page type
       if (location.pathname.endsWith(urlPart)) {

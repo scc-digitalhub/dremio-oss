@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,13 +21,10 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.arrow.memory.AllocationListener;
 import org.apache.arrow.memory.AllocationOutcome;
-import org.apache.arrow.memory.BaseAllocator;
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.memory.BufferManager;
 import org.apache.arrow.memory.OutOfMemoryException;
 import org.apache.arrow.memory.RootAllocator;
-
-import com.dremio.common.exceptions.UserException;
 
 import io.netty.buffer.ArrowBuf;
 
@@ -50,6 +47,7 @@ public class DremioRootAllocator extends RootAllocator {
   public long getAvailableBuffers() {
     return listener.getAvailableBuffers();
   }
+
   /**
    * Constructor, hidden from public use. Use {@link #create(long)} instead
    */
@@ -62,27 +60,13 @@ public class DremioRootAllocator extends RootAllocator {
     this.listener = listener;
   }
 
-  /**
-   * Add the memory usage of the root allocator and all of its children to an exception
-   */
-  public void addUsageToExceptionContext(UserException.Builder b) {
-    // NB: allocator name already printed in each allocator's toString()
-    b.addContext(toString().trim());
-    // in DEBUG mode, children are already printed as part of the allocator's toString()
-    if (!BaseAllocator.isDebug()) {
-      for (String childAllocatorName : children.keySet()) {
-        b.addContext("  ", children.get(childAllocatorName).toString().trim());
-      }
-    }
-  }
-
   @Override
-  public ArrowBuf buffer(final int initialRequestSize) {
+  public ArrowBuf buffer(final long initialRequestSize) {
     throw new UnsupportedOperationException("Dremio's root allocator should not be used for direct allocations");
   }
 
   @Override
-  public ArrowBuf buffer(final int initialRequestSize, BufferManager manager) {
+  public ArrowBuf buffer(final long initialRequestSize, BufferManager manager) {
     throw new UnsupportedOperationException("Dremio's root allocator should not be used for direct allocations");
   }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,6 +40,7 @@ import com.dremio.exec.expr.fn.FunctionGenerationHelper;
 import com.dremio.exec.physical.config.TopN;
 import com.dremio.exec.record.BatchSchema;
 import com.dremio.exec.record.BatchSchema.SelectionVectorMode;
+import com.dremio.exec.record.RecordBatchData;
 import com.dremio.exec.record.VectorAccessible;
 import com.dremio.exec.record.VectorContainer;
 import com.dremio.exec.record.VectorWrapper;
@@ -48,7 +49,6 @@ import com.dremio.sabot.exec.context.OperatorContext;
 import com.dremio.sabot.op.copier.Copier;
 import com.dremio.sabot.op.copier.CopierOperator;
 import com.dremio.sabot.op.sort.SortRecordBatchBuilder;
-import com.dremio.sabot.op.sort.external.RecordBatchData;
 import com.dremio.sabot.op.sort.external.Sv4HyperContainer;
 import com.dremio.sabot.op.spi.SingleInputOperator;
 import com.google.common.base.Stopwatch;

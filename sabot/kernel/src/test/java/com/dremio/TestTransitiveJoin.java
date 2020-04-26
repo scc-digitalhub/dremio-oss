@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,23 +17,22 @@ package com.dremio;
 
 import java.util.regex.Pattern;
 
-import org.junit.After;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 
-import com.dremio.exec.planner.physical.PlannerSettings;
+import com.dremio.config.DremioConfig;
+import com.dremio.test.TemporarySystemProperties;
 
 public class TestTransitiveJoin extends PlanTestBase {
   private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(TestTransitiveJoin.class);
 
-  @Before
-  public void setupOptions() throws Exception {
-    setSessionOption(PlannerSettings.TRANSITIVE_JOIN, "true");
-  }
+  @Rule
+  public TemporarySystemProperties properties = new TemporarySystemProperties();
 
-  @After
-  public void resetOptions() throws Exception {
-    resetSessionOption(PlannerSettings.TRANSITIVE_JOIN);
+  @Before
+  public void setup() {
+    properties.set(DremioConfig.LEGACY_STORE_VIEWS_ENABLED, "true");
   }
 
   @Test
@@ -46,4 +45,53 @@ public class TestTransitiveJoin extends PlanTestBase {
         + "where l_orderkey = 1 limit 1" +
         "", Pattern.quote("Filter(condition=[=($0, 1)]) : rowType = RecordType(INTEGER c_custkey)"));
   }
+
+  @Test
+  public void testTransitiveJoinThroughCast() throws Exception {
+    test("use dfs_test");
+    test("create vds dfs_test.l as select cast(l_orderkey as varchar) as l_orderkey from cp.\"tpch/lineitem.parquet\"");
+    test("create vds dfs_test.r as select cast(o_orderkey as varchar) as o_orderkey from cp.\"tpch/orders.parquet\"");
+
+    final String onVds =
+      "select r.o_orderkey, l.l_orderkey \n" +
+        " from dfs_test.l  l " +
+        " join dfs_test.r r " +
+        " on r.o_orderkey = l.l_orderkey" +
+        " where l.l_orderkey = '2' " +
+        "";
+
+    testPlanMatchingPatterns(onVds,
+      new String[] {
+        Pattern.quote("Filter(condition=[=(CAST($0):VARCHAR(65536) CHARACTER SET \"ISO-8859-1\" COLLATE \"ISO-8859-1$en_US$primary\", '2')]) : rowType = RecordType(INTEGER l_orderkey)"),
+        Pattern.quote("Filter(condition=[=(CAST($0):VARCHAR(65536) CHARACTER SET \"ISO-8859-1\" COLLATE \"ISO-8859-1$en_US$primary\", '2')]) : rowType = RecordType(INTEGER o_orderkey):")
+      });
+
+    test("drop view dfs_test.l");
+    test("drop view dfs_test.r");
+  }
+
+  @Test
+  public void testTransitiveJoinThroughMathExpression() throws Exception {
+    test("use dfs_test");
+    test("create vds dfs_test.l as select l_orderkey + 2 as l_orderkey from cp.\"tpch/lineitem.parquet\"");
+    test("create vds dfs_test.r as select o_orderkey + 2 as o_orderkey from cp.\"tpch/orders.parquet\"");
+
+    final String onVds =
+      "select r.o_orderkey, l.l_orderkey \n" +
+        " from dfs_test.l  l " +
+        " join dfs_test.r r " +
+        " on r.o_orderkey = l.l_orderkey" +
+        " where l.l_orderkey = 2 " +
+        "";
+
+    testPlanMatchingPatterns(onVds,
+      new String[] {
+        Pattern.quote(" Filter(condition=[=(+($0, 2), 2)]) : rowType = RecordType(INTEGER o_orderkey):"),
+        Pattern.quote("Filter(condition=[=(+($0, 2), 2)]) : rowType = RecordType(INTEGER l_orderkey)")
+      });
+
+    test("drop view dfs_test.l");
+    test("drop view dfs_test.r");
+  }
+
 }

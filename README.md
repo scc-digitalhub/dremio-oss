@@ -70,3 +70,29 @@ The distribution directory will be `distribution/server/target/dremio-oss-{DREMI
 
 If you have questions, please post them on https://community.dremio.com.
 
+## About this fork:
+
+ - Fork by "scc-digitalhub" - i just "upgrade to Latest Dremio-oss"
+
+ services: {
+  coordinator.enabled: true,
+  coordinator.master.enabled: true,
+  executor.enabled: true
+  coordinator.web.auth: {
+        oauth: {
+            authorizationUrl: "CHANGE-ME"
+            tokenUrl: "CHANGE-ME"
+            userInfoUrl: "CHANGE-ME"
+            callbackUrl: "CHANGE-ME"
+            clientId: "CHANGE-ME"
+            clientSecret: "CHANGE-ME"
+            roleField: "CHANGE-ME"
+            roleUser: "user"
+            roleAdmin: "admin"
+        }
+        type: "oauth"
+  } 
+}
+
+
+

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,7 +35,7 @@ import { loadRecommendedJoin } from 'actions/explore/join';
 import { getTableColumns, getJoinTable, getExploreState } from 'selectors/explore';
 import { getLocation } from 'selectors/routing';
 
-import { RECOMMENDED_JOIN, CUSTOM_JOIN} from 'constants/explorePage/joinTabs';
+import { RECOMMENDED_JOIN, CUSTOM_JOIN} from '@app/constants/explorePage/joinTabs';
 
 import { isEmptyValue } from 'utils/validation';
 import { constructFullPath } from 'utils/pathUtils';
@@ -94,7 +94,7 @@ export class JoinController extends Component {
 
   recommendationsPromise = null; // eslint-disable-line react/sort-comp
 
-  componentWillMount() {
+  componentDidMount() {
     this.props.resetJoins();
     this.tryToLoadRecommendations(this.props);
   }

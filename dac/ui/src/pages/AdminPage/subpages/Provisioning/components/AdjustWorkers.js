@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,10 +26,12 @@ export default class AdjustWorkers extends Component {
   static propTypes = {
     entity: PropTypes.instanceOf(Immutable.Map),
     readonly: PropTypes.bool
-  }
+  };
 
   render() {
     const { entity, readonly } = this.props;
+    if (entity.get('clusterType') === 'EC2') return null;
+
     return (
       <SelectView
         style={styles.fullWidth}

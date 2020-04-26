@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -201,7 +201,7 @@ describe('AccelerationForm', () => {
       const instance = shallow(<AccelerationForm {...props}/>).instance();
       values.rawReflections.length = 1;
       values.rawReflections[0].shouldDelete = true;
-      return instance.submitForm(values).then(data => {
+      return instance.submitForm(values).then(() => {
         expect(commonProps.putReflection).to.have.been.calledWith(values.aggregationReflections[0]);
         expect(commonProps.postReflection).to.have.been.calledWith(values.aggregationReflections[1]);
         expect(commonProps.deleteReflection).to.have.been.calledWith(values.rawReflections[0]);
@@ -253,6 +253,27 @@ describe('AccelerationForm', () => {
         reflections: Immutable.fromJS({a: Immutable.fromJS(values.aggregationReflections[0]).set('status', Immutable.fromJS({config: 'INVALID'}))})
       });
       expect(instance.renderExtraErrorMessages().length).to.equal(2);
+    });
+  });
+
+  describe('formIsDirty', () => {
+    it('should be initially set to false', () => {
+      const instance = shallow(<AccelerationForm {...commonProps}/>).instance();
+      expect(instance.state.formIsDirty).to.equal(false);
+    });
+    it('should be true after value change', () => {
+      const instance = shallow(<AccelerationForm {...commonProps}/>).instance();
+      instance.componentWillReceiveProps({...commonProps, values: {...values, rawReflections: []}});
+      expect(instance.state.formIsDirty).to.equal(true);
+    });
+    it('should be false after revert&submit/updateInitialValues', () => {
+      const instance = shallow(<AccelerationForm {...commonProps} />).instance();
+      instance.componentWillReceiveProps({...commonProps, values: {...values, rawReflections: []}});
+      expect(instance.state.formIsDirty).to.equal(true);
+      instance.updateInitialValues();
+      setTimeout(() => {
+        expect(instance.state.formIsDirty).to.equal(false);
+      }, 1);
     });
   });
 });

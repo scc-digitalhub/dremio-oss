@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,10 +40,8 @@ import com.dremio.exec.expr.annotations.FunctionTemplate;
 import com.dremio.exec.expr.annotations.FunctionTemplate.FunctionSyntax;
 import com.dremio.exec.expr.annotations.FunctionTemplate.NullHandling;
 import com.dremio.sabot.exec.context.FunctionContext;
-import com.google.common.base.Function;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
-import com.google.common.collect.FluentIterable;
 import com.google.common.collect.ImmutableList;
 import com.sun.codemodel.JBlock;
 import com.sun.codemodel.JExpr;
@@ -89,11 +87,15 @@ public abstract class BaseFunctionHolder extends AbstractFunctionHolder {
     this.derivation = attributes.getDerivation();
     this.initializer = initializer;
 
-    this.paramTypes = parameters == null ? ImmutableList.<CompleteType>of() : FluentIterable.of(parameters).transform(new Function<ValueReference, CompleteType>(){
-      @Override
-      public CompleteType apply(ValueReference input) {
-        return input.getType();
-      }}).toList();
+    if (parameters == null) {
+      this.paramTypes = ImmutableList.of();
+    } else {
+      this.paramTypes = ImmutableList.copyOf(
+        Arrays.stream(parameters)
+        .map(ValueReference::getType)
+        .collect(ImmutableList.toImmutableList())
+      );
+    }
 
     boolean usesErrContext = false;
     for (int i = 0; i < workspaceVars.length; i++) {

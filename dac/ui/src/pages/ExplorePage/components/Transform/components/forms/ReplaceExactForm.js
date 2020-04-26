@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ import fieldsMappers from 'utils/mappers/ExplorePage/Transform/fieldsMappers';
 import filterMappers from 'utils/mappers/ExplorePage/Transform/filterMappers';
 
 import Tabs from 'components/Tabs';
-import { getDefaultValue, parseTextToDataType } from 'constants/DataTypes';
+import { getDefaultValue, parseTextToDataType } from '@app/constants/DataTypes';
 import TransformForm, { formWrapperProps } from '../../../forms/TransformForm';
 import ReplaceFooter from './../ReplaceFooter';
 import Exact from './../ContentWithoutCards/Exact';
@@ -96,7 +96,7 @@ export class ReplaceExactForm extends Component {
       <TransformForm
         {...formWrapperProps(this.props)}
         onFormSubmit={this.submit}
-        >
+      >
         <Exact
           submitForm={submitForm}
           columnType={columnType}
@@ -104,14 +104,14 @@ export class ReplaceExactForm extends Component {
           replaceNull={fields.replaceNull}
           matchedCount={this.props.matchedCount}
           unmatchedCount={this.props.unmatchedCount}
-          />
+        />
         <Tabs activeTab={transform.get('transformType')}>
           <ReplaceFooter
             tabId='replace'
             fields={fields}
             submitForm={submitForm}
             transform={transform}
-            />
+          />
         </Tabs>
       </TransformForm>
     );

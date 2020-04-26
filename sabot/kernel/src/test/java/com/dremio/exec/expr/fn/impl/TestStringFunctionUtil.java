@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,25 +18,30 @@ package com.dremio.exec.expr.fn.impl;
 import static org.junit.Assert.assertEquals;
 
 import org.apache.arrow.memory.BufferAllocator;
-import org.apache.arrow.memory.RootAllocator;
+import org.apache.arrow.memory.util.LargeMemoryUtil;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 
 import com.dremio.common.AutoCloseables;
+import com.dremio.test.AllocatorRule;
+import com.dremio.test.DremioTest;
 
 import io.netty.buffer.ArrowBuf;
-import io.netty.buffer.ByteBuf;
 
 /**
  * Unit tests for StringFunctionUtil
  */
-public class TestStringFunctionUtil {
+public class TestStringFunctionUtil extends DremioTest {
   protected BufferAllocator allocator;
 
+  @Rule
+  public final AllocatorRule allocatorRule = AllocatorRule.defaultAllocator();
+
   @Before
-  public void setup(){
-    this.allocator = new RootAllocator(Long.MAX_VALUE);
+  public void setup() {
+    this.allocator = allocatorRule.newAllocator("test-string-function-util", 0, Long.MAX_VALUE);
   }
 
   @After
@@ -57,12 +62,14 @@ public class TestStringFunctionUtil {
 
   // Copy only the UTF8 parts of 'in', expecting to receive 'expected' as a result
   private void testCopyUtf8Helper(byte[] in, String expected) throws Exception {
-    ByteBuf src = allocator.buffer(in.length + 1);
+    ArrowBuf src = allocator.buffer(in.length + 1);
     ArrowBuf dest = allocator.buffer(in.length);
     src.writeByte(0x20);  // one extra byte, just to test startIdx != 0
     src.writeBytes(in);
 
-    int destLen = StringFunctionUtil.copyUtf8(src, src.readerIndex() + 1, src.writerIndex(), dest);
+    int destLen = StringFunctionUtil.copyUtf8(
+      src.asNettyBuffer(), LargeMemoryUtil.checkedCastToInt(src.readerIndex() + 1),
+      LargeMemoryUtil.checkedCastToInt(src.writerIndex()), dest);
     assertSameAsExpected(expected, dest, destLen);
     src.release();
     dest.release();
@@ -79,12 +86,14 @@ public class TestStringFunctionUtil {
 
   // Replace the non-UTF8 parts of 'in' with 'replace', expecting to receive 'expected' as a result
   private void testReplaceUtf8Helper(byte[] in, byte replace, String expected) throws Exception {
-    ByteBuf src = allocator.buffer(in.length + 1);
+    ArrowBuf src = allocator.buffer(in.length + 1);
     ArrowBuf dest = allocator.buffer(in.length);
     src.writeByte(0x20);  // one extra byte, just to test startIdx != 0
     src.writeBytes(in);
 
-    int destLen = StringFunctionUtil.copyReplaceUtf8(src, src.readerIndex() + 1, src.writerIndex(), dest, replace);
+    int destLen = StringFunctionUtil.copyReplaceUtf8(
+      src.asNettyBuffer(), LargeMemoryUtil.checkedCastToInt(src.readerIndex() + 1),
+      LargeMemoryUtil.checkedCastToInt(src.writerIndex()), dest.asNettyBuffer(), replace);
     assertSameAsExpected(expected, dest, destLen);
     src.release();
     dest.release();
@@ -100,11 +109,13 @@ public class TestStringFunctionUtil {
   }
 
   private void testIsUtf8Helper(byte[] in, boolean expected) {
-    ByteBuf src = allocator.buffer(in.length + 1);
+    ArrowBuf src = allocator.buffer(in.length + 1);
     src.writeByte(0x20);  // one extra byte, just to test startIdx != 0
     src.writeBytes(in);
 
-    assertEquals(expected, GuavaUtf8.isUtf8(src, src.readerIndex() + 1, src.writerIndex()));
+    assertEquals(expected, GuavaUtf8.isUtf8(src.asNettyBuffer(),
+      LargeMemoryUtil.checkedCastToInt(src.readerIndex() + 1),
+      LargeMemoryUtil.checkedCastToInt(src.writerIndex())));
     src.release();
   }
 

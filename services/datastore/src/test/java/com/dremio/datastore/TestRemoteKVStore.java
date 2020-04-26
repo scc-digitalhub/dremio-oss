@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,25 +15,27 @@
  */
 package com.dremio.datastore;
 
-import java.util.UUID;
 
 import org.apache.arrow.memory.BufferAllocator;
-import org.apache.arrow.memory.RootAllocator;
 import org.junit.ClassRule;
+import org.junit.Rule;
+import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import com.dremio.common.AutoCloseables;
+import com.dremio.datastore.api.KVStoreProvider;
 import com.dremio.exec.proto.CoordinationProtos.NodeEndpoint;
 import com.dremio.exec.rpc.CloseableThreadPool;
 import com.dremio.service.DirectProvider;
 import com.dremio.services.fabric.FabricServiceImpl;
 import com.dremio.services.fabric.api.FabricService;
+import com.dremio.test.AllocatorRule;
 import com.dremio.test.DremioTest;
 
 /**
  * Remore kvstore test
  */
-public class TestRemoteKVStore extends AbstractTestKVStore {
+public class TestRemoteKVStore<K, V> extends AbstractTestKVStore<K, V> {
 
   private static final String HOSTNAME = "localhost";
   private static final int THREAD_COUNT = 2;
@@ -46,15 +48,18 @@ public class TestRemoteKVStore extends AbstractTestKVStore {
 
   private FabricService localFabricService;
   private FabricService remoteFabricService;
-  private LocalKVStoreProvider localKVStoreProvider;
-  private RemoteKVStoreProvider remoteKVStoreProvider;
+  private KVStoreProvider localKVStoreProvider;
+  private KVStoreProvider remoteKVStoreProvider;
   private BufferAllocator allocator;
   private CloseableThreadPool pool;
 
-  @Override
-  void initProvider() throws Exception {
+  @Rule
+  public final AllocatorRule allocatorRule = AllocatorRule.defaultAllocator();
 
-    allocator = new RootAllocator(20 * 1024 * 1024);
+  @Override
+  public KVStoreProvider initProvider() throws Exception {
+
+    allocator = allocatorRule.newAllocator("test-remote-kvstore", 0, 20 * 1024 * 1024);
     pool = new CloseableThreadPool("test-remoteocckvstore");
 
     localFabricService = new FabricServiceImpl(HOSTNAME, 45678, true, THREAD_COUNT, allocator, RESERVATION,
@@ -65,57 +70,32 @@ public class TestRemoteKVStore extends AbstractTestKVStore {
         MAX_ALLOCATION, TIMEOUT, pool);
     remoteFabricService.start();
 
-    localKVStoreProvider = new LocalKVStoreProvider(DremioTest.CLASSPATH_SCAN_RESULT,
+    localKVStoreProvider =
+      new LocalKVStoreProvider(DremioTest.CLASSPATH_SCAN_RESULT,
         DirectProvider.wrap(localFabricService), allocator, HOSTNAME, tmpFolder.getRoot().toString(),
-        true, true, true, false);
+        true, true);
     localKVStoreProvider.start();
 
     remoteKVStoreProvider = new RemoteKVStoreProvider(
-        DremioTest.CLASSPATH_SCAN_RESULT,
-        DirectProvider.wrap(NodeEndpoint.newBuilder()
-            .setAddress(HOSTNAME)
-            .setFabricPort(localFabricService.getPort())
-            .build()),
-        DirectProvider.wrap(remoteFabricService), allocator, HOSTNAME);
+      DremioTest.CLASSPATH_SCAN_RESULT,
+      DirectProvider.wrap(NodeEndpoint.newBuilder()
+        .setAddress(HOSTNAME)
+        .setFabricPort(localFabricService.getPort())
+        .build()),
+      DirectProvider.wrap(remoteFabricService), allocator, HOSTNAME);
     remoteKVStoreProvider.start();
+    return remoteKVStoreProvider;
+
   }
 
   @Override
-  void closeProvider() throws Exception {
+  public void closeProvider() throws Exception {
     AutoCloseables.close(remoteKVStoreProvider, localKVStoreProvider, remoteFabricService, localFabricService, pool, allocator);
   }
 
   @Override
-  Backend createBackEndForKVStore() {
-    final String name = UUID.randomUUID().toString();
-    final KVStore<String, String> localKVStore = localKVStoreProvider.<String, String>newStore()
-      .name(name)
-      .keySerializer(StringSerializer.class)
-      .valueSerializer(StringSerializer.class).build();
-
-    return new Backend() {
-      @Override
-      public String get(String key) {
-        return localKVStore.get(key);
-      }
-
-      @Override
-      public void put(String key, String value) {
-        localKVStore.put(key, value);
-      }
-
-      @Override
-      public String getName() {
-        return name;
-      }
-    };
-  }
-
-  @Override
-  KVStore<String, String> createKVStore(Backend backend) {
-    return remoteKVStoreProvider.<String, String>newStore()
-      .name(backend.getName())
-      .keySerializer(StringSerializer.class)
-      .valueSerializer(StringSerializer.class).build();
+  @Test
+  public void testPlainPutsShouldStillBeVersioned() {
+    super.testPlainPutsShouldStillBeVersioned();
   }
 }

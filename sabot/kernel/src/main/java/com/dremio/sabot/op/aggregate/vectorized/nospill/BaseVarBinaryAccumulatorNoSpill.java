@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ import org.apache.arrow.vector.VariableWidthVector;
 
 import com.dremio.common.AutoCloseables;
 import com.dremio.sabot.op.common.ht2.LBlockHashTableNoSpill;
-import com.google.common.collect.FluentIterable;
+import com.google.common.collect.ImmutableList;
 
 
 /**
@@ -96,7 +96,7 @@ abstract class BaseVarBinaryAccumulatorNoSpill implements AccumulatorNoSpill {
        */
       accumulatorsToClose[i] = accumulators[i];
     }
-    AutoCloseables.close((Iterable<AutoCloseable>) (Object) FluentIterable.of(accumulatorsToClose).toList());
+    AutoCloseables.close(ImmutableList.copyOf(accumulatorsToClose));
   }
 
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,8 +30,8 @@ import com.google.common.collect.Iterables;
  * options do not need to be stored at every contextual level. For example, if an option isn't changed from its default
  * within a session, then we can get the option from system options.
  * <p/>
- * {@link FragmentOptionManager} and {@link SessionOptionManager} use {@link SystemOptionManager} as the fall back
- * manager. {@link QueryOptionManager} uses {@link SessionOptionManager} as the fall back manager.
+ * {@link FragmentOptionManager} and {@link SessionOptionManagerImpl} use {@link SystemOptionManager} as the fall back
+ * manager. {@link QueryOptionManager} uses {@link SessionOptionManagerImpl} as the fall back manager.
  */
 public abstract class FallbackOptionManager extends BaseOptionManager {
 //  private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(FallbackOptionManager.class);

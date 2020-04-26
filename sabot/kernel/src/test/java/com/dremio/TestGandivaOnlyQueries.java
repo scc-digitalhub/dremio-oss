@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import org.junit.Test;
  * Assumes that code-gen includes Gandiva generation.
  */
 public class TestGandivaOnlyQueries extends DecimalCompleteTest {
+
   @Test
   public void testGandivaOnlyFunction() throws Exception {
     final String query = "select starts_with('testMe', 'test') from (values(1))";

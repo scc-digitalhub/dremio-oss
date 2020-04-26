@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -44,7 +44,7 @@ public class InfoSchemaScanDrel extends ScanRelBase implements Rel {
 
   @Override
   public RelNode copy(RelTraitSet traitSet, List<RelNode> inputs) {
-    return new InfoSchemaScanDrel(getCluster(), traitSet, table, pluginId, tableMetadata, projectedColumns, observedRowcountAdjustment);
+    return new InfoSchemaScanDrel(getCluster(), traitSet, table, pluginId, tableMetadata, getProjectedColumns(), observedRowcountAdjustment);
   }
 
   @Override

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,6 +37,7 @@ import org.apache.calcite.plan.hep.HepPlanner;
 import org.apache.calcite.plan.hep.HepProgram;
 import org.apache.calcite.plan.hep.HepProgramBuilder;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.RelShuttleImpl;
 import org.apache.calcite.rel.core.Project;
 import org.apache.calcite.rel.core.TableModify;
 import org.apache.calcite.rel.core.TableScan;
@@ -86,6 +87,9 @@ import com.dremio.exec.planner.common.MoreRelOptUtil;
 import com.dremio.exec.planner.cost.DefaultRelMetadataProvider;
 import com.dremio.exec.planner.cost.DremioCost;
 import com.dremio.exec.planner.logical.ConstExecutor;
+import com.dremio.exec.planner.logical.DremioRelDecorrelator;
+import com.dremio.exec.planner.logical.DremioRelFactories;
+import com.dremio.exec.planner.logical.InvalidViewRel;
 import com.dremio.exec.planner.logical.PreProcessRel;
 import com.dremio.exec.planner.logical.ProjectRel;
 import com.dremio.exec.planner.logical.Rel;
@@ -95,6 +99,7 @@ import com.dremio.exec.planner.physical.PhysicalPlanCreator;
 import com.dremio.exec.planner.physical.PlannerSettings;
 import com.dremio.exec.planner.physical.Prel;
 import com.dremio.exec.planner.physical.explain.PrelSequencer;
+import com.dremio.exec.planner.physical.visitor.AddProjectOnPartialJoinVisitor;
 import com.dremio.exec.planner.physical.visitor.ComplexToJsonPrelVisitor;
 import com.dremio.exec.planner.physical.visitor.ExcessiveExchangeIdentifier;
 import com.dremio.exec.planner.physical.visitor.FinalColumnReorderer;
@@ -115,6 +120,7 @@ import com.dremio.exec.planner.sql.SqlConverter.RelRootPlus;
 import com.dremio.exec.planner.sql.handlers.RexSubQueryUtils.FindNonJdbcConventionRexSubQuery;
 import com.dremio.exec.planner.sql.handlers.RexSubQueryUtils.RelsWithRexSubQueryTransformer;
 import com.dremio.exec.planner.sql.parser.UnsupportedOperatorsVisitor;
+import com.dremio.exec.store.dfs.FilesystemScanDrel;
 import com.dremio.exec.work.foreman.ForemanSetupException;
 import com.dremio.exec.work.foreman.SqlUnsupportedException;
 import com.dremio.exec.work.foreman.UnsupportedRelOperatorException;
@@ -197,9 +203,9 @@ public class PrelTransformer {
     return typedSqlNode;
   }
 
-  public static RelNode trimFields(final RelNode relNode, boolean shouldLog) {
+  public static RelNode trimFields(final RelNode relNode, boolean shouldLog, boolean isRelPlanning) {
     final Stopwatch w = Stopwatch.createStarted();
-    final RelFieldTrimmer trimmer = DremioFieldTrimmer.of(relNode.getCluster());
+    final RelFieldTrimmer trimmer = DremioFieldTrimmer.of(relNode.getCluster(), isRelPlanning);
     final RelNode trimmed = trimmer.trim(relNode);
     if(shouldLog) {
       log(PlannerType.HEP, PlannerPhase.FIELD_TRIMMING, trimmed, logger, w);
@@ -217,25 +223,58 @@ public class PrelTransformer {
   public static Rel convertToDrel(SqlHandlerConfig config, final RelNode relNode) throws SqlUnsupportedException, RelConversionException {
 
     try {
-      final RelNode trimmed = trimFields(relNode, true);
+      final RelNode trimmed = trimFields(relNode, true, config.getContext().getPlannerSettings().isRelPlanningEnabled());
       final RelNode preLog = transform(config, PlannerType.HEP_AC, PlannerPhase.PRE_LOGICAL, trimmed, trimmed.getTraitSet(), true);
 
       final RelTraitSet logicalTraits = preLog.getTraitSet().plus(Rel.LOGICAL);
-      final RelNode intermediateNode = transform(config, PlannerType.VOLCANO, PlannerPhase.LOGICAL, preLog, logicalTraits, true);
+      final RelNode adjusted = transform(config, PlannerType.VOLCANO, PlannerPhase.LOGICAL, preLog, logicalTraits, true);
 
       final Catalog catalog = config.getContext().getCatalog();
       if (catalog instanceof CachingCatalog) {
         config.getObserver().tablesCollected(catalog.getAllRequestedTables());
       }
 
+      final RelNode intermediateNode;
+      if (config.getContext().getPlannerSettings().removeRowCountAdjustment()) {
+        intermediateNode = adjusted.accept(new RelShuttleImpl() {
+            @Override
+            public RelNode visit(TableScan scan) {
+              if (scan instanceof FilesystemScanDrel) {
+                FilesystemScanDrel scanDrel = (FilesystemScanDrel) scan;
+                return new FilesystemScanDrel(
+                  scanDrel.getCluster(),
+                  scanDrel.getTraitSet(),
+                  scanDrel.getTable(),
+                  scanDrel.getPluginId(),
+                  scanDrel.getTableMetadata(),
+                  scanDrel.getProjectedColumns(),
+                  1.0);
+              }
+              return super.visit(scan);
+            }
+          });
+      } else {
+        intermediateNode = adjusted;
+      }
+
+      RelNode postLogical;
+      if (config.getContext().getPlannerSettings().isRelPlanningEnabled()) {
+        final RelNode decorrelatedNode = DremioRelDecorrelator.decorrelateQuery(intermediateNode, DremioRelFactories.LOGICAL_BUILDER.create(intermediateNode.getCluster(), null), true, true);
+        final RelNode jdbcPushDown = transform(config, PlannerType.HEP_AC, PlannerPhase.RELATIONAL_PLANNING, decorrelatedNode, decorrelatedNode.getTraitSet().plus(Rel.LOGICAL), true);
+        postLogical = jdbcPushDown.accept(new ShortenJdbcColumnAliases()).accept(new ConvertJdbcLogicalToJdbcRel(DremioRelFactories.LOGICAL_BUILDER));
+      } else {
+        postLogical = intermediateNode;
+      }
+
       // Do Join Planning.
-      final RelNode preConvertedRelNode = transform(config, PlannerType.HEP_BOTTOM_UP, PlannerPhase.JOIN_PLANNING_MULTI_JOIN, intermediateNode, intermediateNode.getTraitSet(), true);
+      final RelNode preConvertedRelNode = transform(config, PlannerType.HEP_BOTTOM_UP, PlannerPhase.JOIN_PLANNING_MULTI_JOIN, postLogical, postLogical.getTraitSet(), true);
       final RelNode convertedRelNode = transform(config, PlannerType.HEP_BOTTOM_UP, PlannerPhase.JOIN_PLANNING_OPTIMIZATION, preConvertedRelNode, preConvertedRelNode.getTraitSet(), true);
 
       FlattenRelFinder flattenFinder = new FlattenRelFinder();
       final RelNode flattendPushed;
       if (flattenFinder.run(convertedRelNode)) {
-        flattendPushed = transform(config, PlannerType.VOLCANO, PlannerPhase.FLATTEN_PUSHDOWN, convertedRelNode, convertedRelNode.getTraitSet(), true);
+        flattendPushed = transform(config, PlannerType.VOLCANO, PlannerPhase.FLATTEN_PUSHDOWN,
+          convertedRelNode, convertedRelNode.getTraitSet(), true);
       } else {
         flattendPushed = convertedRelNode;
       }
@@ -255,7 +294,7 @@ public class PrelTransformer {
       logger.error(ex.getMessage(), ex);
 
       if(JoinUtils.checkCartesianJoin(relNode, Lists.<Integer>newArrayList(), Lists.<Integer>newArrayList(), Lists.<Boolean>newArrayList())) {
-        throw new UnsupportedRelOperatorException("This query cannot be planned possibly due to either a cartesian join or an inequality join");
+        throw new UnsupportedRelOperatorException("This query cannot be planned\u2014possibly due to use of an unsupported feature.");
       } else {
         throw ex;
       }
@@ -275,13 +314,15 @@ public class PrelTransformer {
 
     Rel convertedRelNode = convertToDrel(config, relNode);
 
+    final DremioFieldTrimmer trimmer = DremioFieldTrimmer.of(DremioRelFactories.LOGICAL_BUILDER.create(convertedRelNode.getCluster(), null));
+    Rel trimmedRelNode = (Rel) trimmer.trim(convertedRelNode);
+
     // Put a non-trivial topProject to ensure the final output field name is preserved, when necessary.
-    convertedRelNode = addRenamedProject(config, convertedRelNode, validatedRowType);
+    trimmedRelNode = addRenamedProject(config, trimmedRelNode, validatedRowType);
 
-    convertedRelNode = SqlHandlerUtil.storeQueryResultsIfNeeded(config.getConverter().getParserConfig(),
-        config.getContext(), convertedRelNode);
-
-    return new ScreenRel(convertedRelNode.getCluster(), convertedRelNode.getTraitSet(), convertedRelNode);
+    trimmedRelNode = SqlHandlerUtil.storeQueryResultsIfNeeded(config.getConverter().getParserConfig(),
+        config.getContext(), trimmedRelNode);
+    return new ScreenRel(trimmedRelNode.getCluster(), trimmedRelNode.getTraitSet(), trimmedRelNode);
   }
 
   /**
@@ -354,12 +395,14 @@ public class PrelTransformer {
    *          Whether to log the planning phase.
    * @return The transformed relnode.
    */
-  public static RelNode transform(SqlHandlerConfig config,
-                           PlannerType plannerType,
-                           PlannerPhase phase,
-                           final RelNode input,
-                           RelTraitSet targetTraits,
-                           boolean log) {
+  public static RelNode transform(
+    SqlHandlerConfig config,
+    PlannerType plannerType,
+    PlannerPhase phase,
+    final RelNode input,
+    RelTraitSet targetTraits,
+    boolean log
+    ) {
     final RuleSet rules = config.getRules(phase);
     final RelTraitSet toTraits = targetTraits.simplify();
     final RelOptPlanner planner;
@@ -415,7 +458,7 @@ public class PrelTransformer {
           input.getCluster().getPlanner().getClass().getName());
       final DremioVolcanoPlanner volcanoPlanner = (DremioVolcanoPlanner) input.getCluster().getPlanner();
       volcanoPlanner.setPlannerPhase(phase);
-      volcanoPlanner.setNoneConventionHaveInfiniteCost(phase != PlannerPhase.JDBC_PUSHDOWN);
+      volcanoPlanner.setNoneConventionHaveInfiniteCost((phase != PlannerPhase.JDBC_PUSHDOWN) && (phase != PlannerPhase.RELATIONAL_PLANNING));
       final Program program = Programs.of(rules);
 
       final List<RelMetadataProvider> list = Lists.newArrayList();
@@ -444,7 +487,7 @@ public class PrelTransformer {
 
           final HepPlanner pl = new HepPlanner(p);
           pl.setRoot(relNode);
-          return pl.findBestExp().accept(new ConvertJdbcLogicalToJdbcRel());
+          return pl.findBestExp().accept(new ConvertJdbcLogicalToJdbcRel(DremioRelFactories.CALCITE_LOGICAL_BUILDER));
         }
       );
 
@@ -494,28 +537,31 @@ public class PrelTransformer {
     Prel phyRelNode;
     try {
       final Stopwatch watch = Stopwatch.createStarted();
-      // System.setProperty("calcite.debug", "true");
-      final RelNode relNode = transform(config, PlannerType.VOLCANO, PlannerPhase.PHYSICAL, drel, traits, true);
-      // System.clearProperty("calcite.debug");
-      // PrintWriter pw = new PrintWriter(System.out);
-      //((VolcanoPlanner)drel.getCluster().getPlanner()).dump(pw);
-      // pw.flush();
+      final RelNode prel1 = transform(config, PlannerType.VOLCANO, PlannerPhase.PHYSICAL, drel, traits, true);
 
-      phyRelNode = (Prel) relNode.accept(new PrelFinalizer());
+      final RelNode prel2 = transform(config, PlannerType.HEP_AC, PlannerPhase.PHYSICAL_HEP, prel1, prel1.getTraitSet(), true);
+      phyRelNode = (Prel) prel2.accept(new PrelFinalizer());
       // log externally as we need to finalize before traversing the tree.
       log(PlannerType.VOLCANO, PlannerPhase.PHYSICAL, phyRelNode, logger, watch);
     } catch (RelOptPlanner.CannotPlanException ex) {
       logger.error(ex.getMessage());
 
-      if(JoinUtils.checkCartesianJoin(drel, new ArrayList<Integer>(), new ArrayList<Integer>(), Lists.<Boolean>newArrayList())) {
-        throw new UnsupportedRelOperatorException("This query cannot be planned possibly due to either a cartesian join or an inequality join");
+      if(JoinUtils.checkCartesianJoin(drel, new ArrayList<>(), new ArrayList<>(), Lists.<Boolean>newArrayList())) {
+        throw new UnsupportedRelOperatorException("This query cannot be planned\u2014possibly due to use of an unsupported feature.");
       } else {
         throw ex;
       }
     }
+
     QueryContext context = config.getContext();
     OptionManager queryOptions = context.getOptions();
     final PlannerSettings plannerSettings = context.getPlannerSettings();
+
+    /*
+     * Convert AND with not equal expressions to NOT-OR with equal conditions
+     * to make query use InExpression logical expression
+     */
+    phyRelNode = (Prel) phyRelNode.accept(new AndToOrConverter());
 
     /* Disable distribution trait pulling
      *
@@ -543,14 +589,33 @@ public class PrelTransformer {
     phyRelNode = StarColumnConverter.insertRenameProject(phyRelNode);
 
     /*
-     * 1.)
+     * 1.1.)
+     * Output schema for the same join rel might differ based on which operator is used in execution.
+     * Currently, RowType for join is based on actual fields needed by its consumer.
+     * However, this could cause name collision issue in execution time if
+     * - multiple join operators appear consecutively
+     * - the join operators are executed by operators that don't support partial projection
+     * For example, The following case would end up getting name conflicts on the field A and B.
+     *
+     *            JoinRel(RowType:[A B C D])
+     *            /            \
+     *       Rel([A B])       JoinRel([C D]) -> becomes [A B C D] after executed by join operators without partial projection support
+     *                        /         \
+     *                    Rel([A C])  Rel([B D])
+     *
+     * Make sure to add project on join if it partially projects all incoming fields
+     */
+    phyRelNode = AddProjectOnPartialJoinVisitor.insertProject(phyRelNode);
+
+    /*
+     * 1.2)
      * Join might cause naming conflicts from its left and right child.
      * In such case, we have to insert Project to rename the conflicting names.
      */
     phyRelNode = JoinPrelRenameVisitor.insertRenameProject(phyRelNode);
 
     /*
-     * 1.2.) Swap left / right for INNER hash join, if left's row count is < (1 + margin) right's row count.
+     * 1.3.) Swap left / right for INNER hash join, if left's row count is < (1 + margin) right's row count.
      * We want to have smaller dataset on the right side, since hash table builds on right side.
      */
     if (plannerSettings.isHashJoinSwapEnabled()) {
@@ -558,7 +623,7 @@ public class PrelTransformer {
     }
 
     /*
-     * 1.3.) Break up all expressions with complex outputs into their own project operations
+     * 1.4.) Break up all expressions with complex outputs into their own project operations
      *
      * This is not needed for planning anymore, but just in case there are udfs that needs to be split up, keep it.
      */
@@ -628,7 +693,7 @@ public class PrelTransformer {
     /* 6.)
      * Insert LocalExchange (mux and/or demux) nodes
      */
-    phyRelNode = InsertLocalExchangeVisitor.insertLocalExchanges(phyRelNode, queryOptions);
+    phyRelNode = InsertLocalExchangeVisitor.insertLocalExchanges(phyRelNode, queryOptions, context.getClusterResourceInformation());
 
     /*
      * 7.)
@@ -684,7 +749,7 @@ public class PrelTransformer {
     return op;
   }
 
-  public static PhysicalPlan convertToPlan(SqlHandlerConfig config, PhysicalOperator op) {
+  public static PhysicalPlan convertToPlan(SqlHandlerConfig config, PhysicalOperator op, Runnable committer) {
     PlanPropertiesBuilder propsBuilder = PlanProperties.builder();
     propsBuilder.type(PlanType.PHYSICAL);
     propsBuilder.version(1);
@@ -694,7 +759,11 @@ public class PrelTransformer {
     List<PhysicalOperator> ops = Lists.newArrayList();
     PopCollector c = new PopCollector();
     op.accept(c, ops);
-    return new PhysicalPlan(propsBuilder.build(), ops);
+    return new PhysicalPlan(propsBuilder.build(), ops, committer);
+  }
+
+  public static PhysicalPlan convertToPlan(SqlHandlerConfig config, PhysicalOperator op) {
+    return convertToPlan(config, op, null);
   }
 
   private static class PopCollector extends AbstractPhysicalVisitor<Void, Collection<PhysicalOperator>, RuntimeException> {
@@ -707,13 +776,18 @@ public class PrelTransformer {
       }
       return null;
     }
-
   }
 
   private static RelNode toConvertibleRelRoot(SqlHandlerConfig config, final SqlNode validatedNode, boolean expand, RelTransformer relTransformer) {
     final Stopwatch stopwatch = Stopwatch.createStarted();
     final RelRootPlus convertible = config.getConverter().toConvertibleRelRoot(validatedNode, expand);
     config.getObserver().planConvertedToRel(convertible.rel, stopwatch.elapsed(TimeUnit.MILLISECONDS));
+
+    if(config.getContext().getOptions().getOption(PlannerSettings.VDS_AUTO_FIX)) {
+      // verify that we don't need to refresh any VDS nodes.
+      InvalidViewRel.checkForInvalid(config.getContext().getCatalog(), config.getConverter(), convertible.rel);
+    }
+
     final RelNode reduced = relTransformer.transform(transform(config, PlannerType.HEP, PlannerPhase.REDUCE_EXPRESSIONS, convertible.rel, convertible.rel.getTraitSet(), true));
     config.getObserver().planSerializable(reduced);
     return reduced;
@@ -776,9 +850,9 @@ public class PrelTransformer {
       log("Failed to pushdown RexSubquery. Applying JDBC pushdown to query with IN/EXISTS/SCALAR sub-queries converted to joins.", jdbcPushed, logger, null);
       final RelNode expandedWithSample = convertedNodeWithoutRexSubquery.accept(new InjectSample(leafLimitEnabled));
       finalConvertedNode = transform(config,PlannerType.HEP_AC, PlannerPhase.JDBC_PUSHDOWN, expandedWithSample,
-        expandedWithSample.getTraitSet(), false).accept(new ConvertJdbcLogicalToJdbcRel());
+        expandedWithSample.getTraitSet(), false).accept(new ConvertJdbcLogicalToJdbcRel(DremioRelFactories.CALCITE_LOGICAL_BUILDER));
     } else {
-      finalConvertedNode = jdbcPushed.accept(new ShortenJdbcColumnAliases()).accept(new ConvertJdbcLogicalToJdbcRel());
+      finalConvertedNode = jdbcPushed.accept(new ShortenJdbcColumnAliases()).accept(new ConvertJdbcLogicalToJdbcRel(DremioRelFactories.CALCITE_LOGICAL_BUILDER));
     }
     config.getObserver().planRelTransform(PlannerPhase.JDBC_PUSHDOWN, null, convertedNode, finalConvertedNode, stopwatch.elapsed(TimeUnit.MILLISECONDS));
 
@@ -787,8 +861,41 @@ public class PrelTransformer {
     return finalConvertedNode;
   }
 
+  private static RelNode convertToRelRoot(SqlHandlerConfig config, SqlNode node, RelTransformer relTransformer) throws RelConversionException {
+    final boolean leafLimitEnabled = config.getContext().getPlannerSettings().isLeafLimitsEnabled();
+
+    // First try and convert without "expanding" exists/in/subqueries
+    final RelNode convertible = toConvertibleRelRoot(config, node, false, relTransformer);
+
+    // Check for RexSubQuery in the converted rel tree, and make sure that the table scans underlying
+    // rel node with RexSubQuery have the same JDBC convention.
+    final RelNode convertedNodeNotExpanded = convertible;
+    RexSubQueryUtils.RexSubQueryPushdownChecker checker = new RexSubQueryUtils.RexSubQueryPushdownChecker(null);
+    checker.visit(convertedNodeNotExpanded);
+
+    final RelNode convertedNodeWithoutRexSubquery;
+    if (!checker.foundRexSubQuery()) {
+      convertedNodeWithoutRexSubquery = convertedNodeNotExpanded;
+    } else {
+      convertedNodeWithoutRexSubquery = toConvertibleRelRoot(config, node, true, relTransformer);
+    }
+
+    // Convert with "expanding" exists/in subqueries (if applicable)
+    // if we are having a RexSubQuery, this expanded tree will
+    // have LogicalCorrelate rel nodes.
+    final DremioVolcanoPlanner volcanoPlanner = (DremioVolcanoPlanner) convertedNodeWithoutRexSubquery.getCluster().getPlanner();
+    final RelNode originalRoot = convertedNodeWithoutRexSubquery.accept(new InjectSample(leafLimitEnabled));
+    volcanoPlanner.setOriginalRoot(originalRoot);
+    return ExpansionNode.removeFromTree(convertedNodeWithoutRexSubquery.accept(new InjectSample(leafLimitEnabled)));
+  }
+
   private static RelNode convertToRel(SqlHandlerConfig config, SqlNode node, RelTransformer relTransformer) throws RelConversionException {
-    final RelNode rel = convertToRelRootAndJdbc(config, node, relTransformer);
+    RelNode rel;
+    if(config.getContext().getPlannerSettings().isRelPlanningEnabled()) {
+      rel = convertToRelRoot(config, node, relTransformer);
+    } else {
+      rel = convertToRelRootAndJdbc(config, node, relTransformer);
+    }
     log("INITIAL", rel, logger, null);
     return transform(config, PlannerType.HEP, PlannerPhase.WINDOW_REWRITE, rel, rel.getTraitSet(), true);
   }

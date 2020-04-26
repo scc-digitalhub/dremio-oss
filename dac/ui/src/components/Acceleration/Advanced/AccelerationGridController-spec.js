@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -389,8 +389,8 @@ describe('AccelerationGridController', () => {
       const findCurrentColumnStub = sinon.stub(instance, 'findCurrentColumnInLayouts')
         .withArgs('partitionFields', 0, 0).returns({});
       const resetFieldsStub = () => {
-        instance.addFieldByIndex.reset();
-        instance.removeFieldByIndex.reset();
+        instance.addFieldByIndex.resetHistory();
+        instance.removeFieldByIndex.resetHistory();
       };
       const verify = () => {
         expect(

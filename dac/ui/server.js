@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,8 @@
  */
 /*eslint no-console: 0*/
 
+const fs = require('fs');
+const path = require('path');
 const webpack = require('webpack');
 const webpackDevMiddleware = require('webpack-dev-middleware');
 const proxy = require('http-proxy-middleware');
@@ -23,12 +25,13 @@ const proxy = require('http-proxy-middleware');
 const express = require('express');
 const app = express();
 
-const config = require('./webpack.config');
-const testConfig = require('./webpack.tests.config');
-const userConfig = require('./webpackUtils/userConfig');
-const isProductionBuild = process.env.NODE_ENV === 'production';
+// Must be before webpack.config.js import
+process.env.SKIP_SENTRY_STEP = 'true';
 
-const ENABLE_TESTS = false; // not quite yet ready
+const config = require('./webpack.config');
+config.bail = false; // to not fail on compilation error in dev mode
+
+
 
 const port = 3005;
 const compiler = webpack(config);
@@ -43,19 +46,20 @@ const devMiddleware = webpackDevMiddleware(compiler, {
 });
 app.use(devMiddleware);
 
-let testMiddleware;
-if (ENABLE_TESTS && !isProductionBuild) {
-  const testCompiler = webpack(config);
-  testMiddleware = webpackDevMiddleware(testCompiler, config);
-  app.use(testMiddleware);
-}
-
 let storedProxy;
 let prevAPIOrigin;
+const readServerSettings = () => {
+  return JSON.parse(fs.readFileSync( // eslint-disable-line no-sync
+    path.resolve(__dirname, 'server.config.json'),
+    'utf8'
+  ));
+};
 
 // Job profiles load their css/js from /static/*, so redirect those calls as well
 app.use(['/api*', '/static/*'], function() {
-  const newAPIOrigin = userConfig.live().apiOrigin;
+  // todo it would be nice to enforce server and web socket to use the same origin.
+  // See https://github.com/dremio/dremio/blob/64ada2028fb042e6b3a035b9ef64814218095e30/oss/dac/ui/src/constants/Api.js#L22
+  const newAPIOrigin = readServerSettings().apiOrigin;
   if (newAPIOrigin !== prevAPIOrigin) {
     storedProxy = proxy({
       target: newAPIOrigin,
@@ -74,13 +78,8 @@ app.use(['/api*', '/static/*'], function() {
 
 // todo: this doesn't show dyn-loader tests
 app.use(function(req, res, next) {
-  if (ENABLE_TESTS && req.url.indexOf('/unit-tests') !== -1 && testMiddleware) {
-    req.url = testConfig.output.publicPath;
-    testMiddleware(req, res, next);
-  } else {
-    req.url = config.output.publicPath;
-    devMiddleware(req, res, next);
-  }
+  req.url = config.output.publicPath;
+  devMiddleware(req, res, next);
 });
 
 console.log('Building…');

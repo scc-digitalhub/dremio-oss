@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,10 +18,10 @@ package com.dremio.sabot.op.sort.topn;
 import org.apache.arrow.memory.BufferAllocator;
 
 import com.dremio.exec.compile.TemplateClassDefinition;
+import com.dremio.exec.record.RecordBatchData;
 import com.dremio.exec.record.VectorContainer;
 import com.dremio.exec.record.selection.SelectionVector4;
 import com.dremio.sabot.exec.context.FunctionContext;
-import com.dremio.sabot.op.sort.external.RecordBatchData;
 import com.dremio.sabot.op.sort.external.Sv4HyperContainer;
 
 public interface PriorityQueue extends AutoCloseable {

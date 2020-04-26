@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,12 +23,16 @@ import static com.dremio.service.jobs.JobIndexKeys.JOB_STATE;
 
 import java.text.MessageFormat;
 import java.text.ParseException;
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.dremio.datastore.SearchQueryUtils;
 import com.dremio.datastore.SearchTypes.SearchQuery;
@@ -42,16 +46,26 @@ import com.dremio.exec.proto.UserBitShared.DremioPBError.ErrorType;
 import com.dremio.exec.proto.UserBitShared.ExternalId;
 import com.dremio.exec.proto.UserBitShared.QueryResult.QueryState;
 import com.dremio.exec.proto.beans.NodeEndpoint;
-import com.dremio.exec.store.dfs.FileSystemWriter;
+import com.dremio.exec.store.easy.arrow.ArrowFileMetadata;
+import com.dremio.exec.store.parquet.ParquetWriter;
+import com.dremio.service.job.JobDetails;
+import com.dremio.service.job.JobStats;
+import com.dremio.service.job.JobSummary;
+import com.dremio.service.job.StoreJobResultRequest;
+import com.dremio.service.job.SubmitJobRequest;
+import com.dremio.service.job.proto.DownloadInfo;
+import com.dremio.service.job.proto.JobAttempt;
 import com.dremio.service.job.proto.JobFailureInfo;
 import com.dremio.service.job.proto.JobId;
+import com.dremio.service.job.proto.JobInfo;
+import com.dremio.service.job.proto.JobProtobuf;
+import com.dremio.service.job.proto.JobResult;
 import com.dremio.service.job.proto.JobState;
-import com.google.common.base.Function;
-import com.google.common.collect.FluentIterable;
+import com.dremio.service.job.proto.ParentDatasetInfo;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
-import com.google.common.util.concurrent.Futures;
+import com.google.common.collect.Sets;
 import com.google.protobuf.InvalidProtocolBufferException;
 
 import io.protostuff.LinkedBuffer;
@@ -61,38 +75,27 @@ import io.protostuff.ProtobufIOUtil;
  * utility class.
  */
 public final class JobsServiceUtil {
-  private static final org.slf4j.Logger LOGGER = org.slf4j.LoggerFactory.getLogger(JobsServiceUtil.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(JobsServiceUtil.class);
+
+  private static final String ACCELERATOR_STORAGEPLUGIN_NAME = "__accelerator";
 
   private JobsServiceUtil() {
   }
 
-  private static final EnumSet<JobState> nonFinalJobStates =
-      EnumSet.of(JobState.NOT_SUBMITTED,
-          JobState.STARTING,
-          JobState.RUNNING,
-          JobState.CANCELLATION_REQUESTED,
-          JobState.ENQUEUED);
+  public static final ImmutableSet<JobState> finalJobStates =
+    Sets.immutableEnumSet(JobState.CANCELED, JobState.COMPLETED, JobState.FAILED);
+
+  public static final ImmutableSet<JobState> nonFinalJobStates =
+    ImmutableSet.copyOf(Sets.difference(EnumSet.allOf(JobState.class), finalJobStates));
 
   private static final SearchQuery apparentlyAbandonedQuery;
 
   static {
     apparentlyAbandonedQuery = SearchQueryUtils.or(
-        FluentIterable.from(nonFinalJobStates)
-            .transform(new Function<JobState, SearchQuery>() {
-              @Override
-              public SearchQuery apply(JobState input) {
-                return SearchQueryUtils.newTermQuery(JOB_STATE, input.name());
-              }
-            }));
-  }
-
-  /**
-   * Waits for a given job's completion
-   */
-  public static Job waitForJobCompletion(CompletableFuture<Job> jobFuture) {
-    final Job job = Futures.getUnchecked(jobFuture);
-    job.getData().loadIfNecessary();
-    return job;
+      nonFinalJobStates.stream()
+        .map(input -> SearchQueryUtils.newTermQuery(JOB_STATE, input.name()))
+        .collect(Collectors.toList())
+      );
   }
 
   static SearchQuery getApparentlyAbandonedQuery() {
@@ -100,7 +103,7 @@ public final class JobsServiceUtil {
   }
 
   static boolean isNonFinalState(JobState jobState) {
-    return jobState == null || nonFinalJobStates.contains(jobState);
+    return jobState == null || !finalJobStates.contains(jobState);
   }
 
   static NodeEndpoint toStuff(CoordinationProtos.NodeEndpoint pb) {
@@ -178,27 +181,28 @@ public final class JobsServiceUtil {
     // visit every single major fragment and check to see if there is a PDFSWriter
     // if so add address of every minor fragment as a data partition to builder.
     for (final Wrapper majorFragment : planningSet) {
-      majorFragment.getNode().getRoot().accept(new AbstractPhysicalVisitor<Object, Object, RuntimeException>() {
+      majorFragment.getNode().getRoot().accept(new AbstractPhysicalVisitor<Void, Void, RuntimeException>() {
         @Override
-        public Object visitOp(final PhysicalOperator op, final Object value) throws RuntimeException {
+        public Void visitOp(final PhysicalOperator op, Void value) throws RuntimeException {
           // override to prevent throwing exception, super class throws an exception
-          return visitChildren(op, value);
+          visitChildren(op, value);
+          return null;
         }
 
         @Override
-        public Object visitWriter(final Writer writer, final Object value) throws RuntimeException {
+        public Void visitWriter(final Writer writer, Void value) throws RuntimeException {
+          // we only want to get partitions for the lower writer, since this is the actual data
+          // there may be a second writer that writes the metadata "results", but we don't care about that one
+          super.visitWriter(writer, null);
           // TODO DX-5438: Remove PDFS specific code
-          if (writer instanceof FileSystemWriter && ((FileSystemWriter)writer).isPdfs()) {
+          if (writer instanceof ParquetWriter
+              && ACCELERATOR_STORAGEPLUGIN_NAME.equals(((ParquetWriter) writer).getPluginId().getName())
+              && ((ParquetWriter) writer).isPdfs()) {
             final List<String> addresses = Lists.transform(majorFragment.getAssignedEndpoints(),
-              new Function<CoordinationProtos.NodeEndpoint, String>() {
-                @Override
-                public String apply(final CoordinationProtos.NodeEndpoint endpoint) {
-                  return endpoint.getAddress();
-                }
-              });
+              CoordinationProtos.NodeEndpoint::getAddress);
             builder.addAll(addresses);
           }
-          return super.visitWriter(writer, value);
+          return null;
         }
       }, null);
     }
@@ -297,5 +301,164 @@ public final class JobsServiceUtil {
     errors = ImmutableList.of(error);
 
     return new JobFailureInfo().setMessage("Invalid Query Exception").setType(type).setErrorsList(errors);
+  }
+
+  private static JobInfo getJobInfo(StoreJobResultRequest request) {
+    return new JobInfo()
+      .setJobId(JobsProtoUtil.toStuff(request.getJobId()))
+      .setSql(request.getSql())
+      .setRequestType(JobsProtoUtil.toStuff(request.getRequestType()))
+      .setUser(request.getUser())
+      .setStartTime(request.getStartTime())
+      .setFinishTime(request.getFinishTime())
+      .setDatasetPathList(request.getDataset().getPathList())
+      .setDatasetVersion(request.getDataset().getVersion())
+      .setQueryType(JobsProtoUtil.toStuff(request.getQueryType()))
+      .setDescription(request.getDescription())
+      .setOriginalCost(request.getOriginalCost())
+      .setOutputTableList(request.getOutputTableList());
+  }
+
+  private static List<JobAttempt> getAttempts(StoreJobResultRequest request) {
+    final ArrayList<JobAttempt> jobAttempts = new ArrayList<>();
+    jobAttempts.add(new JobAttempt()
+      .setState(JobsProtoUtil.toStuff(request.getJobState()))
+      .setInfo(getJobInfo(request))
+      .setAttemptId(request.getAttemptId())
+      .setEndpoint(JobsProtoUtil.toStuff(request.getEndpoint())));
+    return jobAttempts;
+  }
+
+  static JobResult toJobResult(StoreJobResultRequest request) {
+    return new JobResult()
+      .setAttemptsList(getAttempts(request))
+      .setCompleted(request.getJobState() == com.dremio.service.job.JobState.COMPLETED);
+  }
+  static JobSummary toJobSummary(Job job) {
+
+    final JobAttempt firstJobAttempt = job.getAttempts().get(0);
+    final JobInfo firstJobAttemptInfo = firstJobAttempt.getInfo();
+    final JobAttempt lastJobAttempt = job.getJobAttempt();
+    final JobInfo lastJobAttemptInfo = lastJobAttempt.getInfo();
+
+    JobSummary.Builder jobSummaryBuilder = JobSummary.newBuilder()
+      .setJobId(JobsProtoUtil.toBuf(job.getJobId()))
+      .setJobState(JobsProtoUtil.toBuf(lastJobAttempt.getState()))
+      .setUser(firstJobAttemptInfo.getUser())
+      .addAllDatasetPath(lastJobAttemptInfo.getDatasetPathList())
+      .setRequestType(JobsProtoUtil.toBuf(lastJobAttemptInfo.getRequestType()))
+      .setQueryType(JobsProtoUtil.toBuf(lastJobAttemptInfo.getQueryType()))
+      .setAccelerated(lastJobAttemptInfo.getAcceleration() != null)
+      .setDatasetVersion(firstJobAttemptInfo.getDatasetVersion())
+      .setSnowflakeAccelerated(false)
+      .setSpilled(lastJobAttemptInfo.getSpillJobDetails() != null)
+      .setSql(lastJobAttemptInfo.getSql())
+      .setNumAttempts(job.getAttempts().size())
+      .setRecordCount(job.getRecordCount());
+
+    if (lastJobAttempt.getStats() != null && lastJobAttempt.getStats().getIsOutputLimited() != null) {
+      jobSummaryBuilder.setOutputLimited(lastJobAttempt.getStats().getIsOutputLimited());
+    }
+
+    if (lastJobAttempt.getDetails() != null && lastJobAttempt.getDetails().getOutputRecords() != null) {
+      jobSummaryBuilder.setOutputRecords(lastJobAttempt.getDetails().getOutputRecords());
+    }
+
+    if (lastJobAttemptInfo.getFailureInfo() != null) {
+      jobSummaryBuilder.setFailureInfo(lastJobAttemptInfo.getFailureInfo());
+    }
+
+    if (firstJobAttemptInfo.getStartTime() != null) {
+      jobSummaryBuilder.setStartTime(firstJobAttemptInfo.getStartTime());
+    }
+
+    if (lastJobAttemptInfo.getFinishTime() != null) {
+      jobSummaryBuilder.setEndTime(lastJobAttemptInfo.getFinishTime());
+    }
+
+    if (lastJobAttemptInfo.getDescription() != null) {
+      jobSummaryBuilder.setDescription(lastJobAttemptInfo.getDescription());
+    }
+
+    JobProtobuf.JobFailureInfo detailedJobFailureInfo = JobsProtoUtil.toBuf(lastJobAttemptInfo.getDetailedFailureInfo());
+    if (detailedJobFailureInfo != null) {
+      jobSummaryBuilder.setDetailedJobFailureInfo(detailedJobFailureInfo);
+    }
+
+    JobProtobuf.JobCancellationInfo jobCancellationInfo = JobsProtoUtil.toBuf(lastJobAttemptInfo.getCancellationInfo());
+    if (jobCancellationInfo != null) {
+      jobSummaryBuilder.setCancellationInfo(jobCancellationInfo);
+    }
+
+    ParentDatasetInfo parentDatasetInfo = null;
+    if (lastJobAttemptInfo.getParentsList() != null && lastJobAttemptInfo.getParentsList().size() > 0) {
+      parentDatasetInfo = lastJobAttemptInfo.getParentsList().get(0);
+    }
+    if (parentDatasetInfo != null) {
+      jobSummaryBuilder.setParent(JobsProtoUtil.toBuf(parentDatasetInfo));
+    }
+
+    return jobSummaryBuilder.build();
+  }
+
+  static JobDetails toJobDetails(Job job, boolean provideResultInfo) {
+    final JobDetails.Builder jobDetailsBuilder = JobDetails.newBuilder();
+    jobDetailsBuilder.setJobId(JobsProtoUtil.toBuf(job.getJobId()))
+      .addAllAttempts(job.getAttempts().stream()
+        .map(JobsProtoUtil::toBuf)
+        .collect(Collectors.toList()))
+      .setCompleted(job.isCompleted());
+
+    if (provideResultInfo && job.getJobAttempt().getState() == JobState.COMPLETED) {
+      final boolean hasResults = job.hasResults();
+      jobDetailsBuilder.setHasResults(hasResults);
+
+      // Gets JobResultsTableName from JobData, but only load if job is completed
+      if (hasResults || job.isInternal()) {
+        jobDetailsBuilder.setJobResultTableName(job.getData().getJobResultsTable());
+      }
+    }
+    return jobDetailsBuilder.build();
+  }
+
+  public static JobTypeStats.Types toType(JobStats.Type type) {
+    switch (type) {
+    case UI:
+      return JobTypeStats.Types.UI;
+    case EXTERNAL:
+      return JobTypeStats.Types.EXTERNAL;
+    case ACCELERATION:
+      return JobTypeStats.Types.ACCELERATION;
+    case DOWNLOAD:
+      return JobTypeStats.Types.DOWNLOAD;
+    case INTERNAL:
+      return JobTypeStats.Types.INTERNAL;
+    default:
+    case UNRECOGNIZED:
+      throw new IllegalArgumentException();
+    }
+  }
+
+  /**
+   * Creates JobInfo from SubmitJobRequest
+   */
+  public static JobInfo createJobInfo(SubmitJobRequest jobRequest, JobId jobId, String inSpace) {
+    final JobInfo jobInfo = new JobInfo(jobId, jobRequest.getSqlQuery().getSql(),
+      jobRequest.getVersionedDataset().getVersion(), JobsProtoUtil.toStuff(jobRequest.getQueryType()))
+      .setSpace(inSpace)
+      .setUser(jobRequest.getUsername())
+      .setStartTime(System.currentTimeMillis())
+      .setDatasetPathList(jobRequest.getVersionedDataset().getPathList())
+      .setResultMetadataList(new ArrayList<ArrowFileMetadata>())
+      .setContextList(jobRequest.getSqlQuery().getContextList());
+
+    if (jobRequest.hasDownloadSettings()) {
+      jobInfo.setDownloadInfo(new DownloadInfo()
+        .setDownloadId(jobRequest.getDownloadSettings().getDownloadId())
+        .setFileName(jobRequest.getDownloadSettings().getFilename()));
+    } else if (jobRequest.hasMaterializationSettings()) {
+      jobInfo.setMaterializationFor(JobsProtoUtil.toStuff(jobRequest.getMaterializationSettings().getMaterializationSummary()));
+    }
+    return jobInfo;
   }
 }

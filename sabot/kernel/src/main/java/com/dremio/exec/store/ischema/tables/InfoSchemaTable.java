@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ import com.dremio.connector.metadata.PartitionChunk;
 import com.dremio.connector.metadata.PartitionChunkListing;
 import com.dremio.datastore.SearchTypes.SearchQuery;
 import com.dremio.exec.planner.cost.ScanCostFactor;
+import com.dremio.exec.planner.sql.CalciteArrowHelper;
 import com.dremio.exec.planner.types.JavaTypeFactoryImpl;
 import com.dremio.exec.record.BatchSchema;
 import com.dremio.exec.store.RecordDataType;
@@ -76,11 +77,12 @@ public enum InfoSchemaTable implements DatasetHandle, DatasetMetadata, Partition
       String username,
       DatasetListingService service,
       SearchQuery query,
-      List<SchemaPath> columns
+      List<SchemaPath> columns,
+      int batchSize
   ) {
     return new PojoRecordReader(definition.getRecordClass(),
         definition.asIterable(catalogName, username, service, query).iterator(),
-        columns);
+        columns, batchSize);
   }
 
   @Override
@@ -97,7 +99,7 @@ public enum InfoSchemaTable implements DatasetHandle, DatasetMetadata, Partition
   public BatchSchema getRecordSchema() {
     RecordDataType dataType = new PojoDataType(definition.getRecordClass());
     RelDataType type = dataType.getRowType(JavaTypeFactoryImpl.INSTANCE);
-    return BatchSchema.fromCalciteRowType(type);
+    return CalciteArrowHelper.fromCalciteRowType(type);
   }
 
   @Override

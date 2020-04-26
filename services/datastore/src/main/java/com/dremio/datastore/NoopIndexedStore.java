@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +16,11 @@
 package com.dremio.datastore;
 
 import java.util.List;
-import java.util.Map.Entry;
 
 import com.dremio.datastore.SearchTypes.SearchQuery;
+import com.dremio.datastore.api.Document;
+import com.dremio.datastore.api.FindByCondition;
+import com.dremio.datastore.api.IndexedStore;
 
 /**
  * Noop indexed store.
@@ -30,7 +32,7 @@ public class NoopIndexedStore<K, V> extends NoopKVStore<K, V> implements Indexed
   }
 
   @Override
-  public Iterable<Entry<K, V>> find(FindByCondition find) {
+  public Iterable<Document<K, V>> find(FindByCondition find, FindOption ... options) {
     throw new UnsupportedOperationException("Operation unsupported on this type of node.");
   }
 

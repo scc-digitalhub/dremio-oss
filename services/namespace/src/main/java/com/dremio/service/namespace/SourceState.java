@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,6 +43,7 @@ public class SourceState {
   }
 
   public static final SourceState GOOD = new SourceState(SourceStatus.good, Collections.<Message>emptyList());
+  public static final SourceState NOT_AVAILABLE = SourceState.badState("Source is not currently available.");
 
   private final SourceStatus status;
   private final List<Message> messages;

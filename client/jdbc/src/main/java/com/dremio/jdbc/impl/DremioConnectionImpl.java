@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -107,7 +107,7 @@ class DremioConnectionImpl extends AvaticaConnection
       // (Include cause exception's text in wrapping exception's text so
       // it's more likely to get to user (e.g., via SQLLine), and use
       // toString() since getMessage() text doesn't always mention error:)
-      throw new SQLException("Failure in connecting to Dremio: " + e, e);
+      throw DremioExceptionMapper.map(e, "Failure in connecting to Dremio: %s", e.toString());
     }
   }
 
@@ -392,14 +392,8 @@ class DremioConnectionImpl extends AvaticaConnection
   }
 
   @Override
-  public String getCatalog() {
-    // Can't throw any SQLException because AvaticaConnection's getCatalog() is
-    // missing "throws SQLException".
-    try {
-      throwIfClosed();
-    } catch (SQLException e) {
-      throw new RuntimeException(e.getMessage(), e);
-    }
+  public String getCatalog() throws SQLException {
+    throwIfClosed();
     return super.getCatalog();
   }
 
@@ -671,14 +665,8 @@ class DremioConnectionImpl extends AvaticaConnection
   }
 
   @Override
-  public String getSchema() {
-    // Can't throw any SQLException because AvaticaConnection's getCatalog() is
-    // missing "throws SQLException".
-    try {
-      throwIfClosed();
-    } catch (SQLException e) {
-      throw new RuntimeException(e.getMessage(), e);
-    }
+  public String getSchema() throws SQLException {
+    throwIfClosed();
     return super.getSchema();
   }
 

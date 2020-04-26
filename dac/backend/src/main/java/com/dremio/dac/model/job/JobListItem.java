@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,10 +17,10 @@ package com.dremio.dac.model.job;
 
 import java.util.List;
 
-import com.dremio.exec.proto.beans.RequestType;
+import com.dremio.proto.model.attempts.RequestType;
+import com.dremio.service.job.JobSummary;
 import com.dremio.service.job.proto.JobState;
 import com.dremio.service.job.proto.ParentDatasetInfo;
-import com.dremio.service.jobs.Job;
 import com.dremio.service.namespace.dataset.proto.DatasetType;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -48,17 +48,19 @@ public class JobListItem extends PartialJobListItem {
       @JsonProperty("accelerated") boolean accelerated,
       @JsonProperty("datasetVersion") String datasetVersion,
       @JsonProperty("snowflakeAccelerated") boolean snowflakeAccelerated,
-      @JsonProperty("spilled") boolean spilled) {
+      @JsonProperty("spilled") boolean spilled,
+      @JsonProperty("outputRecords") long outputRecords,
+      @JsonProperty("outputLimited") boolean outputLimited) {
     super(id, state, failureInfo, cancellationInfo, user, startTime, endTime, description, requestType,
-        accelerated, datasetVersion, snowflakeAccelerated, spilled);
+        accelerated, datasetVersion, snowflakeAccelerated, spilled, outputRecords, outputLimited);
     this.datasetPathList = datasetPathList;
     this.datasetType = datasetType;
   }
 
-  public JobListItem(Job input, ParentDatasetInfo displayInfo) {
+  public JobListItem(JobSummary input, ParentDatasetInfo displayInfo) {
     super(input);
     this.datasetPathList = displayInfo.getDatasetPathList();
-    this.datasetType =  displayInfo.getType();
+    this.datasetType = displayInfo.getType();
   }
 
   public List<String> getDatasetPathList() {

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -68,24 +68,28 @@ public class RelMdRowCount extends org.apache.calcite.rel.metadata.RelMdRowCount
   public static double estimateRowCount(Join rel, RelMetadataQuery mq) {
     double rightJoinFactor = 1.0;
 
-    if (rel.getCondition().isAlwaysTrue()) {
+    RexNode condition = rel.getCondition();
+    if (condition.isAlwaysTrue()) {
       // Cartesian join is only supported for NLJ. If join type is right, make it more expensive
       if (rel.getJoinType() == JoinRelType.RIGHT) {
         rightJoinFactor = 2.0;
       }
-      return RelMdUtil.getJoinRowCount(mq, rel, rel.getCondition()) * rightJoinFactor;
+      return RelMdUtil.getJoinRowCount(mq, rel, condition) * rightJoinFactor;
     }
 
     final PlannerSettings plannerSettings = PrelUtil.getPlannerSettings(rel.getCluster().getPlanner());
-    double filterMinSelectivityEstimateFactor = plannerSettings.getFilterMinSelectivityEstimateFactor();
-    double filterMaxSelectivityEstimateFactor = plannerSettings.getFilterMaxSelectivityEstimateFactor();
-
+    double filterMinSelectivityEstimateFactor = plannerSettings == null ?
+      PlannerSettings.DEFAULT_FILTER_MIN_SELECTIVITY_ESTIMATE_FACTOR :
+      plannerSettings.getFilterMinSelectivityEstimateFactor();
+    double filterMaxSelectivityEstimateFactor = plannerSettings == null ?
+      PlannerSettings.DEFAULT_FILTER_MAX_SELECTIVITY_ESTIMATE_FACTOR :
+      plannerSettings.getFilterMaxSelectivityEstimateFactor();
 
     final RexNode remaining;
     if (rel instanceof JoinRelBase) {
       remaining = ((JoinRelBase) rel).getRemaining();
     } else {
-      remaining = RelOptUtil.splitJoinCondition(rel.getLeft(), rel.getRight(), rel.getCondition(), new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
+      remaining = RelOptUtil.splitJoinCondition(rel.getLeft(), rel.getRight(), condition, new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
     }
 
     double selectivity = mq.getSelectivity(rel, remaining);

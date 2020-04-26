@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ package com.dremio.plugins.elastic;
 
 import static com.dremio.plugins.elastic.ElasticsearchType.KEYWORD;
 import static com.dremio.plugins.elastic.ElasticsearchType.TEXT;
+import static org.junit.Assume.assumeFalse;
 
 import org.junit.Test;
 import org.slf4j.Logger;
@@ -99,6 +100,11 @@ public class ITTestPushdownNormalized extends ElasticBaseTestQuery {
 
   @Test
   public void testLikeOnNormalizedKeyword() throws Exception {
+    // DX-18338: failed to put mappings on indices in elasticsearch server
+    if (elastic.getMinVersionInCluster().getMajor() == 5) {
+      assumeFalse(elastic.getMinVersionInCluster().getMinor() <= 2);
+    }
+
     ElasticsearchCluster.ColumnData[] data = new ElasticsearchCluster.ColumnData[]{
         new ElasticsearchCluster.ColumnData("city_normalized", KEYWORD,
             ImmutableMap.of("normalizer", "lowercase_normalizer"),
@@ -134,6 +140,11 @@ public class ITTestPushdownNormalized extends ElasticBaseTestQuery {
 
   @Test
   public void testMatchOnNormalizedKeyword() throws Exception {
+    // DX-18338: failed to put mappings on indices in elasticsearch server
+    if (elastic.getMinVersionInCluster().getMajor() == 5) {
+      assumeFalse(elastic.getMinVersionInCluster().getMinor() <= 2);
+    }
+
     ElasticsearchCluster.ColumnData[] data = new ElasticsearchCluster.ColumnData[]{
         new ElasticsearchCluster.ColumnData("city_normalized", KEYWORD,
             ImmutableMap.of("normalizer", "lowercase_normalizer"),

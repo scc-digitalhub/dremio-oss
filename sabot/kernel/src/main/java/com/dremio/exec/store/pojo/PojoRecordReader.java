@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,12 +25,15 @@ import java.util.Map;
 import java.util.Set;
 
 import org.apache.arrow.memory.OutOfMemoryException;
+import org.apache.arrow.vector.BaseValueVector;
 import org.apache.arrow.vector.ValueVector;
 import org.apache.calcite.rel.type.RelDataType;
+import org.joda.time.DateTime;
 
 import com.dremio.common.exceptions.ExecutionSetupException;
 import com.dremio.common.expression.SchemaPath;
 import com.dremio.exec.physical.base.GroupScan;
+import com.dremio.exec.planner.sql.CalciteArrowHelper;
 import com.dremio.exec.planner.types.JavaTypeFactoryImpl;
 import com.dremio.exec.record.BatchSchema;
 import com.dremio.exec.store.AbstractRecordReader;
@@ -49,22 +52,25 @@ import com.google.common.collect.Lists;
 
 public class PojoRecordReader<T> extends AbstractRecordReader implements Iterable<T> {
 
+  private static final int DEFAULT_BATCH_SIZE  = BaseValueVector.INITIAL_VALUE_ALLOCATION;
   private final Class<T> pojoClass;
   private final List<T> pojoObjects;
   private PojoWriter[] writers;
-  private boolean doCurrent;
   private T currentPojo;
+  private final int batchSize;
 
   private Iterator<T> currentIterator;
 
   public PojoRecordReader(Class<T> pojoClass, Iterator<T> iterator) {
-    this(pojoClass, iterator, null);
+    this(pojoClass, iterator, null, DEFAULT_BATCH_SIZE);
   }
 
-  public PojoRecordReader(Class<T> pojoClass, Iterator<T> iterator, List<SchemaPath> columns) {
+  public PojoRecordReader(Class<T> pojoClass, Iterator<T> iterator, List<SchemaPath> columns,
+                          int batchSize) {
     super(null, columns);
     this.pojoClass = pojoClass;
     this.pojoObjects = ImmutableList.copyOf(iterator);
+    this.batchSize = batchSize;
   }
 
   @Override
@@ -102,7 +108,7 @@ public class PojoRecordReader<T> extends AbstractRecordReader implements Iterabl
         w = new EnumWriter(f, output.getManagedBuffer());
       } else if(type == String.class) {
         w = new StringWriter(f, output.getManagedBuffer());
-      } else if (type == Timestamp.class) {
+      } else if (type == Timestamp.class || type == DateTime.class) {
         w = new TimeStampMilliWriter(f);
       } else {
         throw new ExecutionSetupException(String.format("PojoRecord reader doesn't yet support conversions from type [%s].", type));
@@ -146,12 +152,8 @@ public class PojoRecordReader<T> extends AbstractRecordReader implements Iterabl
     //injector.injectPause(operatorContext.getExecutionControls(), "read-next", logger);
     try {
       int i =0;
-      while (doCurrent || currentIterator.hasNext()) {
-        if (doCurrent) {
-          doCurrent = false;
-        } else {
-          currentPojo = currentIterator.next();
-        }
+      while (currentIterator.hasNext() && i < batchSize) {
+        currentPojo = currentIterator.next();
 
         if (!allocated) {
           allocate();
@@ -190,7 +192,7 @@ public class PojoRecordReader<T> extends AbstractRecordReader implements Iterabl
   public static BatchSchema getSchema(Class<?> pojoClass){
     RecordDataType dataType = new PojoDataType(pojoClass);
     RelDataType type = dataType.getRowType(JavaTypeFactoryImpl.INSTANCE);
-    return BatchSchema.fromCalciteRowType(type);
+    return CalciteArrowHelper.fromCalciteRowType(type);
 
   }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -85,7 +85,6 @@ public class RestServerV2 extends ResourceConfig {
 
 
     // PROPERTIES //
-    property(ServerProperties.METAINF_SERVICES_LOOKUP_DISABLE, true);
     property(ServerProperties.RESPONSE_SET_STATUS_OVER_SEND_ERROR, "true");
 
     final String disableMoxy = PropertiesHelper.getPropertyNameForRuntime(CommonProperties.MOXY_JSON_FEATURE_DISABLE,

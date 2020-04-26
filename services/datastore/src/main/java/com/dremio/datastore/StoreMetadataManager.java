@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ package com.dremio.datastore;
 /**
  * Manages metadata about stores. The metadata is stored in the "default" store.
  */
-interface StoreMetadataManager {
+interface StoreMetadataManager extends AutoCloseable {
 
   /**
    * Allow updates to the metadata store.
@@ -57,6 +57,10 @@ interface StoreMetadataManager {
 
     @Override
     public void setLatestTransactionNumber(String storeName, long transactionNumber) {
+    }
+
+    @Override
+    public void close() {
     }
   };
 }

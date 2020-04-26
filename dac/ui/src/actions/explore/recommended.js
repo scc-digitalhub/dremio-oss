@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,11 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { CALL_API } from 'redux-api-middleware';
+import { RSAA } from 'redux-api-middleware';
 
-import { API_URL_V2 } from 'constants/Api';
+import { APIV2Call } from '@app/core/APICall';
 import transformModelMapper from 'utils/mappers/ExplorePage/Transform/transformModelMapper';
-
 
 export const RESET_RECOMMENDED_TRANSFORMS = 'RESET_RECOMMENDED_TRANSFORMS';
 export function resetRecommendedTransforms() {
@@ -40,8 +39,12 @@ function fetchTransformCards(data, transform, dataset, actionType) {
     actionType,
     viewId: LOAD_TRANSFORM_CARDS_VIEW_ID
   };
+
+  const apiCall = new APIV2Call()
+    .paths(`${dataset.getIn(['apiLinks', 'self'])}/${actionType}`);
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         { type: RUN_SELECTION_TRANSFORM_START, meta },
         { type: RUN_SELECTION_TRANSFORM_SUCCESS, meta },
@@ -50,7 +53,7 @@ function fetchTransformCards(data, transform, dataset, actionType) {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(transformModelMapper.transformExportPostMapper(data)),
-      endpoint: `${API_URL_V2}${dataset.getIn(['apiLinks', 'self'])}/${actionType}`
+      endpoint: apiCall
     }
   };
 }
@@ -72,8 +75,12 @@ function fetchTransformCardPreview(data, transform, dataset, actionType, index) 
     actionType,
     index
   };
+
+  const apiCall = new APIV2Call()
+    .paths(`${dataset.getIn(['apiLinks', 'self'])}/${actionType}_preview`);
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         { type: TRANSFORM_CARD_PREVIEW_START, meta },
         { type: TRANSFORM_CARD_PREVIEW_SUCCESS, meta },
@@ -82,7 +89,7 @@ function fetchTransformCardPreview(data, transform, dataset, actionType, index) 
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(transformModelMapper.transformDynamicPreviewMapper(data, actionType)),
-      endpoint: `${API_URL_V2}${dataset.getIn(['apiLinks', 'self'])}/${actionType}_preview`
+      endpoint: apiCall
     }
   };
 }
@@ -107,8 +114,12 @@ function fetchTransformValuesPreview(data, transform, dataset, actionType) {
     transformType: transform.get('transformType'),
     method: transform.get('method') || 'default'
   };
+
+  const apiCall = new APIV2Call()
+    .paths(`${dataset.getIn(['apiLinks', 'self'])}/${actionType}_values_preview`);
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         { type: RUN_SELECTION_TRANSFORM_PREVIEW_VALUES_START, meta },
         { type: RUN_SELECTION_TRANSFORM_PREVIEW_VALUES_SUCCESS, meta },
@@ -117,7 +128,7 @@ function fetchTransformValuesPreview(data, transform, dataset, actionType) {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(transformModelMapper.mapTransformValuesPreview(data, actionType)),
-      endpoint: `${API_URL_V2}${dataset.getIn(['apiLinks', 'self'])}/${actionType}_values_preview`
+      endpoint: apiCall
     }
   };
 }

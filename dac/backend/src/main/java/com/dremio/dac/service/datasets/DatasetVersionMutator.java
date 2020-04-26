@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@ import static com.dremio.dac.service.datasets.DatasetDownloadManager.DATASET_DOW
 import static com.dremio.dac.util.DatasetsUtil.toVirtualDatasetUI;
 import static com.dremio.dac.util.DatasetsUtil.toVirtualDatasetVersion;
 import static com.dremio.service.namespace.DatasetIndexKeys.DATASET_ALLPARENTS;
-import static com.dremio.service.namespace.DatasetIndexKeys.DATASET_ID;
 import static com.dremio.service.namespace.dataset.DatasetVersion.MAX_VERSION;
 import static com.dremio.service.namespace.dataset.DatasetVersion.MIN_VERSION;
 import static java.lang.String.format;
@@ -36,8 +35,8 @@ import org.slf4j.LoggerFactory;
 
 import com.dremio.common.perf.Timer;
 import com.dremio.common.perf.Timer.TimedBlock;
+import com.dremio.dac.daemon.DACDaemonModule;
 import com.dremio.dac.explore.model.DatasetPath;
-import com.dremio.dac.explore.model.DownloadFormat;
 import com.dremio.dac.model.common.RootEntity.RootType;
 import com.dremio.dac.proto.model.dataset.NameDatasetRef;
 import com.dremio.dac.proto.model.dataset.VirtualDatasetUI;
@@ -45,23 +44,22 @@ import com.dremio.dac.proto.model.dataset.VirtualDatasetVersion;
 import com.dremio.dac.service.datasets.DatasetDownloadManager.DownloadDataResponse;
 import com.dremio.dac.service.errors.DatasetNotFoundException;
 import com.dremio.dac.service.errors.DatasetVersionNotFoundException;
-import com.dremio.datastore.IndexedStore.FindByCondition;
-import com.dremio.datastore.KVStore;
-import com.dremio.datastore.KVStore.FindByRange;
-import com.dremio.datastore.KVStoreProvider;
-import com.dremio.datastore.ProtostuffSerializer;
 import com.dremio.datastore.SearchQueryUtils;
-import com.dremio.datastore.SearchTypes.SearchFieldSorting;
-import com.dremio.datastore.SearchTypes.SortOrder;
-import com.dremio.datastore.Serializer;
-import com.dremio.datastore.StoreBuildingFactory;
-import com.dremio.datastore.StoreCreationFunction;
-import com.dremio.datastore.StringSerializer;
+import com.dremio.datastore.api.LegacyIndexedStore.LegacyFindByCondition;
+import com.dremio.datastore.api.LegacyKVStore;
+import com.dremio.datastore.api.LegacyKVStore.LegacyFindByRange;
+import com.dremio.datastore.api.LegacyKVStoreProvider;
+import com.dremio.datastore.api.LegacyStoreBuildingFactory;
+import com.dremio.datastore.api.LegacyStoreCreationFunction;
+import com.dremio.datastore.format.Format;
 import com.dremio.exec.store.CatalogService;
 import com.dremio.exec.store.dfs.FileSystemPlugin;
+import com.dremio.exec.store.dfs.InternalFileConf;
+import com.dremio.options.OptionManager;
 import com.dremio.service.InitializerRegistry;
+import com.dremio.service.job.JobCountsRequest;
+import com.dremio.service.job.VersionedDatasetPath;
 import com.dremio.service.job.proto.DownloadInfo;
-import com.dremio.service.jobs.Job;
 import com.dremio.service.jobs.JobsService;
 import com.dremio.service.namespace.NamespaceAttribute;
 import com.dremio.service.namespace.NamespaceException;
@@ -88,26 +86,30 @@ public class DatasetVersionMutator {
   private final JobsService jobsService;
   private final CatalogService catalogService;
 
-  private final KVStore<VersionDatasetKey, VirtualDatasetVersion> datasetVersions;
+  private final LegacyKVStore<VersionDatasetKey, VirtualDatasetVersion> datasetVersions;
+  private final OptionManager optionManager;
 
   @Inject
   public DatasetVersionMutator(
       final InitializerRegistry init,
-      final KVStoreProvider kv,
+      final LegacyKVStoreProvider kv,
       final NamespaceService namespaceService,
       final JobsService jobsService,
-      final CatalogService catalogService) {
+      final CatalogService catalogService,
+      final OptionManager optionManager) {
     this.namespaceService = namespaceService;
     this.jobsService = jobsService;
     this.datasetVersions = kv.getStore(VersionStoreCreator.class);
     this.catalogService = catalogService;
     this.init = init;
+    this.optionManager = optionManager;
   }
 
-  private DatasetDownloadManager downloadManager() {
-    final FileSystemPlugin downloadPlugin = catalogService.getSource(DATASET_DOWNLOAD_STORAGE_PLUGIN);
+  public DatasetDownloadManager downloadManager() {
+    final FileSystemPlugin<?> downloadPlugin = catalogService.getSource(DATASET_DOWNLOAD_STORAGE_PLUGIN);
+    final FileSystemPlugin<InternalFileConf> jobResultsPlugin = catalogService.getSource(DACDaemonModule.JOBS_STORAGEPLUGIN_NAME);
     return new DatasetDownloadManager(jobsService, namespaceService, downloadPlugin.getConfig().getPath(),
-      downloadPlugin.getSystemUserFS());
+      downloadPlugin.getSystemUserFS(), jobResultsPlugin.getConfig().isPdfsBased(), optionManager);
   }
   private void validate(DatasetPath path, VirtualDatasetUI ds) {
     if (ds.getSqlFieldsList() == null || ds.getSqlFieldsList().isEmpty()) {
@@ -228,7 +230,7 @@ public class DatasetVersionMutator {
 
   public Iterable<VirtualDatasetUI> getAllVersions(DatasetPath path) throws DatasetVersionNotFoundException {
     return Iterables.transform(datasetVersions.find(
-        new FindByRange<>(new VersionDatasetKey(path, MIN_VERSION), false, new VersionDatasetKey(path, MAX_VERSION), false)),
+        new LegacyFindByRange<>(new VersionDatasetKey(path, MIN_VERSION), false, new VersionDatasetKey(path, MAX_VERSION), false)),
       new Function<Entry<VersionDatasetKey, VirtualDatasetVersion>, VirtualDatasetUI> () {
         @Override
         public VirtualDatasetUI apply(Entry<VersionDatasetKey, VirtualDatasetVersion> input) {
@@ -310,7 +312,7 @@ public class DatasetVersionMutator {
    * @throws NamespaceException
    */
   public Iterable<DatasetPath> getDescendants(DatasetPath path) throws NamespaceException {
-    FindByCondition condition = new FindByCondition()
+    LegacyFindByCondition condition = new LegacyFindByCondition()
       .setCondition(SearchQueryUtils.newTermQuery(DATASET_ALLPARENTS, path.toNamespaceKey().toString()))
       .setLimit(1000);
     return Iterables.transform(namespaceService.find(condition), new Function<Entry<NamespaceKey, NameSpaceContainer>, DatasetPath>() {
@@ -322,12 +324,19 @@ public class DatasetVersionMutator {
   }
 
   public int getJobsCount(NamespaceKey path) {
-    return jobsService.getJobsCount(path);
+    JobCountsRequest.Builder builder = JobCountsRequest.newBuilder();
+    builder.addDatasets(VersionedDatasetPath.newBuilder()
+        .addAllPath(path.getPathComponents()));
+    return jobsService.getJobCounts(builder.build()).getCountList().get(0);
   }
 
   public long getJobsCount(List<NamespaceKey> datasetPaths) {
     long jobCount = 0;
-    for (Integer count : jobsService.getJobsCount(datasetPaths)) {
+    final JobCountsRequest.Builder builder = JobCountsRequest.newBuilder();
+    datasetPaths.forEach(datasetPath ->
+        builder.addDatasets(VersionedDatasetPath.newBuilder()
+            .addAllPath(datasetPath.getPathComponents())));
+    for (Integer count : jobsService.getJobCounts(builder.build()).getCountList()) {
       if (count != null) {
         jobCount += count;
       }
@@ -335,88 +344,26 @@ public class DatasetVersionMutator {
     return jobCount;
   }
 
-  private static final SearchFieldSorting DEFAULT_SORTING = DATASET_ID.toSortField(SortOrder.DESCENDING);
-
-  public Job prepareDownload(DatasetPath datasetPath, DatasetVersion datasetVersion, DownloadFormat downloadFormat,
-                             int limit, String userName) throws DatasetVersionNotFoundException, IOException {
-    final VirtualDatasetUI vds = getVersion(datasetPath, datasetVersion);
-    return downloadManager().scheduleDownload(datasetPath, vds, downloadFormat, limit, userName);
-  }
-
   public DownloadDataResponse downloadData(DownloadInfo downloadInfo, String userName) throws IOException {
     // TODO check if user can access this dataset.
     return downloadManager().getDownloadData(downloadInfo);
   }
 
-
   /**
    * Storage creator for dataset versions.
    */
-  public static class VersionStoreCreator implements StoreCreationFunction<KVStore<VersionDatasetKey, VirtualDatasetVersion>> {
+  public static class VersionStoreCreator implements LegacyStoreCreationFunction<LegacyKVStore<VersionDatasetKey, VirtualDatasetVersion>> {
 
     @Override
-    public KVStore<VersionDatasetKey, VirtualDatasetVersion> build(StoreBuildingFactory factory) {
+    public LegacyKVStore<VersionDatasetKey, VirtualDatasetVersion> build(LegacyStoreBuildingFactory factory) {
       return factory.<VersionDatasetKey, VirtualDatasetVersion>newStore()
-          .name("datasetVersions")
-          .keySerializer(VersionDatasetKeySerializer.class)
-          .valueSerializer(VirtualDatasetVersionSerializer.class)
-          .build();
+        .name("datasetVersions")
+        .keyFormat(Format.wrapped(VersionDatasetKey.class, VersionDatasetKey::toString, VersionDatasetKey::new, Format.ofString()))
+        .valueFormat(Format.ofProtostuff(VirtualDatasetVersion.class))
+        .build();
     }
 
   }
-
-  private static final class VersionDatasetKeySerializer extends Serializer<VersionDatasetKey> {
-    public VersionDatasetKeySerializer() {
-    }
-
-    @Override
-    public String toJson(VersionDatasetKey v) throws IOException {
-      return StringSerializer.INSTANCE.toJson(v.toString());
-    }
-
-    @Override
-    public VersionDatasetKey fromJson(String v) throws IOException {
-      return new VersionDatasetKey(StringSerializer.INSTANCE.fromJson(v));
-    }
-
-    @Override
-    public byte[] convert(VersionDatasetKey v) {
-      return StringSerializer.INSTANCE.convert(v.toString());
-    }
-
-    @Override
-    public VersionDatasetKey revert(byte[] v) {
-      return new VersionDatasetKey(StringSerializer.INSTANCE.revert(v));
-    }
-  }
-
-  private static final class VirtualDatasetVersionSerializer extends Serializer<VirtualDatasetVersion> {
-    private final Serializer<VirtualDatasetVersion> serializer = ProtostuffSerializer.of(VirtualDatasetVersion.getSchema());
-
-    public VirtualDatasetVersionSerializer() {
-    }
-
-    @Override
-    public String toJson(VirtualDatasetVersion v) throws IOException {
-      return serializer.toJson(v);
-    }
-
-    @Override
-    public VirtualDatasetVersion fromJson(String v) throws IOException {
-      return serializer.fromJson(v);
-    }
-
-    @Override
-    public byte[] convert(VirtualDatasetVersion v) {
-      return serializer.convert(v);
-    }
-
-    @Override
-    public VirtualDatasetVersion revert(byte[] v) {
-      return serializer.revert(v);
-    }
-  }
-
   /**
    * key for versioned dataset store.
    */

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -94,5 +94,23 @@ public class TestPermissionCheckCache {
       assertEquals(UserBitShared.DremioPBError.ErrorType.PERMISSION, e.getErrorType());
       assertEquals("Access denied reading dataset what.", e.getMessage());
     }
+  }
+
+  @Test
+  public void ensureNoPermissionIsNotCached() throws Exception {
+    final String username = "ensureCached";
+    final StoragePlugin plugin = mock(StoragePlugin.class);
+    final PermissionCheckCache checks = new PermissionCheckCache(DirectProvider.wrap(plugin), DirectProvider.wrap(10_000L), 1000);
+    when(plugin.hasAccessPermission(anyString(), any(NamespaceKey.class), any(DatasetConfig.class)))
+      .thenReturn(false, false);
+    assertFalse(checks.hasAccess(username, new NamespaceKey(Lists.newArrayList("what")), null, new MetadataStatsCollector()));
+
+    assertEquals(0, checks.getPermissionsCache().size());
+
+    when(plugin.hasAccessPermission(anyString(), any(NamespaceKey.class), any(DatasetConfig.class)))
+      .thenReturn(true, false);
+    assertTrue(checks.hasAccess(username, new NamespaceKey(Lists.newArrayList("what")), null, new MetadataStatsCollector()));
+
+    assertEquals(1, checks.getPermissionsCache().size());
   }
 }

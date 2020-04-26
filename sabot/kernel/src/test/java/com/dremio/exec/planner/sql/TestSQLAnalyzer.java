@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -205,7 +205,7 @@ public class TestSQLAnalyzer {
       // Cursor after 'TEST_SCHEMA.'
       new Object[] {
         "select a.colOne, b.colTwo from dummy a join TEST_SCHEMA.^ on a.colTwo=",
-        103,
+        105,
         false},
       // Cursor after 'TEST_CATALOG.TEST_SCHEMA'
       new Object[] {

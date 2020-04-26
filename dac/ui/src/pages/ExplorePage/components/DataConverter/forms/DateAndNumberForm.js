@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ export class DateToNumberForm extends Component {
         {...formWrapperProps(this.props)}
         onFormSubmit={submit}
         style={{ minHeight: 0 }}
-        >
+      >
         <div style={radiosAlignmentStyle}>
           <Radio {...fields.format} className={radioStacked} label='Epoch' style={{ marginTop: 0 }} radioValue='EPOCH'/>
           <Radio {...fields.format} className={radioStacked} label='Excel' radioValue='EXCEL'/>

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 package com.dremio.dac.explore.model;
+
+import static com.dremio.common.utils.PathUtils.encodeURIComponent;
 
 import java.util.Arrays;
 import java.util.HashMap;
@@ -251,8 +253,10 @@ public class DatasetUI {
       queryUrlPath = new DatasetPath(displayFullPath).getQueryUrlPath();
     }
     Map<String, String> links = new HashMap<>();
-    links.put("self", queryUrlPath + "?version=" + datasetVersion);
-    links.put("edit", queryUrlPath + "?mode=edit&version=" + datasetVersion);
+    links.put("self", queryUrlPath + "?version="
+      + (datasetVersion == null ? datasetVersion : encodeURIComponent(datasetVersion.toString())));
+    links.put("edit", queryUrlPath + "?mode=edit&version="
+      + (datasetVersion == null ? datasetVersion : encodeURIComponent(datasetVersion.toString())));
     final JobFilters jobFilters = new JobFilters()
       .addFilter(JobIndexKeys.ALL_DATASETS, dottedFullPath)
       .addFilter(JobIndexKeys.QUERY_TYPE, JobIndexKeys.UI, JobIndexKeys.EXTERNAL);

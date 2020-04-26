@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -75,8 +75,10 @@ public class ConvertletTable extends ReflectiveConvertletTable {
     super();
 
     registerOp(SqlStdOperatorTable.TIMESTAMP_DIFF, DEFAULT_CONVERTLET);
-    registerOp(SqlStdOperatorTable.IS_DISTINCT_FROM, DistinctFromConvertlet.INSTANCE);
-    registerOp(SqlStdOperatorTable.IS_NOT_DISTINCT_FROM, DistinctFromConvertlet.INSTANCE);
+    registerOp(SqlStdOperatorTable.EQUALS, EqualityConvertlet.INSTANCE);
+    registerOp(SqlStdOperatorTable.NOT_EQUALS, EqualityConvertlet.INSTANCE);
+    registerOp(SqlStdOperatorTable.IS_DISTINCT_FROM, EqualityConvertlet.INSTANCE);
+    registerOp(SqlStdOperatorTable.IS_NOT_DISTINCT_FROM, EqualityConvertlet.INSTANCE);
     registerOp(SqlFlattenOperator.INSTANCE, FlattenConvertlet.INSTANCE);
     registerOp(SqlDatePartOperator.INSTANCE, SqlDatePartOperator.CONVERTLET);
     registerOp(SqlStdOperatorTable.MINUS, new SqlRexConvertlet() {

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.dremio.common.exceptions.UserException;
+import com.dremio.common.util.concurrent.DremioFutures;
 import com.dremio.dac.model.job.JobDetailsUI;
 import com.dremio.dac.server.BaseTestServer;
 import com.dremio.exec.client.DremioClient;
@@ -34,12 +35,13 @@ import com.dremio.exec.proto.UserBitShared.QueryResult.QueryState;
 import com.dremio.exec.proto.UserProtos.CreatePreparedStatementResp;
 import com.dremio.exec.proto.UserProtos.GetCatalogsResp;
 import com.dremio.exec.proto.UserProtos.LikeFilter;
-import com.dremio.exec.proto.beans.RequestType;
 import com.dremio.exec.rpc.ConnectionThrottle;
 import com.dremio.exec.rpc.RpcException;
+import com.dremio.proto.model.attempts.RequestType;
 import com.dremio.sabot.rpc.user.QueryDataBatch;
 import com.dremio.sabot.rpc.user.UserResultsListener;
 import com.dremio.service.Pointer;
+import com.dremio.service.job.JobDetailsRequest;
 import com.dremio.service.job.proto.JobId;
 import com.dremio.service.users.UserService;
 
@@ -58,7 +60,11 @@ public class TestJobMetadataCollection extends BaseTestServer {
 
   @Test
   public void getCatalogs() throws Exception {
-    GetCatalogsResp resp = rpc.getCatalogs(LikeFilter.getDefaultInstance()).checkedGet();
+    GetCatalogsResp resp = DremioFutures.getChecked(
+      rpc.getCatalogs(LikeFilter.getDefaultInstance()),
+      RpcException.class,
+      RpcException::mapException
+    );
     JobDetailsUI job = getDetails(resp.getQueryId());
 
     assertEquals(RequestType.GET_CATALOGS, job.getRequestType());
@@ -66,7 +72,11 @@ public class TestJobMetadataCollection extends BaseTestServer {
 
   @Test
   public void prepare() throws Exception {
-    CreatePreparedStatementResp resp = rpc.createPreparedStatement("select * from sys.options").checkedGet();
+    CreatePreparedStatementResp resp = DremioFutures.getChecked(
+      rpc.createPreparedStatement("select * from sys.options"),
+      RpcException.class,
+      RpcException::mapException
+    );
     JobDetailsUI job = getDetails(resp.getQueryId());
     assertTrue(job.getTimeSpentInPlanning() > 0);
     assertTrue(job.getSql() != null);
@@ -110,7 +120,10 @@ public class TestJobMetadataCollection extends BaseTestServer {
 
 
   private JobDetailsUI getDetails(QueryId id) throws JobNotFoundException {
-    return JobDetailsUI.of(jobs.getJob(toId(id)));
+    JobDetailsRequest request = JobDetailsRequest.newBuilder()
+      .setJobId(JobsProtoUtil.toBuf(toId(id)))
+      .build();
+    return JobDetailsUI.of(jobs.getJobDetails(request));
   }
 
   private JobId toId(QueryId id){

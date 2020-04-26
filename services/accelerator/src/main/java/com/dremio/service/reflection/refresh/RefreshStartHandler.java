@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@ package com.dremio.service.reflection.refresh;
 import java.util.UUID;
 
 import com.dremio.service.job.proto.JobId;
-import com.dremio.service.jobs.Job;
 import com.dremio.service.jobs.JobsService;
 import com.dremio.service.namespace.NamespaceService;
 import com.dremio.service.reflection.ReflectionManager.WakeUpCallback;
@@ -74,16 +73,16 @@ public class RefreshStartHandler {
 
     final String sql = String.format("REFRESH REFLECTION '%s' AS '%s'", reflectionId.getId(), materialization.getId().getId());
 
-    final Job job = ReflectionUtils.submitRefreshJob(jobsService, namespaceService, entry, materialization, sql,
+    final JobId jobId = ReflectionUtils.submitRefreshJob(jobsService, namespaceService, entry, materialization, sql,
       new WakeUpManagerWhenJobDone(wakeUpCallback, "materialization job done"));
 
-    logger.debug("starting materialization job {}", job.getJobId().getId());
+    logger.debug("starting materialization job {}", jobId.getId());
 
-    materialization.setInitRefreshJobId(job.getJobId().getId());
+    materialization.setInitRefreshJobId(jobId.getId());
 
     materializationStore.save(materialization);
 
-    return job.getJobId();
+    return jobId;
   }
 
 }

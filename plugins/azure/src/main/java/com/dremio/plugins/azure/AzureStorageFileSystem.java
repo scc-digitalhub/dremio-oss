@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,38 +15,36 @@
  */
 package com.dremio.plugins.azure;
 
-import static com.dremio.common.utils.PathUtils.removeLeadingSlash;
+import static com.dremio.plugins.azure.AzureAuthenticationType.ACCESS_KEY;
+import static com.dremio.plugins.azure.AzureAuthenticationType.AZURE_ACTIVE_DIRECTORY;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.security.InvalidKeyException;
 import java.util.Objects;
-import java.util.concurrent.CompletableFuture;
 import java.util.stream.Stream;
 
+import org.apache.arrow.util.VisibleForTesting;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.asynchttpclient.AsyncHttpClient;
 
-import com.dremio.exec.store.dfs.async.AsyncByteReader;
+import com.dremio.common.AutoCloseables;
+import com.dremio.exec.hadoop.MayProvideAsyncStream;
+import com.dremio.exec.store.dfs.DremioFileSystemCache;
+import com.dremio.exec.store.dfs.FileSystemConf;
+import com.dremio.io.AsyncByteReader;
 import com.dremio.plugins.azure.AzureStorageConf.AccountKind;
+import com.dremio.plugins.azure.utils.AzureAsyncHttpClientUtils;
 import com.dremio.plugins.util.ContainerFileSystem;
 
-import io.netty.buffer.ByteBuf;
-import io.reactivex.Flowable;
+import io.netty.util.HashedWheelTimer;
 
 /**
  * A container file system implementation for Azure Storage.
- *
+ * <p>
  * Supports both Blob containers and Hierarchical containers
  */
-public class AzureStorageFileSystem extends ContainerFileSystem implements AsyncByteReader.MayProvideAsyncStream {
-
-  private static final Logger logger = LoggerFactory.getLogger(AzureStorageFileSystem.class);
-
-  static final String SCHEME = "dremioAzureStorage://";
+public class AzureStorageFileSystem extends ContainerFileSystem implements MayProvideAsyncStream {
   private static final String CONTAINER_HUMAN_NAME = "Container";
   static final String ACCOUNT = "dremio.azure.account";
   static final String KEY = "dremio.azure.key";
@@ -54,54 +52,120 @@ public class AzureStorageFileSystem extends ContainerFileSystem implements Async
   static final String SECURE = "dremio.azure.secure";
   static final String CONTAINER_LIST = "dremio.azure.container_list";
 
+  static final String CREDENTIALS_TYPE = "dremio.azure.credentialsType";
+
+  static final String CLIENT_ID = "dremio.azure.clientId";
+  static final String TOKEN_ENDPOINT = "dremio.azure.tokenEndpoint";
+  static final String CLIENT_SECRET = "dremio.azure.clientSecret";
+  static final String AZURE_ENDPOINT = "fs.azure.endpoint";
+
+  private String azureEndpoint;
   private String account;
-  private String key;
+  private String key = null;
+
+  private AzureAuthenticationType credentialsType;
+
+  private String clientID;
+  private String tokenEndpoint;
+  private String clientSecret;
+
   private boolean secure;
-  private AccountKind type;
+  private AccountKind accountKind;
   private Prototype proto;
   private Configuration parentConf;
-  private ContainerProvider blobProvider;
-  private DataLakeG2Client client;
+  private ContainerProvider containerProvider;
+  private AzureAuthTokenProvider authProvider;
+  private final DremioFileSystemCache fsCache = new DremioFileSystemCache();
+  private final HashedWheelTimer poolTimer = new HashedWheelTimer();
+
+
+  private AsyncHttpClient asyncHttpClient;
+
+  @Override
+  public void close() throws IOException {
+    AutoCloseables.close(IOException.class,
+      () -> fsCache.closeAll(true),
+      asyncHttpClient,
+      poolTimer::stop,
+      super::close);
+  }
 
   protected AzureStorageFileSystem() {
-    super(SCHEME, CONTAINER_HUMAN_NAME, a -> true);
+    super(FileSystemConf.CloudFileSystemScheme.AZURE_STORAGE_FILE_SYSTEM_SCHEME.getScheme(), CONTAINER_HUMAN_NAME, a -> true);
+  }
+
+  private void setupClient(String accountName, boolean isSecure) {
+    if (asyncHttpClient == null || asyncHttpClient.isClosed()) {
+      synchronized (this) {
+        if (asyncHttpClient == null || asyncHttpClient.isClosed()) {
+          asyncHttpClient = AzureAsyncHttpClientUtils.newClient(accountName, isSecure, poolTimer);
+        }
+      }
+    }
   }
 
   @Override
   protected void setup(Configuration conf) throws IOException {
     parentConf = conf;
-    try {
-      account = Objects.requireNonNull(conf.get(ACCOUNT));
-      key = Objects.requireNonNull(conf.get(KEY));
-      secure = conf.getBoolean(SECURE, true);
-      type = AccountKind.valueOf(conf.get(MODE));
-      proto = type.getPrototype(secure);
-      final String connection = String.format("%s://%s.%s", proto.getEndpointScheme(), account, proto.getEndpointSuffix());
+    conf.setIfUnset(CREDENTIALS_TYPE, ACCESS_KEY.name());
+    credentialsType = AzureAuthenticationType.valueOf(conf.get(CREDENTIALS_TYPE));
 
-      this.client = new DataLakeG2Client(account, key, secure);
-      final String[] containerList = getContainerNames(conf.get(CONTAINER_LIST));
-      if(containerList != null) {
-        blobProvider = new ProvidedContainerList(this, containerList);
+    // TODO: check if following are needed
+    accountKind = AccountKind.valueOf(conf.get(MODE));
+    secure = conf.getBoolean(SECURE, true);
+    proto = accountKind.getPrototype(secure);
+    conf.setIfUnset(AZURE_ENDPOINT, proto.getEndpointSuffix());
+    azureEndpoint = conf.get(AZURE_ENDPOINT);
+    // -- End --
+
+    account = Objects.requireNonNull(conf.get(ACCOUNT));
+    setupClient(account, secure);
+
+    if (credentialsType == AZURE_ACTIVE_DIRECTORY) {
+      clientID = Objects.requireNonNull(conf.get(CLIENT_ID));
+      tokenEndpoint = Objects.requireNonNull(conf.get(TOKEN_ENDPOINT));
+      clientSecret = Objects.requireNonNull(conf.get(CLIENT_SECRET));
+      this.authProvider = new AzureOAuthTokenProvider(tokenEndpoint, clientID, clientSecret);
+    } else if (credentialsType == ACCESS_KEY) {
+      key = Objects.requireNonNull(conf.get(KEY));
+      this.authProvider = new AzureSharedKeyAuthTokenProvider(account, key);
+    } else {
+      throw new IOException("Unrecognized credential type");
+    }
+
+    final String[] containerList = getContainerNames(conf.get(CONTAINER_LIST));
+    if (containerList != null) {
+      containerProvider = new ProvidedContainerList(this, containerList);
+    } else {
+      if (accountKind == AccountKind.STORAGE_V2) {
+        containerProvider = new AzureAsyncContainerProvider(asyncHttpClient, account, authProvider, this, secure);
       } else {
-        if (type == AccountKind.STORAGE_V2) {
-          blobProvider = new FsV10Provider(client, this);
-        } else {
-          blobProvider = new BlobContainerProvider(this, connection, account, key);
+        final String connection = String.format("%s://%s.%s", proto.getEndpointScheme(), account, azureEndpoint);
+        switch (credentialsType) {
+          case ACCESS_KEY:
+            containerProvider = new BlobContainerProvider(this, connection, account, key);
+            break;
+          case AZURE_ACTIVE_DIRECTORY:
+            try {
+              containerProvider = new BlobContainerProviderOAuth(this, connection, account, (AzureOAuthTokenProvider) authProvider);
+            } catch (Exception e) {
+              throw new IOException("Unable to establish connection to Storage V1 account with Azure Active Directory");
+            }
+            break;
+          default:
+            break;
         }
       }
-
-    } catch (InvalidKeyException e) {
-      throw new IOException("Failure creating connection", e);
     }
   }
 
   private String[] getContainerNames(String value) {
-    if(value == null) {
+    if (value == null) {
       return null;
     }
 
     String[] values = value.split(",");
-    if(values.length == 0) {
+    if (values.length == 0) {
       return null;
     }
 
@@ -110,7 +174,7 @@ public class AzureStorageFileSystem extends ContainerFileSystem implements Async
 
   @Override
   protected Stream<ContainerCreator> getContainerCreators() throws IOException {
-    return blobProvider.getContainerCreators();
+    return containerProvider.getContainerCreators();
   }
 
   static final class ContainerCreatorImpl extends ContainerCreator {
@@ -123,6 +187,7 @@ public class AzureStorageFileSystem extends ContainerFileSystem implements Async
       this.parent = parent;
     }
 
+    @VisibleForTesting
     @Override
     protected String getName() {
       return container;
@@ -143,21 +208,20 @@ public class AzureStorageFileSystem extends ContainerFileSystem implements Async
 
       @Override
       public FileSystem create() throws IOException {
-        try {
-          final Configuration conf = new Configuration(parent.parentConf);
-          parent.proto.setImpl(conf, parent.account, containerName, parent.key);
-          return FileSystem.get(conf);
-        } catch(RuntimeException | IOException e) {
-          throw e;
+        final Configuration conf = new Configuration(parent.parentConf);
+
+        AzureAuthenticationType credentialsType = AzureAuthenticationType.valueOf(conf.get(CREDENTIALS_TYPE));
+        final String location = parent.proto.getLocation(parent.account, containerName, parent.azureEndpoint);
+
+        if (credentialsType == AZURE_ACTIVE_DIRECTORY) {
+          parent.proto.setImpl(conf, parent.account, parent.clientID, parent.tokenEndpoint, parent.clientSecret, parent.azureEndpoint);
+          return parent.fsCache.get(new Path(location).toUri(), conf, AzureStorageConf.AZURE_AD_PROPS);
         }
+
+        parent.proto.setImpl(conf, parent.account, parent.key, parent.azureEndpoint);
+        return parent.fsCache.get(new Path(location).toUri(), conf, AzureStorageConf.KEY_AUTH_PROPS);
       }
-
     }
-
-  }
-
-  DataLakeG2Client getClient() {
-    return client;
   }
 
   @Override
@@ -168,71 +232,11 @@ public class AzureStorageFileSystem extends ContainerFileSystem implements Async
 
   @Override
   public boolean supportsAsync() {
-    return type == AccountKind.STORAGE_V2;
+    return accountKind == AccountKind.STORAGE_V2;
   }
 
   @Override
-  public AsyncByteReader getAsyncByteReader(Path path) throws IOException {
-    return new AzureAsyncReader(path, client);
-  }
-
-  private static final class AzureAsyncReader implements AsyncByteReader {
-
-    private static final Logger logger = LoggerFactory.getLogger(AzureStoragePlugin.class);
-    private final String container;
-    private final String subpath;
-    private final DataLakeG2Client client;
-
-    public AzureAsyncReader(Path path, DataLakeG2Client client) {
-      super();
-      this.client = client;
-      this.container = ContainerFileSystem.getContainerName(path);
-      // Azure storage SDK adds a "/" between the container name and subpath name
-      // Here we are using container utility functions built for S3 from the S3 plugin package
-      // DX-15746: Refactoring needs to be done and there should be a container utility package that
-      //           accommodate to cloud sources generally
-      this.subpath = removeLeadingSlash(ContainerFileSystem.pathWithoutContainer(path).toString());
-    }
-
-    @Override
-    public CompletableFuture<Void> readFully(long offset, ByteBuf dst, int dstOffset, int len) {
-      final CompletableFuture<Void> future = new CompletableFuture<>();
-      dst.writerIndex(dstOffset);
-      logger.debug("Reading data from container: {}", this.container);
-      logger.debug("Reading data from container subpath: {}", this.subpath);
-      client.read(container, subpath, offset, offset + len)
-        .subscribe(
-
-          // in single success
-          response -> {
-            Flowable<ByteBuffer> flowable = response.body();
-            flowable.subscribe(
-
-              // on flowable next
-              bb -> {
-                dst.writeBytes(bb);
-              },
-
-              //on flowable exception
-              ex -> {
-                logger.error("Error reading HTTP response asynchronously.", ex);
-                future.completeExceptionally(ex);
-              },
-
-              // on flowable complete
-              () -> {
-                future.complete(null);
-              }
-            );
-
-          },
-
-          // on single failure
-          ex -> {
-            logger.error("Error reading HTTP response asynchronously.", ex);
-            future.completeExceptionally(ex);
-          });
-      return future;
-    }
+  public AsyncByteReader getAsyncByteReader(Path path, String version) throws IOException {
+    return new AzureAsyncReader(account, path, authProvider, version, secure, asyncHttpClient);
   }
 }

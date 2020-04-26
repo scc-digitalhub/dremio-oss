@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@ import org.apache.calcite.plan.hep.HepPlanner;
 import org.apache.calcite.plan.hep.HepProgram;
 import org.apache.calcite.plan.hep.HepProgramBuilder;
 import org.apache.calcite.rel.RelNode;
-import org.apache.calcite.rel.rules.FilterProjectTransposeRule;
 import org.apache.calcite.rel.rules.ProjectMergeRule;
 import org.apache.calcite.rel.rules.ProjectRemoveRule;
 import org.slf4j.Logger;
@@ -30,6 +29,7 @@ import org.slf4j.LoggerFactory;
 
 import com.dremio.exec.planner.acceleration.DremioMaterialization;
 import com.dremio.exec.planner.acceleration.ExpansionNode;
+import com.dremio.exec.planner.logical.PushFilterPastProjectRule;
 import com.google.common.base.Function;
 import com.google.common.collect.Lists;
 
@@ -69,7 +69,7 @@ public class UnifyingSubstitutionProvider extends AbstractSubstitutionProvider {
 
   protected HepProgramBuilder getProgramBuilder() {
     return new HepProgramBuilder()
-      .addRuleInstance(FilterProjectTransposeRule.INSTANCE)
+      .addRuleInstance(PushFilterPastProjectRule.CALCITE_NO_CHILD_CHECK)
       .addRuleInstance(ProjectMergeRule.INSTANCE)
       .addRuleInstance(ProjectRemoveRule.INSTANCE);
   }

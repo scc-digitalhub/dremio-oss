@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,13 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { CALL_API } from 'redux-api-middleware';
-import { API_URL_V2 } from 'constants/Api';
-
-import {makeUncachebleURL} from 'ie11.js';
+import { RSAA } from 'redux-api-middleware';
 
 import sourceSchema from 'dyn-load/schemas/source';
 import schemaUtils from 'utils/apiUtils/schemaUtils';
+import { APIV2Call } from '@app/core/APICall';
 
 export const LOAD_SOURCE_STARTED = 'LOAD_SOURCE_STARTED';
 export const LOAD_SOURCE_SUCCESS = 'LOAD_SOURCE_SUCCESS';
@@ -29,15 +27,20 @@ function fetchSourceData(href) {
   const resourcePath = href;
   const meta = { resourcePath };
   const uiPropsForEntity = [{key: 'resourcePath', value: resourcePath}];
+
+  const apiCall = new APIV2Call()
+    .paths(resourcePath)
+    .uncachable();
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         { type: LOAD_SOURCE_STARTED, meta},
         schemaUtils.getSuccessActionTypeWithSchema(LOAD_SOURCE_SUCCESS, sourceSchema, meta, uiPropsForEntity),
         { type: LOAD_SOURCE_FAILURE, meta}
       ],
       method: 'GET',
-      endpoint: makeUncachebleURL(`${API_URL_V2}${resourcePath}`)
+      endpoint: apiCall
     }
   };
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.arrow.memory.BufferAllocator;
+import org.apache.arrow.memory.util.LargeMemoryUtil;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
@@ -50,7 +51,6 @@ import com.google.common.base.Throwables;
 import com.google.common.collect.Queues;
 
 import io.netty.buffer.ArrowBuf;
-import io.netty.buffer.ByteBuf;
 
 /**
  * This implementation of RawBatchBuffer starts writing incoming batches to disk once the buffer size reaches a threshold.
@@ -353,7 +353,7 @@ public class SpoolingRawBatchBuffer extends BaseRawBatchBuffer<SpoolingRawBatchB
 
     public void writeToStream(FSDataOutputStream stream) throws IOException {
       Stopwatch watch = Stopwatch.createStarted();
-      ByteBuf buf = null;
+      ArrowBuf buf = null;
       try {
         check = ThreadLocalRandom.current().nextLong();
         start = stream.getPos();
@@ -362,7 +362,7 @@ public class SpoolingRawBatchBuffer extends BaseRawBatchBuffer<SpoolingRawBatchB
         batch.getHeader().writeDelimitedTo(stream);
         buf = batch.getBody();
         if (buf != null) {
-          bodyLength = buf.capacity();
+          bodyLength = LargeMemoryUtil.checkedCastToInt(buf.capacity());
         } else {
           bodyLength = 0;
         }

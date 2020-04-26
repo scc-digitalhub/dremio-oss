@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ package com.dremio.service.listing;
 import java.util.List;
 import java.util.Map.Entry;
 
-import com.dremio.datastore.IndexedStore.FindByCondition;
+import com.dremio.datastore.api.LegacyIndexedStore.LegacyFindByCondition;
 import com.dremio.service.Service;
 import com.dremio.service.namespace.NamespaceException;
 import com.dremio.service.namespace.NamespaceKey;
@@ -37,14 +37,14 @@ public interface DatasetListingService extends Service {
   /**
    * List entries in namespace given the condition, for the user. If condition isnull, returns all items, for the user.
    * <p>
-   * See {@link com.dremio.service.namespace.NamespaceService#find(FindByCondition)}.
+   * See {@link com.dremio.service.namespace.NamespaceService#find(LegacyFindByCondition)}.
    *
    * @param username  username
    * @param condition condition
    * @return search results
    * @throws NamespaceException if there are exceptions listing entries
    */
-  Iterable<Entry<NamespaceKey, NameSpaceContainer>> find(String username, FindByCondition condition)
+  Iterable<Entry<NamespaceKey, NameSpaceContainer>> find(String username, LegacyFindByCondition condition)
       throws NamespaceException;
 
   /**
@@ -74,7 +74,7 @@ public interface DatasetListingService extends Service {
 
   DatasetListingService UNSUPPORTED = new DatasetListingService() {
     @Override
-    public Iterable<Entry<NamespaceKey, NameSpaceContainer>> find(String username, FindByCondition condition) {
+    public Iterable<Entry<NamespaceKey, NameSpaceContainer>> find(String username, LegacyFindByCondition condition) {
       throw new UnsupportedOperationException("non-master coordinators or executors do not support dataset listing");
     }
 

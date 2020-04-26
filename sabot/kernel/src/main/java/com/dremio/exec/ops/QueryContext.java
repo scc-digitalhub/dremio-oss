@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,8 @@ import static java.util.Arrays.asList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
 import javax.inject.Provider;
 
@@ -27,6 +29,8 @@ import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.memory.BufferManager;
 import org.apache.arrow.vector.holders.ValueHolder;
 import org.apache.arrow.vector.types.Types.MinorType;
+import org.apache.calcite.tools.RuleSet;
+import org.apache.calcite.tools.RuleSets;
 
 import com.dremio.common.AutoCloseables;
 import com.dremio.common.config.LogicalPlanPersistence;
@@ -34,9 +38,12 @@ import com.dremio.common.config.SabotConfig;
 import com.dremio.common.scanner.persistence.ScanResult;
 import com.dremio.common.utils.protos.QueryIdHelper;
 import com.dremio.exec.catalog.Catalog;
+import com.dremio.exec.catalog.ImmutableMetadataRequestOptions;
+import com.dremio.exec.catalog.MetadataRequestOptions;
 import com.dremio.exec.expr.fn.FunctionErrorContext;
 import com.dremio.exec.expr.fn.FunctionErrorContextBuilder;
 import com.dremio.exec.expr.fn.FunctionImplementationRegistry;
+import com.dremio.exec.planner.PlannerPhase;
 import com.dremio.exec.planner.acceleration.substitution.DefaultSubstitutionProviderFactory;
 import com.dremio.exec.planner.acceleration.substitution.SubstitutionProviderFactory;
 import com.dremio.exec.planner.physical.PlannerSettings;
@@ -66,7 +73,6 @@ import com.dremio.sabot.exec.context.CompilationOptions;
 import com.dremio.sabot.exec.context.ContextInformation;
 import com.dremio.sabot.exec.context.ContextInformationImpl;
 import com.dremio.sabot.rpc.user.UserSession;
-import com.dremio.service.namespace.NamespaceService;
 import com.dremio.service.namespace.dataset.proto.DatasetConfig;
 import com.google.common.base.Function;
 import com.google.common.base.Predicate;
@@ -97,7 +103,6 @@ public class QueryContext implements AutoCloseable, ResourceSchedulingContext, O
   private final BufferManager bufferManager;
 
   private final Catalog catalog;
-  private final NamespaceService namespaceService;
   private final SubstitutionProviderFactory substitutionProviderFactory;
   private final FunctionImplementationRegistry functionImplementationRegistry;
 
@@ -119,8 +124,19 @@ public class QueryContext implements AutoCloseable, ResourceSchedulingContext, O
   public QueryContext(
       final UserSession session,
       final SabotContext sabotContext,
-      QueryId queryId) {
-    this(session, sabotContext, queryId, null, Long.MAX_VALUE, Predicates.<DatasetConfig>alwaysTrue());
+      QueryId queryId
+  ) {
+    this(session, sabotContext, queryId, Optional.empty());
+  }
+
+  public QueryContext(
+      final UserSession session,
+      final SabotContext sabotContext,
+      QueryId queryId,
+      Optional<Boolean> checkMetadataValidity
+  ) {
+    this(session, sabotContext, queryId, null, Long.MAX_VALUE, Predicates.alwaysTrue(),
+        checkMetadataValidity);
   }
 
   public QueryContext(
@@ -129,7 +145,20 @@ public class QueryContext implements AutoCloseable, ResourceSchedulingContext, O
       QueryId queryId,
       QueryPriority priority,
       long maxAllocation,
-      Predicate<DatasetConfig> datasetValidityChecker) {
+      Predicate<DatasetConfig> datasetValidityChecker
+  ) {
+    this(session, sabotContext, queryId, priority, maxAllocation, datasetValidityChecker, Optional.empty());
+  }
+
+  private QueryContext(
+      final UserSession session,
+      final SabotContext sabotContext,
+      QueryId queryId,
+      QueryPriority priority,
+      long maxAllocation,
+      Predicate<DatasetConfig> datasetValidityChecker,
+      Optional<Boolean> checkMetadataValidity
+  ) {
     this.sabotContext = sabotContext;
     this.session = session;
     this.queryId = queryId;
@@ -147,7 +176,7 @@ public class QueryContext implements AutoCloseable, ResourceSchedulingContext, O
     this.queryPriority = priority;
     this.workloadType = Utilities.getWorkloadType(queryPriority, session.getClientInfos());
     this.datasetValidityChecker = datasetValidityChecker;
-    this.queryContextInfo = Utilities.createQueryContextInfo(session.getDefaultSchemaName(), priority, maxAllocation);
+    this.queryContextInfo = Utilities.createQueryContextInfo(session.getDefaultSchemaName(), priority, maxAllocation, session.getLastQueryId());
     this.contextInformation = new ContextInformationImpl(session.getCredentials(), queryContextInfo);
 
     this.allocator = sabotContext.getQueryPlanningAllocator()
@@ -166,9 +195,10 @@ public class QueryContext implements AutoCloseable, ResourceSchedulingContext, O
         .setDatasetValidityChecker(datasetValidityChecker)
         .build();
 
+    final ImmutableMetadataRequestOptions.Builder requestOptions = MetadataRequestOptions.newBuilder(schemaConfig);
+    checkMetadataValidity.ifPresent(requestOptions::setCheckValidity);
     this.catalog = sabotContext.getCatalogService()
-        .getCatalog(schemaConfig, Long.MAX_VALUE);
-    this.namespaceService = sabotContext.getNamespaceService(queryUserName);
+        .getCatalog(requestOptions.build());
     this.substitutionProviderFactory = sabotContext.getConfig()
         .getInstance("dremio.exec.substitution.factory",
             SubstitutionProviderFactory.class,
@@ -192,6 +222,13 @@ public class QueryContext implements AutoCloseable, ResourceSchedulingContext, O
 
   public SubstitutionProviderFactory getSubstitutionProviderFactory() {
     return substitutionProviderFactory;
+  }
+
+  public RuleSet getInjectedRules(PlannerPhase phase) {
+    return RuleSets.ofList(sabotContext.getInjectedRulesFactories()
+        .stream()
+        .flatMap(rf -> rf.getRules(phase, queryOptions).stream())
+        .collect(Collectors.toList()));
   }
 
   @Override
@@ -328,10 +365,6 @@ public class QueryContext implements AutoCloseable, ResourceSchedulingContext, O
     return sabotContext.getWorkStatsProvider();
   }
 
-  public NamespaceService getNamespaceService() {
-    return namespaceService;
-  }
-
   public WorkloadType getWorkloadType() {
     return workloadType;
   }
@@ -361,6 +394,7 @@ public class QueryContext implements AutoCloseable, ResourceSchedulingContext, O
     try {
       if (!closed) {
         AutoCloseables.close(asList(bufferManager, allocator));
+        session.setLastQueryId(queryId);
       }
     } finally {
       closed = true;

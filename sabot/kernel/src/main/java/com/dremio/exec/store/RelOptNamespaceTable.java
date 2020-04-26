@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,6 +31,7 @@ import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.schema.ColumnStrategy;
 import org.apache.calcite.util.ImmutableBitSet;
 
+import com.dremio.exec.catalog.DremioTable;
 import com.google.common.base.Objects;
 import com.google.common.base.Supplier;
 import com.google.common.base.Suppliers;
@@ -108,7 +109,9 @@ public final class RelOptNamespaceTable implements RelOptTable {
   public <T> T unwrap(Class<T> clazz) {
     if(clazz == NamespaceTable.class){
       return (T) table;
-    }else if(clazz == RelOptNamespaceTable.class) {
+    } else if (clazz == DremioTable.class) {
+      return (T) table;
+    } else if(clazz == RelOptNamespaceTable.class) {
       return (T) this;
     }
     return null;

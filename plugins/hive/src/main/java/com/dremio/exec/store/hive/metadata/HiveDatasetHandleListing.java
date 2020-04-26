@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,12 +18,11 @@ package com.dremio.exec.store.hive.metadata;
 import java.util.Collections;
 import java.util.Iterator;
 
-import org.apache.thrift.TException;
-
 import com.dremio.connector.metadata.DatasetHandle;
 import com.dremio.connector.metadata.DatasetHandleListing;
 import com.dremio.connector.metadata.EntityPath;
 import com.dremio.exec.store.hive.HiveClient;
+import com.dremio.hive.thrift.TException;
 import com.google.common.collect.AbstractIterator;
 import com.google.common.collect.ImmutableList;
 
@@ -48,6 +47,8 @@ public class HiveDatasetHandleListing implements DatasetHandleListing {
     this.client = client;
     this.ignoreAuthzErrors = ignoreAuthzErrors;
     this.pluginName = pluginName;
+
+    tableNamesInCurrentDb = Collections.emptyIterator();
 
     dbNames = getDatabaseNames();
     advanceToNonEmptyDatabase();
@@ -93,9 +94,9 @@ public class HiveDatasetHandleListing implements DatasetHandleListing {
     do {
       if (dbNames.hasNext()) {
         currentDbName = dbNames.next();
-        tableNamesInCurrentDb = getTableNames(currentDbName);
-
         logger.debug("Plugin '{}', database '{}', Database found.", pluginName, currentDbName);
+
+        tableNamesInCurrentDb = getTableNames(currentDbName);
       }
     } while (!tableNamesInCurrentDb.hasNext() && dbNames.hasNext());
   }

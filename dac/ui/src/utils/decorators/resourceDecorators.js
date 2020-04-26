@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,7 +28,6 @@ export function decorateSource(source) {
 
 export function decorateSpace(space) {
   const uiProperties = Immutable.Map({
-    iconClass: 'Space',
     isFile: false,
     entityType: ENTITY_TYPES.space
   });
@@ -112,7 +111,7 @@ export function decorateProvision(provision) {
   const uiProperties = Immutable.fromJS({
     workersSummary: {
       total: provision.getIn(['dynamicConfig', 'containerCount']) || 0,
-      active: runningWorkers.size - decommissioningCount,
+      active: (runningWorkers.size > decommissioningCount) ? runningWorkers.size - decommissioningCount : 0,
       pending: containers.get('pendingCount') || 0,
       disconnected: disconnectedWorkers.size,
       decommissioning: decommissioningCount,

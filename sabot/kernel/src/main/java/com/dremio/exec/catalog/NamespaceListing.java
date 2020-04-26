@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -113,7 +113,6 @@ public class NamespaceListing implements DatasetHandleListing {
 
       while (keyIterator.hasNext()) {
         final NamespaceKey nextKey = keyIterator.next();
-        final EntityPath entityPath = MetadataObjectsUtils.toEntityPath(nextKey);
 
         final DatasetConfig currentConfig;
         try {
@@ -122,6 +121,13 @@ public class NamespaceListing implements DatasetHandleListing {
           continue; // race condition
         } catch (NamespaceException e) {
           throw new RuntimeException(e);
+        }
+
+        final EntityPath entityPath;
+        if (currentConfig != null) {
+          entityPath = new EntityPath(currentConfig.getFullPathList());
+        } else {
+          entityPath = MetadataObjectsUtils.toEntityPath(nextKey);
         }
 
         final Optional<DatasetHandle> handle;

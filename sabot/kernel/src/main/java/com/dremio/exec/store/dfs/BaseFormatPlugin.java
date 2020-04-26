@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,14 +22,14 @@ public abstract class BaseFormatPlugin implements FormatPlugin {
   private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(BaseFormatPlugin.class);
 
   private final SabotContext context;
-  private final FileSystemPlugin fsPlugin;
+  private final FileSystemPlugin<?> fsPlugin;
 
-  protected BaseFormatPlugin(SabotContext context, FileSystemPlugin fsPlugin) {
+  protected BaseFormatPlugin(SabotContext context, FileSystemPlugin<?> fsPlugin) {
     this.context = context;
     this.fsPlugin = fsPlugin;
   }
 
-  public FileSystemPlugin getFsPlugin() {
+  public FileSystemPlugin<?> getFsPlugin() {
     return fsPlugin;
   }
 

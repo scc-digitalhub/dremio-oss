@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,10 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { CALL_API } from 'redux-api-middleware';
+import { RSAA } from 'redux-api-middleware';
 
-import { API_URL_V2 } from 'constants/Api';
 import schemaUtils from 'utils/apiUtils/schemaUtils';
+import { APIV2Call } from '@app/core/APICall';
 
 export const LOAD_EXPLORE_ENTITIES_STARTED = 'LOAD_EXPLORE_ENTITIES_STARTED';
 export const LOAD_EXPLORE_ENTITIES_SUCCESS = 'LOAD_EXPLORE_ENTITIES_SUCCESS';
@@ -24,15 +24,18 @@ export const LOAD_EXPLORE_ENTITIES_FAILURE = 'LOAD_EXPLORE_ENTITIES_FAILURE';
 
 function fetchEntities({ href, schema, viewId, uiPropsForEntity, invalidateViewIds }) {
   const meta = { viewId, invalidateViewIds, href };
+
+  const apiCall = new APIV2Call().fullpath(href);
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         { type: LOAD_EXPLORE_ENTITIES_STARTED, meta },
         schemaUtils.getSuccessActionTypeWithSchema(LOAD_EXPLORE_ENTITIES_SUCCESS, schema, meta, uiPropsForEntity),
         { type: LOAD_EXPLORE_ENTITIES_FAILURE, meta }
       ],
       method: 'GET',
-      endpoint: `${API_URL_V2}${href}`
+      endpoint: apiCall
     }
   };
 }
@@ -64,8 +67,10 @@ function loadCleanDataFetch(colName, dataset) {
   const data = { colName };
   const meta = { viewId: CLEAN_DATA_VIEW_ID };
 
+  const apiCall = new APIV2Call().paths(`${dataset.getIn(['apiLinks', 'self'])}/clean`);
+
   return {
-    [CALL_API]: {
+    [RSAA]: {
       types: [
         { type: LOAD_CLEAN_DATA_START, meta },
         { type: LOAD_CLEAN_DATA_SUCCESS, meta },
@@ -74,7 +79,7 @@ function loadCleanDataFetch(colName, dataset) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
-      endpoint: `${API_URL_V2}${dataset.getIn(['apiLinks', 'self'])}/clean`
+      endpoint: apiCall
     }
   };
 }

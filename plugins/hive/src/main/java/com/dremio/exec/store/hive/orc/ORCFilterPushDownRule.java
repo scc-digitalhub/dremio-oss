@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,12 @@
  */
 package com.dremio.exec.store.hive.orc;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.rel.RelNode;
@@ -24,14 +30,19 @@ import org.apache.calcite.rex.RexNode;
 import org.apache.hadoop.hive.ql.io.orc.OrcInputFormat;
 import org.apache.hadoop.hive.ql.io.sarg.SearchArgument;
 
-import com.dremio.exec.catalog.conf.SourceType;
+import com.dremio.exec.catalog.StoragePluginId;
 import com.dremio.exec.planner.logical.FilterRel;
 import com.dremio.exec.planner.logical.RelOptHelper;
+import com.dremio.exec.record.BatchSchema;
 import com.dremio.exec.store.hive.HiveRulesFactory.HiveScanDrel;
 import com.dremio.exec.store.hive.ORCScanFilter;
 import com.dremio.exec.store.hive.exec.HiveORCVectorizedReader;
+import com.dremio.exec.store.hive.exec.HiveProxyingOrcScanFilter;
 import com.dremio.exec.store.hive.exec.HiveReaderProtoUtil;
+import com.dremio.exec.store.hive.proxy.HiveProxiedOrcScanFilter;
+import com.dremio.hive.proto.HiveReaderProto;
 import com.dremio.hive.proto.HiveReaderProto.HiveTableXattr;
+import com.github.slugify.Slugify;
 import com.google.common.base.Optional;
 import com.google.protobuf.InvalidProtocolBufferException;
 
@@ -41,9 +52,17 @@ import com.google.protobuf.InvalidProtocolBufferException;
  */
 public class ORCFilterPushDownRule extends RelOptRule {
   private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ORCFilterPushDownRule.class);
+  private static final Slugify SLUGIFY = new Slugify();
 
-  public ORCFilterPushDownRule(SourceType pluginType) {
-    super(RelOptHelper.some(FilterRel.class, RelOptHelper.any(HiveScanDrel.class)), pluginType.value() + "ORC.PushFilterIntoScan");
+  private final StoragePluginId pluginId;
+
+  public ORCFilterPushDownRule(StoragePluginId pluginId) {
+    // Note: matches to HiveScanDrel.class with this rule instance are guaranteed to be local to the same plugin
+    // because this match implicitly ensures the classloader is the same.
+    super(RelOptHelper.some(FilterRel.class, RelOptHelper.any(HiveScanDrel.class)),
+      pluginId.getType().value() + "ORC.PushFilterIntoScan."
+        + SLUGIFY.slugify(pluginId.getName()) + "." + UUID.randomUUID().toString());
+    this.pluginId = pluginId;
   }
 
   @Override
@@ -54,7 +73,7 @@ public class ORCFilterPushDownRule extends RelOptRule {
     }
     try {
       final HiveTableXattr tableXattr =
-          HiveTableXattr.parseFrom(scan.getTableMetadata().getReadDefinition().getExtendedProperty().toByteArray());
+          HiveTableXattr.parseFrom(scan.getTableMetadata().getReadDefinition().getExtendedProperty().asReadOnlyByteBuffer());
       final Optional<String> inputFormat = HiveReaderProtoUtil.getTableInputFormat(tableXattr);
       return inputFormat.isPresent() && inputFormat.get().equals(OrcInputFormat.class.getCanonicalName());
     } catch (InvalidProtocolBufferException e) {
@@ -81,11 +100,36 @@ public class ORCFilterPushDownRule extends RelOptRule {
       filterThatCanBePushed =
           ORCFindRelevantFilters.convertBooleanInputRefToFunctionCall(rexBuilder, filterThatCanBePushed);
 
-      final ORCSearchArgumentGenerator sargGenerator = new ORCSearchArgumentGenerator(scan.getRowType().getFieldNames());
+      final HiveTableXattr tableXattr =
+        HiveTableXattr.parseFrom(scan.getTableMetadata().getReadDefinition().getExtendedProperty().asReadOnlyByteBuffer());
+      final List<HiveReaderProto.ColumnInfo> columnInfos = tableXattr.getColumnInfoList();
+      List<HiveReaderProto.ColumnInfo> selectedColumnInfos = new ArrayList<>();
+      final List<String> columnNames = scan.getRowType().getFieldNames();
+      final Set<String> columnNameSet = columnNames.stream().map(String::toUpperCase).collect(Collectors.toSet());
+      final BatchSchema scanTableSchema = scan.getTableMetadata().getSchema();
+
+      // columnInfos contains hive data type info
+      // scanTableSchema is table BatchSchema
+      // columnNames are selected / projected column names
+      // Here we prepare column info that contains hive data type information for selected columns
+      // Iterate over all fields of table schema, and if it is in projected columnNames list,
+      // then add ColumnInfo to selectedColumnInfos
+      if (columnInfos.size() == scanTableSchema.getFieldCount()) {
+        for (int fieldPos = 0; fieldPos < scanTableSchema.getFieldCount(); ++fieldPos) {
+          if (columnNameSet.contains(scanTableSchema.getColumn(fieldPos).getName().toUpperCase())) {
+            selectedColumnInfos.add(columnInfos.get(fieldPos));
+          }
+        }
+      }
+
+      final ORCSearchArgumentGenerator sargGenerator = new ORCSearchArgumentGenerator(columnNames, selectedColumnInfos);
       filterThatCanBePushed.accept(sargGenerator);
       final SearchArgument sarg = sargGenerator.get();
 
-      final RelNode newScan = scan.applyFilter(new ORCScanFilter(sarg));
+      final HiveProxiedOrcScanFilter proxiedOrcScanFilter = new ORCScanFilter(sarg, pluginId);
+      final HiveProxyingOrcScanFilter proxyingOrcScanFilter = new HiveProxyingOrcScanFilter(pluginId.getName(), proxiedOrcScanFilter);
+
+      final RelNode newScan = scan.applyFilter(proxyingOrcScanFilter);
 
       // We still need the original filter in Filter operator as the ORC filtering is based only on the stripe stats and
       // we could end up with values out of ORC reader that don't satisfy the filter.

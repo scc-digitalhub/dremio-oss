@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +24,6 @@ import static java.util.Arrays.asList;
 import static java.util.Collections.unmodifiableList;
 import static javax.ws.rs.core.MediaType.APPLICATION_JSON;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -47,6 +46,7 @@ import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.SecurityContext;
 
+import org.apache.arrow.memory.BufferAllocator;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,7 +55,7 @@ import com.dremio.dac.annotations.RestResource;
 import com.dremio.dac.annotations.Secured;
 import com.dremio.dac.explore.HistogramGenerator.CleanDataHistogramValue;
 import com.dremio.dac.explore.HistogramGenerator.Histogram;
-import com.dremio.dac.explore.Transformer.DatasetAndJob;
+import com.dremio.dac.explore.Transformer.DatasetAndData;
 import com.dremio.dac.explore.join.JoinRecommender;
 import com.dremio.dac.explore.model.CleanDataCard;
 import com.dremio.dac.explore.model.CleanDataCard.ConvertToSingleType;
@@ -68,11 +68,9 @@ import com.dremio.dac.explore.model.DatasetResourcePath;
 import com.dremio.dac.explore.model.DatasetUI;
 import com.dremio.dac.explore.model.DatasetUIWithHistory;
 import com.dremio.dac.explore.model.DatasetVersionResourcePath;
-import com.dremio.dac.explore.model.DownloadFormat;
 import com.dremio.dac.explore.model.HistogramValue;
 import com.dremio.dac.explore.model.History;
 import com.dremio.dac.explore.model.HistoryItem;
-import com.dremio.dac.explore.model.InitialDownloadResponse;
 import com.dremio.dac.explore.model.InitialPendingTransformResponse;
 import com.dremio.dac.explore.model.InitialPreviewResponse;
 import com.dremio.dac.explore.model.InitialRunResponse;
@@ -88,7 +86,6 @@ import com.dremio.dac.explore.model.extract.MapSelection;
 import com.dremio.dac.explore.model.extract.ReplaceCards;
 import com.dremio.dac.explore.model.extract.ReplaceCards.ReplaceValuesCard;
 import com.dremio.dac.explore.model.extract.Selection;
-import com.dremio.dac.model.job.JobUI;
 import com.dremio.dac.proto.model.dataset.DataType;
 import com.dremio.dac.proto.model.dataset.ExtractListRule;
 import com.dremio.dac.proto.model.dataset.ExtractMapRule;
@@ -98,15 +95,19 @@ import com.dremio.dac.proto.model.dataset.ReplacePatternRule;
 import com.dremio.dac.proto.model.dataset.SplitRule;
 import com.dremio.dac.proto.model.dataset.Transform;
 import com.dremio.dac.proto.model.dataset.VirtualDatasetUI;
-import com.dremio.dac.resource.JobResource;
+import com.dremio.dac.resource.BaseResourceWithAllocator;
+import com.dremio.dac.server.BufferAllocatorFactory;
 import com.dremio.dac.service.datasets.DatasetVersionMutator;
 import com.dremio.dac.service.errors.ClientErrorException;
 import com.dremio.dac.service.errors.DatasetNotFoundException;
 import com.dremio.dac.service.errors.DatasetVersionNotFoundException;
 import com.dremio.exec.server.SabotContext;
+import com.dremio.service.job.proto.JobId;
 import com.dremio.service.job.proto.QueryType;
-import com.dremio.service.jobs.Job;
+import com.dremio.service.jobs.CompletionListener;
 import com.dremio.service.jobs.JobNotFoundException;
+import com.dremio.service.jobs.JobStatusListener;
+import com.dremio.service.jobs.JobSubmittedListener;
 import com.dremio.service.jobs.JobsService;
 import com.dremio.service.jobs.SqlQuery;
 import com.dremio.service.namespace.NamespaceAttribute;
@@ -129,7 +130,7 @@ import com.google.common.collect.Lists;
 @Secured
 @RolesAllowed({"admin", "user"})
 @Path("/dataset/{cpath}/version/{version}")
-public class DatasetVersionResource {
+public class DatasetVersionResource extends BaseResourceWithAllocator {
   private static final Logger logger = LoggerFactory.getLogger(DatasetVersionResource.class);
 
   private static final int WAIT_FOR_RUN_HISTORY_S = 15;
@@ -137,6 +138,7 @@ public class DatasetVersionResource {
   private final DatasetTool tool;
   private final QueryExecutor executor;
   private final DatasetVersionMutator datasetService;
+  private final JobsService jobsService;
 
   private final Transformer transformer;
   private final Recommenders recommenders;
@@ -148,31 +150,37 @@ public class DatasetVersionResource {
   private final HistogramGenerator histograms;
 
   @Inject
-  public DatasetVersionResource(
-      SabotContext context,
-      QueryExecutor executor,
-      DatasetVersionMutator datasetService,
-      JobsService jobsService,
-      NamespaceService namespaceService,
-      JoinRecommender joinRecommender,
-      @Context SecurityContext securityContext,
-      @PathParam("cpath") DatasetPath datasetPath,
-      @PathParam("version") DatasetVersion version) {
-    this(executor, datasetService,
-        new Recommenders(executor, datasetPath, version),
-        new Transformer(context, namespaceService, datasetService, executor, securityContext),
-        joinRecommender,
-        new DatasetTool(datasetService, jobsService, executor, securityContext),
-        new HistogramGenerator(executor),
-        securityContext,
-        datasetPath,
-        version
-        );
-    }
+  public DatasetVersionResource (
+    SabotContext context,
+    QueryExecutor executor,
+    DatasetVersionMutator datasetService,
+    JobsService jobsService,
+    NamespaceService namespaceService,
+    JoinRecommender joinRecommender,
+    @Context SecurityContext securityContext,
+    @PathParam("cpath") DatasetPath datasetPath,
+    @PathParam("version") DatasetVersion version,
+    BufferAllocatorFactory allocatorFactory
+  ) {
+    this(
+      executor,
+      datasetService,
+      jobsService,
+      new Recommenders(executor, datasetPath, version),
+      new Transformer(context, jobsService, namespaceService, datasetService, executor, securityContext),
+      joinRecommender,
+      new DatasetTool(datasetService, jobsService, executor, securityContext),
+      new HistogramGenerator(executor),
+      securityContext,
+      datasetPath,
+      version,
+      allocatorFactory);
+  }
 
   public DatasetVersionResource(
       QueryExecutor executor,
       DatasetVersionMutator datasetService,
+      JobsService jobsService,
       Recommenders recommenders,
       Transformer transformer,
       JoinRecommender joinRecommender,
@@ -180,10 +188,13 @@ public class DatasetVersionResource {
       HistogramGenerator histograms,
       SecurityContext securityContext,
       DatasetPath datasetPath,
-      DatasetVersion version
+      DatasetVersion version,
+      BufferAllocator allocator
       ) {
+    super(allocator);
     this.executor = executor;
     this.datasetService = datasetService;
+    this.jobsService = jobsService;
     this.recommenders = recommenders;
     this.transformer = transformer;
     this.joinRecommender = joinRecommender;
@@ -193,6 +204,35 @@ public class DatasetVersionResource {
     this.datasetPath = datasetPath;
     this.version = version;
   }
+
+  protected DatasetVersionResource(
+    QueryExecutor executor,
+    DatasetVersionMutator datasetService,
+    JobsService jobsService,
+    Recommenders recommenders,
+    Transformer transformer,
+    JoinRecommender joinRecommender,
+    DatasetTool datasetTool,
+    HistogramGenerator histograms,
+    SecurityContext securityContext,
+    DatasetPath datasetPath,
+    DatasetVersion version,
+    BufferAllocatorFactory allocatorFactory
+  ) {
+    super(allocatorFactory);
+    this.executor = executor;
+    this.datasetService = datasetService;
+    this.jobsService = jobsService;
+    this.recommenders = recommenders;
+    this.transformer = transformer;
+    this.joinRecommender = joinRecommender;
+    this.tool = datasetTool;
+    this.histograms = histograms;
+    this.securityContext = securityContext;
+    this.datasetPath = datasetPath;
+    this.version = version;
+  }
+
 
   private VirtualDatasetUI virtualDatasetUI;
 
@@ -267,7 +307,7 @@ public class DatasetVersionResource {
     // otherwise assume the current version is at the tip of the history
     VirtualDatasetUI dataset = getDatasetConfig();
     tipVersion = tipVersion != null ? tipVersion : dataset.getVersion();
-    return tool.createPreviewResponseForExistingDataset(dataset, new DatasetVersionResourcePath(datasetPath, tipVersion), limit);
+    return tool.createPreviewResponseForExistingDataset(getOrCreateAllocator("getDatasetForVersion"), dataset, new DatasetVersionResourcePath(datasetPath, tipVersion), limit);
   }
 
   @GET @Path("review")
@@ -277,7 +317,7 @@ public class DatasetVersionResource {
       @QueryParam("tipVersion") DatasetVersion tipVersion,
       @QueryParam("limit") Integer limit)
       throws DatasetVersionNotFoundException, NamespaceException, JobNotFoundException {
-    return tool.createReviewResponse(datasetPath, getDatasetConfig(), jobId, tipVersion, limit);
+    return tool.createReviewResponse(datasetPath, getDatasetConfig(), jobId, tipVersion, getOrCreateAllocator("reviewDatasetVersion"), limit);
   }
 
   /**
@@ -303,8 +343,8 @@ public class DatasetVersionResource {
       throw new ClientErrorException("Query parameter 'newVersion' should not be null");
     }
 
-    final DatasetAndJob datasetAndJob = transformer.transformWithExecute(newVersion, datasetPath, getDatasetConfig(), transform, QueryType.UI_PREVIEW);
-    return tool.createPreviewResponse(datasetPath, datasetAndJob, limit, false);
+    final DatasetAndData datasetAndData = transformer.transformWithExecute(newVersion, datasetPath, getDatasetConfig(), transform, QueryType.UI_PREVIEW);
+    return tool.createPreviewResponse(datasetPath, datasetAndData, getOrCreateAllocator("transformAndPreview"), limit, false);
   }
 
   /**
@@ -330,9 +370,9 @@ public class DatasetVersionResource {
     }
 
     final DatasetVersionResourcePath resourcePath = resourcePath();
-    final DatasetAndJob datasetAndJob = transformer.transformWithExecute(newVersion, resourcePath.getDataset(), getDatasetConfig(), transform, QueryType.UI_RUN);
-    final History history = tool.getHistory(resourcePath.getDataset(), datasetAndJob.getDataset().getVersion());
-    return InitialTransformAndRunResponse.of(newDataset(datasetAndJob.getDataset(), null), datasetAndJob.getJob().getJobId(), history);
+    final DatasetAndData datasetAndData = transformer.transformWithExecute(newVersion, resourcePath.getDataset(), getDatasetConfig(), transform, QueryType.UI_RUN);
+    final History history = tool.getHistory(resourcePath.getDataset(), datasetAndData.getDataset().getVersion());
+    return InitialTransformAndRunResponse.of(newDataset(datasetAndData.getDataset(), null), datasetAndData.getJobId(), history);
   }
 
   protected DatasetUI newDataset(VirtualDatasetUI vds, DatasetVersion tipVersion) throws NamespaceException {
@@ -350,8 +390,8 @@ public class DatasetVersionResource {
   public InitialRunResponse run(@QueryParam("tipVersion") DatasetVersion tipVersion) throws DatasetVersionNotFoundException, InterruptedException, NamespaceException {
     final VirtualDatasetUI virtualDatasetUI = getDatasetConfig();
     final SqlQuery query = new SqlQuery(virtualDatasetUI.getSql(), virtualDatasetUI.getState().getContextList(), securityContext);
-    RunStartedListener listener = new RunStartedListener();
-    final JobUI job = executor.runQueryWithListener(query, QueryType.UI_RUN, datasetPath, version, listener);
+    JobSubmittedListener listener = new JobSubmittedListener();
+    final JobId jobId = executor.runQueryWithListener(query, QueryType.UI_RUN, datasetPath, version, listener).getJobId();
     // wait for job to start (or WAIT_FOR_RUN_HISTORY_S seconds).
     boolean success = listener.await(WAIT_FOR_RUN_HISTORY_S, TimeUnit.SECONDS);
     if (!success) {
@@ -370,7 +410,7 @@ public class DatasetVersionResource {
     // path (tip version path) to be able to get a preview/run data
     // TODO(DX-14701) move links from BE to UI
     virtualDatasetUI.setFullPathList(datasetPath.toPathList());
-    return InitialRunResponse.of(newDataset(virtualDatasetUI, tipVersion), job.getJobId(), history);
+    return InitialRunResponse.of(newDataset(virtualDatasetUI, tipVersion), jobId, history);
   }
 
 
@@ -393,7 +433,7 @@ public class DatasetVersionResource {
     final VirtualDatasetUI virtualDatasetUI = getDatasetConfig();
     checkNotNull(virtualDatasetUI.getState());
 
-    return transformer.transformPreviewWithExecute(newVersion, datasetPath, virtualDatasetUI, transform, limit);
+    return transformer.transformPreviewWithExecute(newVersion, datasetPath, virtualDatasetUI, transform, getOrCreateAllocator("InitialPendingTransformResponse"), limit);
   }
 
   /**
@@ -497,7 +537,7 @@ public class DatasetVersionResource {
   public Cards<ExtractRule> getExtractCards(
       /* Body */ Selection selection) throws DatasetVersionNotFoundException {
     validateColumnType("Extract text", TEXT, selection.getColName());
-    List<Card<ExtractRule>> cards = recommenders.recommendExtract(selection, getDatasetSql());
+    List<Card<ExtractRule>> cards = recommenders.recommendExtract(selection, getDatasetSql(), getOrCreateAllocator("getExtractCards"));
     return new Cards<>(cards);
   }
 
@@ -506,7 +546,7 @@ public class DatasetVersionResource {
   public Card<ExtractRule> getExtractCard(
       /* Body */ PreviewReq<ExtractRule, Selection> req) throws DatasetVersionNotFoundException {
     String colName = req.getSelection().getColName();
-    return recommenders.generateExtractCard(req.getRule(), colName, getDatasetSql());
+    return recommenders.generateExtractCard(req.getRule(), colName, getDatasetSql(), getOrCreateAllocator("getExtractCard"));
   }
 
   @POST @Path("extract_map") @Produces(APPLICATION_JSON) @Consumes(APPLICATION_JSON)
@@ -517,7 +557,7 @@ public class DatasetVersionResource {
      * so we can't have this check now.
      */
     //validateColumnType("Extract map entries", MAP, mapSelection.getColName());
-    List<Card<ExtractMapRule>> rules = recommenders.recommendExtractMap(mapSelection, getDatasetSql());
+    List<Card<ExtractMapRule>> rules = recommenders.recommendExtractMap(mapSelection, getDatasetSql(), getOrCreateAllocator("getExtractMapCards"));
     return new Cards<>(rules);
   }
 
@@ -525,7 +565,7 @@ public class DatasetVersionResource {
   public Card<ExtractMapRule> getExtractMapCard(
       /* Body */ PreviewReq<ExtractMapRule, MapSelection> req) throws DatasetVersionNotFoundException {
     String colName = req.getSelection().getColName();
-    return recommenders.generateExtractMapCard(req.getRule(), colName, getDatasetSql());
+    return recommenders.generateExtractMapCard(req.getRule(), colName, getDatasetSql(), getOrCreateAllocator("getExtractMapCard"));
   }
 
   @POST @Path("extract_list") @Produces(APPLICATION_JSON) @Consumes(APPLICATION_JSON)
@@ -536,7 +576,7 @@ public class DatasetVersionResource {
      * so we can't have this check now.
      */
     //validateColumnType("Extract list items", LIST, selection.getColName());
-    List<Card<ExtractListRule>> rules = recommenders.recommendExtractList(selection, getDatasetSql());
+    List<Card<ExtractListRule>> rules = recommenders.recommendExtractList(selection, getDatasetSql(), getOrCreateAllocator("getExtractListCards"));
     return new Cards<>(rules);
   }
 
@@ -544,14 +584,14 @@ public class DatasetVersionResource {
   public Card<ExtractListRule> getExtractListCard(
       /* Body */ PreviewReq<ExtractListRule, Selection> req) throws DatasetVersionNotFoundException {
     String colName = req.getSelection().getColName();
-    return recommenders.generateExtractListCard(req.getRule(), colName, getDatasetSql());
+    return recommenders.generateExtractListCard(req.getRule(), colName, getDatasetSql(), getOrCreateAllocator("getExtractListCard"));
   }
 
   @POST @Path("split") @Produces(APPLICATION_JSON) @Consumes(APPLICATION_JSON)
   public Cards<SplitRule> getSplitCards(
       /* Body */ Selection selection) throws DatasetVersionNotFoundException {
     validateColumnType("Split", TEXT, selection.getColName());
-    List<Card<SplitRule>> rules = recommenders.recommendSplit(selection, getDatasetSql());
+    List<Card<SplitRule>> rules = recommenders.recommendSplit(selection, getDatasetSql(), getOrCreateAllocator("getSplitCards"));
     return new Cards<>(rules);
   }
 
@@ -559,7 +599,7 @@ public class DatasetVersionResource {
   public Card<SplitRule> getSplitCard(
       /* Body */ PreviewReq<SplitRule, Selection> req) throws DatasetVersionNotFoundException {
     String colName = req.getSelection().getColName();
-    return recommenders.generateSplitCard(req.getRule(), colName, getDatasetSql());
+    return recommenders.generateSplitCard(req.getRule(), colName, getDatasetSql(), getOrCreateAllocator("getSplitCard"));
   }
 
   /**
@@ -572,19 +612,19 @@ public class DatasetVersionResource {
   @POST @Path("/editOriginalSql")
   @Produces(APPLICATION_JSON)
   public InitialPreviewResponse reapplyDatasetAndPreview() throws DatasetVersionNotFoundException, DatasetNotFoundException, NamespaceException, JobNotFoundException {
-    DatasetAndJob datasetAndJob = reapplyDataset(QueryType.UI_PREVIEW);
+    Transformer.DatasetAndData datasetAndData = reapplyDataset(QueryType.UI_PREVIEW, JobStatusListener.NO_OP);
     //max records = 0 means, that we should not wait for job completion
-    return tool.createPreviewResponse(new DatasetPath(datasetAndJob.getDataset().getFullPathList()), datasetAndJob, 0, false);
+    return tool.createPreviewResponse(new DatasetPath(datasetAndData.getDataset().getFullPathList()), datasetAndData, getOrCreateAllocator("reapplyDatasetAndPreview"), 0, false);
   }
 
-  private DatasetAndJob reapplyDataset(QueryType queryType) throws DatasetVersionNotFoundException, DatasetNotFoundException, NamespaceException {
+  private Transformer.DatasetAndData reapplyDataset(QueryType queryType, JobStatusListener listener) throws DatasetVersionNotFoundException, DatasetNotFoundException, NamespaceException {
     List<VirtualDatasetUI> items = getPreviousDatasetVersions(getDatasetConfig());
     List<Transform> transforms = new ArrayList<>();
     for(VirtualDatasetUI dataset : items){
       transforms.add(dataset.getLastTransform());
     }
 
-    return transformer.editOriginalSql(version, transforms, queryType);
+    return transformer.editOriginalSql(version, transforms, queryType, listener);
 
   }
 
@@ -593,10 +633,11 @@ public class DatasetVersionResource {
   public DatasetUIWithHistory reapplySave(
       @QueryParam("as") DatasetPath asDatasetPath
   ) throws DatasetVersionNotFoundException, UserNotFoundException, DatasetNotFoundException, NamespaceException {
-    DatasetAndJob datasetAndJob = reapplyDataset(QueryType.UI_PREVIEW);
-    datasetAndJob.getJob().getData().loadIfNecessary();
-    DatasetUI savedDataset = save(datasetAndJob.getDataset(), asDatasetPath, null);
-    return new DatasetUIWithHistory(savedDataset, tool.getHistory(asDatasetPath, datasetAndJob.getDataset().getVersion()));
+    final CompletionListener completionListener = new CompletionListener();
+    Transformer.DatasetAndData datasetAndData = reapplyDataset(QueryType.UI_PREVIEW, completionListener);
+    completionListener.awaitUnchecked();
+    DatasetUI savedDataset = save(datasetAndData.getDataset(), asDatasetPath, null);
+    return new DatasetUIWithHistory(savedDataset, tool.getHistory(asDatasetPath, datasetAndData.getDataset().getVersion()));
   }
 
   // a partial duplicate of gethistory
@@ -629,9 +670,9 @@ public class DatasetVersionResource {
     Set<String> selectedSet = new HashSet<>(selected);
     SqlQuery query = new SqlQuery(virtualDatasetUI.getSql(), virtualDatasetUI.getState().getContextList(), securityContext);
     DataType colType = getColType(selection.getColName());
-    Histogram<HistogramValue> histo = histograms.getHistogram(datasetPath, version, selection, colType, query);
+    Histogram<HistogramValue> histo = histograms.getHistogram(datasetPath, version, selection, colType, query, getOrCreateAllocator("genReplaceValuesCard"));
 
-    long selectedCount = histograms.getSelectionCount(datasetPath, version, query, colType, selection.getColName(), selectedSet);
+    long selectedCount = histograms.getSelectionCount(datasetPath, version, query, colType, selection.getColName(), selectedSet, getOrCreateAllocator("genReplaceValuesCard"));
     return new ReplaceValuesCard(histo.getValues(), selectedCount, histo.getAvailableValues() - selectedCount, histo.getAvailableValues());
   }
 
@@ -693,7 +734,7 @@ public class DatasetVersionResource {
     final DataType colType = getColType(selection.getColName());
     final List<Card<ReplacePatternRule>> rules;
     if (colType == TEXT) {
-      rules = recommenders.recommendReplace(selection, colType, getDatasetSql());
+      rules = recommenders.recommendReplace(selection, colType, getDatasetSql(), getOrCreateAllocator("getCards"));
     } else {
       // No rules for non-text types
       rules = Collections.emptyList();
@@ -714,7 +755,7 @@ public class DatasetVersionResource {
   private Card<ReplacePatternRule> getPatternCard(PreviewReq<ReplacePatternRule, Selection> req)
       throws DatasetVersionNotFoundException {
     String colName = req.getSelection().getColName();
-    return recommenders.generateReplaceCard(req.getRule(), colName, getDatasetSql());
+    return recommenders.generateReplaceCard(req.getRule(), colName, getDatasetSql(), getOrCreateAllocator("getPatternCard"));
   }
 
   private ReplaceValuesCard getValuesCard(ReplaceValuesPreviewReq req) throws DatasetVersionNotFoundException {
@@ -742,8 +783,8 @@ public class DatasetVersionResource {
     String sql = virtualDatasetUI.getSql();
     String colName = col.getColName();
     SqlQuery query = new SqlQuery(sql, virtualDatasetUI.getState().getContextList(), securityContext);
-    Histogram<CleanDataHistogramValue> histogram = histograms.getCleanDataHistogram(datasetPath, version, colName, query);
-    Map<DataType, Long> typeHistogram = histograms.getTypeHistogram(datasetPath, version, colName, query);
+    Histogram<CleanDataHistogramValue> histogram = histograms.getCleanDataHistogram(datasetPath, version, colName, query, getOrCreateAllocator("getCleanDataCard"));
+    Map<DataType, Long> typeHistogram = histograms.getTypeHistogram(datasetPath, version, colName, query, getOrCreateAllocator("getCleanDataCard"));
     Set<DataType> foundTypes = new TreeSet<>(typeHistogram.keySet());
     List<SplitByDataType> split = new ArrayList<>();
     List<ConvertToSingleType> convertToSingles = new ArrayList<>();
@@ -792,15 +833,6 @@ public class DatasetVersionResource {
   public JoinRecommendations getJoinRecommendations() throws DatasetVersionNotFoundException, DatasetNotFoundException, NamespaceException {
     final Dataset currentDataset = getCurrentDataset();
     return joinRecommender.recommendJoins(currentDataset);
-  }
-
-  @GET
-  @Path("download")
-  @Produces(APPLICATION_JSON)
-  public InitialDownloadResponse downloadDataset(@QueryParam("downloadFormat") @DefaultValue("JSON") DownloadFormat downloadFormat,
-                                                 @QueryParam("limit") @DefaultValue("1000000") int limit) throws IOException, DatasetVersionNotFoundException {
-    final Job job = datasetService.prepareDownload(datasetPath, version, downloadFormat, limit, securityContext.getUserPrincipal().getName());
-    return new InitialDownloadResponse(job.getJobId(), JobResource.getDownloadURL(job));
   }
 
   @GET

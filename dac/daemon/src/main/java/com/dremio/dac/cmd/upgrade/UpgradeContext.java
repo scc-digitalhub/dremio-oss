@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,8 @@
 package com.dremio.dac.cmd.upgrade;
 
 import com.dremio.common.config.LogicalPlanPersistence;
-import com.dremio.datastore.KVStoreProvider;
+import com.dremio.common.scanner.persistence.ScanResult;
+import com.dremio.datastore.api.LegacyKVStoreProvider;
 import com.dremio.exec.catalog.ConnectionReader;
 
 /**
@@ -24,18 +25,24 @@ import com.dremio.exec.catalog.ConnectionReader;
  */
 public class UpgradeContext {
 
-  private final KVStoreProvider kvStoreProvider;
+  private final LegacyKVStoreProvider kvStoreProvider;
   private final LogicalPlanPersistence lpPersistence;
   private final ConnectionReader connectionReader;
+  private final ScanResult scanResult;
 
-  UpgradeContext(KVStoreProvider kvStoreProvider, LogicalPlanPersistence lpPersistence,
-                 ConnectionReader connectionReader) {
+  UpgradeContext(
+      LegacyKVStoreProvider kvStoreProvider,
+      LogicalPlanPersistence lpPersistence,
+      ConnectionReader connectionReader,
+      ScanResult scanResult
+  ) {
     this.kvStoreProvider = kvStoreProvider;
     this.lpPersistence = lpPersistence;
     this.connectionReader = connectionReader;
+    this.scanResult = scanResult;
   }
 
-  public KVStoreProvider getKVStoreProvider() {
+  public LegacyKVStoreProvider getKVStoreProvider() {
     return kvStoreProvider;
   }
 
@@ -45,5 +52,9 @@ public class UpgradeContext {
 
   public ConnectionReader getConnectionReader() {
     return connectionReader;
+  }
+
+  public ScanResult getScanResult() {
+    return scanResult;
   }
 }

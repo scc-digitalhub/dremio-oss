@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -98,7 +98,7 @@ public final class MetadataObjectsUtils {
     datasetConfig.setSchemaVersion(datasetConfig.getSchemaVersion());  // TODO: how to detect changes?
     final BatchSchema batchSchema = new BatchSchema(newExtended.getRecordSchema().getFields());
     if (batchSchema.getTotalFieldCount() > maxLeafFields) {
-      throw new ColumnCountTooLargeException(datasetConfig.getName(), maxLeafFields);
+      throw new ColumnCountTooLargeException(maxLeafFields);
     }
     datasetConfig.setRecordSchema(new BatchSchema(newExtended.getRecordSchema().getFields()).toByteString());
 

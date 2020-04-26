@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -57,18 +57,21 @@ public class HiveAuthorizationHelper {
       return;
     }
 
-    try {
+    try (final ContextClassLoaderSwapper cls = ContextClassLoaderSwapper.newInstance()) {
       final HiveConf hiveConfCopy = new HiveConf(hiveConf);
       hiveConfCopy.set("user.name", user);
       hiveConfCopy.set("proxy.user.name", user);
 
       final HiveAuthenticationProvider authenticator = HiveUtils.getAuthenticator(hiveConfCopy,
           HiveConf.ConfVars.HIVE_AUTHENTICATOR_MANAGER);
+
+      // This must be retrieved before creating the session state, because creation of the
+      // session state changes the given HiveConf's classloader to a UDF ClassLoader.
+      final HiveAuthorizerFactory authorizerFactory =
+        HiveUtils.getAuthorizerFactory(hiveConfCopy, HiveConf.ConfVars.HIVE_AUTHORIZATION_MANAGER);
+
       SessionState ss = new SessionState(hiveConfCopy, user);
       authenticator.setSessionState(ss);
-
-      HiveAuthorizerFactory authorizerFactory =
-          HiveUtils.getAuthorizerFactory(hiveConfCopy, HiveConf.ConfVars.HIVE_AUTHORIZATION_MANAGER);
 
       HiveAuthzSessionContext.Builder authzContextBuilder = new HiveAuthzSessionContext.Builder();
       authzContextBuilder.setClientType(CLIENT_TYPE.HIVESERVER2); // Dremio is emulating HS2 here

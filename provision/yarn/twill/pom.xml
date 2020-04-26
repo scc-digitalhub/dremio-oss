@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <!--
 
-    Copyright (C) 2017-2018 Dremio Corporation
+    Copyright (C) 2017-2019 Dremio Corporation
 
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@
   <parent>
     <groupId>com.dremio.provision</groupId>
     <artifactId>dremio-yarn-parent</artifactId>
-    <version>3.2.1-201905191350330803-1a33f83</version>
+    <version>4.2.2-202004211133290458-b550b6fa</version>
   </parent>
 
   <groupId>com.dremio.provision</groupId>
@@ -36,7 +36,7 @@
       <artifactId>guava</artifactId>
       <version>13.0.1</version>
     </dependency>
-    <!-- YarnUtils in Twill explicitly loads LogCLI class (to determine version). LogCLI imports classes
+    <!-- YarnUtils in Twill explicitly loads LogsCLI class (to determine version). LogsCLI imports classes
      available in this artifact. There should be no class loading conflicts with glassfish's jersey-client
      (included elsewhere) because the same classes are in different packages. -->
     <dependency>
@@ -50,6 +50,13 @@
         </exclusion>
       </exclusions>
     </dependency>
+    <!-- org.apache.kafka is explicitly needed for YARN since twill
+    is excluded through dependencyManagement which would have otherwise
+    provided kafka as a transitive dependency. -->
+    <dependency>
+      <groupId>org.apache.kafka</groupId>
+      <artifactId>kafka_2.10</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.apache.twill</groupId>
       <artifactId>twill-api</artifactId>
@@ -62,18 +69,6 @@
         <exclusion>
           <groupId>org.slf4j</groupId>
           <artifactId>slf4j-log4j12</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>org.jboss.netty</groupId>
-          <artifactId>netty</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>io.netty</groupId>
-          <artifactId>netty</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>org.apache.zookeeper</groupId>
-          <artifactId>zookeeper</artifactId>
         </exclusion>
         <exclusion>
           <artifactId>jersey-core</artifactId>
@@ -102,10 +97,6 @@
         <exclusion>
           <artifactId>jsp-api</artifactId>
           <groupId>javax.servlet.jsp</groupId>
-        </exclusion>
-        <exclusion>
-          <artifactId>slf4j-api</artifactId>
-          <groupId>org.slf4j</groupId>
         </exclusion>
         <exclusion>
           <groupId>org.mortbay.jetty</groupId>
@@ -138,18 +129,6 @@
          <groupId>org.slf4j</groupId>
          <artifactId>slf4j-log4j12</artifactId>
        </exclusion>
-       <exclusion>
-         <groupId>org.jboss.netty</groupId>
-         <artifactId>netty</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>io.netty</groupId>
-          <artifactId>netty-all</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>org.apache.zookeeper</groupId>
-          <artifactId>zookeeper</artifactId>
-        </exclusion>
         <exclusion>
           <artifactId>jersey-core</artifactId>
           <groupId>com.sun.jersey</groupId>
@@ -203,12 +182,8 @@
           <groupId>commons-logging</groupId>
         </exclusion>
         <exclusion>
-          <artifactId>hadoop-yarn-client</artifactId>
           <groupId>org.apache.hadoop</groupId>
-        </exclusion>
-        <exclusion>
-          <artifactId>hadoop-yarn-common</artifactId>
-          <groupId>org.apache.hadoop</groupId>
+          <artifactId>*</artifactId>
         </exclusion>
       </exclusions>
     </dependency>
@@ -228,18 +203,6 @@
         <exclusion>
           <groupId>org.slf4j</groupId>
           <artifactId>slf4j-log4j12</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>org.jboss.netty</groupId>
-          <artifactId>netty</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>io.netty</groupId>
-          <artifactId>netty</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>org.apache.zookeeper</groupId>
-          <artifactId>zookeeper</artifactId>
         </exclusion>
         <exclusion>
           <artifactId>jersey-core</artifactId>
@@ -268,10 +231,6 @@
         <exclusion>
           <artifactId>jsp-api</artifactId>
           <groupId>javax.servlet.jsp</groupId>
-        </exclusion>
-        <exclusion>
-          <artifactId>slf4j-api</artifactId>
-          <groupId>org.slf4j</groupId>
         </exclusion>
         <exclusion>
           <groupId>org.mortbay.jetty</groupId>
@@ -296,6 +255,7 @@
       </exclusions> 
     </dependency>
   </dependencies>
+
   <build>
     <plugins>
       <plugin>
@@ -323,6 +283,7 @@
                   <include>org.apache.twill:twill-zookeeper</include>
                   <include>org.apache.twill:twill-ext</include>
                   <include>com.google.guava:*</include>
+                  <include>io.netty:*</include>
                 </includes> 
               </artifactSet> 
               <createDependencyReducedPom>false</createDependencyReducedPom>
@@ -338,104 +299,6 @@
                   <shadedPattern>twill.com.google.thirdparty</shadedPattern>
                 </relocation>
               </relocations>
-            </configuration>
-          </execution>
-        </executions>
-      </plugin>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-dependency-plugin</artifactId>
-        <executions>
-          <execution>
-            <id>unpack</id>
-            <phase>package</phase>
-            <goals>
-              <goal>unpack</goal>
-            </goals>
-            <configuration>
-              <artifactItems>
-                <artifactItem>
-                  <groupId>org.apache.twill</groupId>
-                  <artifactId>twill-api</artifactId>
-                  <version>${twill.version}</version>
-                  <type>jar</type>
-                  <overWrite>true</overWrite>
-                  <outputDirectory>${project.build.directory}/classes</outputDirectory>
-                  <includes>**/**</includes>
-                </artifactItem>
-                <artifactItem>
-                  <groupId>org.apache.twill</groupId>
-                  <artifactId>twill-ext</artifactId>
-                  <version>${twill.version}</version>
-                  <type>jar</type>
-                  <overWrite>true</overWrite>
-                  <outputDirectory>${project.build.directory}/classes</outputDirectory>
-                  <includes>**/**</includes>
-                </artifactItem>
-                <artifactItem>
-                  <groupId>org.apache.twill</groupId>
-                  <artifactId>twill-zookeeper</artifactId>
-                  <version>${twill.version}</version>
-                  <type>jar</type>
-                  <overWrite>true</overWrite>
-                  <outputDirectory>${project.build.directory}/classes</outputDirectory>
-                  <includes>**/**</includes>
-                </artifactItem>
-                <artifactItem>
-                  <groupId>org.apache.twill</groupId>
-                  <artifactId>twill-common</artifactId>
-                  <version>${twill.version}</version>
-                  <type>jar</type>
-                  <overWrite>true</overWrite>
-                  <outputDirectory>${project.build.directory}/classes</outputDirectory>
-                  <includes>**/**</includes>
-                </artifactItem>
-                <artifactItem>
-                  <groupId>org.apache.twill</groupId>
-                  <artifactId>twill-discovery-api</artifactId>
-                  <version>${twill.version}</version>
-                  <type>jar</type>
-                  <overWrite>true</overWrite>
-                  <outputDirectory>${project.build.directory}/classes</outputDirectory>
-                  <includes>**/**</includes>
-                </artifactItem>
-                <artifactItem>
-                  <groupId>org.apache.twill</groupId>
-                  <artifactId>twill-discovery-core</artifactId>
-                  <version>${twill.version}</version>
-                  <type>jar</type>
-                  <overWrite>true</overWrite>
-                  <outputDirectory>${project.build.directory}/classes</outputDirectory>
-                  <includes>**/**</includes>
-                </artifactItem>
-                <artifactItem>
-                  <groupId>org.apache.twill</groupId>
-                  <artifactId>twill-yarn</artifactId>
-                  <version>${twill.version}</version>
-                  <type>jar</type>
-                  <overWrite>true</overWrite>
-                  <outputDirectory>${project.build.directory}/classes</outputDirectory>
-                  <includes>**/**</includes>
-                </artifactItem>
-                <artifactItem>
-                  <groupId>org.apache.twill</groupId>
-                  <artifactId>twill-core</artifactId>
-                  <version>${twill.version}</version>
-                  <type>jar</type>
-                  <overWrite>true</overWrite>
-                  <outputDirectory>${project.build.directory}/classes</outputDirectory>
-                  <includes>**/**</includes>
-                </artifactItem>
-                <artifactItem>
-                  <groupId>org.apache.twill</groupId>
-                  <artifactId>twill-discovery-core</artifactId>
-                  <version>${twill.version}</version>
-                  <type>jar</type>
-                  <overWrite>true</overWrite>
-                  <outputDirectory>${project.build.directory}/classes</outputDirectory>
-                  <includes>**/**</includes>
-                </artifactItem>
-              </artifactItems>
             </configuration>
           </execution>
         </executions>

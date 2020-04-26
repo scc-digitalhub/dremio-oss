@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,7 +37,6 @@ import com.dremio.dac.service.catalog.CatalogServiceHelper;
 import com.dremio.exec.store.CatalogService;
 import com.dremio.exec.store.dfs.NASConf;
 import com.dremio.service.namespace.NamespaceException;
-import com.dremio.service.namespace.NamespaceKey;
 import com.dremio.service.namespace.file.FileFormat;
 import com.dremio.service.namespace.file.proto.JsonFileConfig;
 import com.dremio.service.namespace.file.proto.TextFileConfig;
@@ -74,8 +73,7 @@ public class TestPromotion extends BaseTestServer {
 
   @After
   public void deleteSource() throws NamespaceException {
-    newNamespaceService()
-        .deleteSource(new NamespaceKey(source.getName()), source.getTag());
+    deleteSource(source.getName());
   }
 
   private Dataset createPDS(List<String> path, FileFormat format) {

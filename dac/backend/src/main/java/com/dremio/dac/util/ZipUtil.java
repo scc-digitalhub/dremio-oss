@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Dremio Corporation
+ * Copyright (C) 2017-2019 Dremio Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,8 +23,8 @@ import java.util.TimeZone;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
+import com.dremio.io.file.FileSystem;
+import com.dremio.io.file.Path;
 
 /**
  * Helper class to stream out files as chunk
@@ -65,7 +65,9 @@ public class ZipUtil {
 
   public void close() {
     try {
-      zout.close();
+      if (zout != null) {
+        zout.close();
+      }
     } catch (IOException ex) {}
     position = 0;
     chunkCount++;
@@ -79,7 +81,7 @@ public class ZipUtil {
   }
 
   private void setupZip(String filename) throws IOException {
-    fsout = fileSystem.create(new Path(filename+".zip"), true);
+    fsout = fileSystem.create(Path.of(filename+".zip"), true);
     zout = new ZipOutputStream(fsout);
   }
 
