@@ -40,6 +40,7 @@ message UserConfig {
   repeated GID groupMemberships = 8;
   optional int64 version = 9 [deprecated = true];
   optional string tag = 10;
+  optional string tenant = 11;
 }
 
 message UserAuth {

@@ -4338,6 +4338,7 @@
 ```
 {
   cpu: 1.0,
+  details: "abc",
   host: "abc",
   ip: "abc",
   isCompatible: true | false,
@@ -4365,6 +4366,7 @@
   lastName: "abc",
   modifiedAt: 1,
   password: "abc",
+  tenant: "abc",
   uid: {
     id: "abc",
   },
@@ -4399,6 +4401,7 @@
     firstName: "abc",
     lastName: "abc",
     modifiedAt: 1,
+    tenant: "abc",
     uid: {
       id: "abc",
     },
@@ -4428,6 +4431,7 @@
         firstName: "abc",
         lastName: "abc",
         modifiedAt: 1,
+        tenant: "abc",
         uid: {
           id: "abc",
         },
