@@ -39,4 +39,6 @@ public interface User {
   String getVersion();
 
   String getExtra();
+
+  String getTenant();
 }

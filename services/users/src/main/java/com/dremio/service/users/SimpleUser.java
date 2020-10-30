@@ -38,11 +38,12 @@ public final class SimpleUser implements User {
     private long modifiedAt;
     private String version;
     private String extra;
+    private String tenant;
 
     private Builder() {}
 
     private Builder(UID uid, String userName, String firstName, String lastName, String email,
-        long createdAt, long modifiedAt, String version, String extra) {
+        long createdAt, long modifiedAt, String version, String extra, String tenant) {
       super();
       this.uid = uid;
       this.userName = userName;
@@ -53,6 +54,7 @@ public final class SimpleUser implements User {
       this.modifiedAt = modifiedAt;
       this.version = version;
       this.extra = extra;
+      this.tenant = tenant;
     }
 
     public UID getUID() {
@@ -136,8 +138,17 @@ public final class SimpleUser implements User {
       return this;
     }
 
+    public String getTenant() {
+      return tenant;
+    }
+
+    public Builder setTenant(String tenant) {
+      this.tenant = tenant;
+      return this;
+    }
+
     public SimpleUser build() {
-      return new SimpleUser(uid, userName, firstName, lastName, email, createdAt, modifiedAt, version, extra);
+      return new SimpleUser(uid, userName, firstName, lastName, email, createdAt, modifiedAt, version, extra, tenant);
     }
   }
 
@@ -150,6 +161,7 @@ public final class SimpleUser implements User {
   private final long modifiedAt;
   private final String version;
   private final String extra;
+  private final String tenant;
 
   @JsonCreator
   private SimpleUser(
@@ -161,7 +173,8 @@ public final class SimpleUser implements User {
       @JsonProperty("createdAt") long createdAt,
       @JsonProperty("modifiedAt") long modifiedAt,
       @JsonProperty("version") String version,
-      @JsonProperty("extra") String extra) {
+      @JsonProperty("extra") String extra,
+      @JsonProperty("tenant") String tenant) {
     super();
     this.uid = uid;
     this.userName = userName;
@@ -172,6 +185,7 @@ public final class SimpleUser implements User {
     this.modifiedAt = modifiedAt;
     this.version = version;
     this.extra = extra;
+    this.tenant = tenant;
   }
 
   @Override
@@ -219,8 +233,13 @@ public final class SimpleUser implements User {
   }
 
   @Override
+  public String getTenant() {
+    return tenant;
+  }
+
+  @Override
   public int hashCode() {
-    return Objects.hash(uid, userName, firstName, lastName, email, createdAt, modifiedAt, version, extra);
+    return Objects.hash(uid, userName, firstName, lastName, email, createdAt, modifiedAt, version, extra, tenant);
   }
 
   @Override
@@ -242,22 +261,25 @@ public final class SimpleUser implements User {
       && Objects.equals(createdAt, other.createdAt)
       && Objects.equals(modifiedAt, other.modifiedAt)
       && Objects.equals(version, other.version)
-      && Objects.equals(extra, other.extra);
+      && Objects.equals(extra, other.extra)
+      && Objects.equals(tenant, other.tenant);
   }
 
   @Override
   public String toString() {
     return "SimpleUser [uid=" + uid + ", userName=" + userName + ", firstName=" + firstName + ", lastName=" + lastName
         + ", email=" + email + ", createdAt=" + createdAt + ", modifiedAt=" + modifiedAt
-        + ", version=" + version + ", extra=" + extra + "]";
+        + ", version=" + version + ", extra=" + extra + ", tenant=" + tenant + "]";
   }
 
   public static Builder newBuilder() {
+    System.out.println("******called SimpleUser.newBuilder without params******");
     return new Builder();
   }
 
   public static Builder newBuilder(User user) {
+    System.out.println("******called SimpleUser.newBuilder with params******" + user);
     return new Builder(user.getUID(), user.getUserName(), user.getFirstName(), user.getLastName(),
-        user.getEmail(), user.getCreatedAt(), user.getModifiedAt(), user.getVersion(), user.getExtra());
+        user.getEmail(), user.getCreatedAt(), user.getModifiedAt(), user.getVersion(), user.getExtra(), user.getTenant());
   }
 }

@@ -4410,6 +4410,7 @@
   lastName: "abc",
   modifiedAt: 1,
   password: "abc",
+  tenant: "abc",
   uid: {
     id: "abc",
   },
@@ -4444,6 +4445,7 @@
     firstName: "abc",
     lastName: "abc",
     modifiedAt: 1,
+    tenant: "abc",
     uid: {
       id: "abc",
     },
@@ -4473,6 +4475,7 @@
         firstName: "abc",
         lastName: "abc",
         modifiedAt: 1,
+        tenant: "abc",
         uid: {
           id: "abc",
         },

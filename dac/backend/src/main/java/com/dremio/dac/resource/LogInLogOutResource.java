@@ -104,6 +104,7 @@ public class LogInLogOutResource {
       userService.authenticate(userName.getName(), userLogin.getPassword());
 
       final User userConfig = userService.getUser(userName.getName());
+      System.out.println("******called POST login******" + userConfig);
       final String clientAddress = request.getRemoteAddr();
 
       // Get a token for this session
@@ -140,7 +141,8 @@ public class LogInLogOutResource {
               support.getClusterId().getCreated(),
               "internal".equals(dremioConfig.getString(DremioConfig.WEB_AUTH_TYPE)),
               DremioVersionInfo.getVersion(),
-              perms
+              perms,
+              userConfig.getTenant()
               )
           ).build();
     } catch (IllegalArgumentException | UserLoginException | UserNotFoundException e) {

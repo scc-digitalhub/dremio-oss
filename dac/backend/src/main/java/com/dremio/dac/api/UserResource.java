@@ -81,6 +81,8 @@ public class UserResource {
   @RolesAllowed({"admin"})
   @POST
   public User createUser(User user) throws IOException {
+    System.out.println("******called API POST /user createUser******" + user);
+    System.out.println("******current user is: " + securityContext.getUserPrincipal().getName());
     final com.dremio.service.users.User userConfig = UserResource.addUser(of(user, Optional.empty()), user.getPassword(),
       userGroupService, namespaceService);
 
@@ -123,6 +125,9 @@ public class UserResource {
     }
     final com.dremio.service.users.User savedUser = userGroupService.getUser(new UID(id));
 
+    System.out.println("******called API PUT /user/{id} updateUser******" + user);
+    System.out.println("******current user is: " + securityContext.getUserPrincipal().getName());
+
     if (!securityContext.isUserInRole("admin") && !securityContext.getUserPrincipal().getName().equals(savedUser.getUserName())) {
       throw new DACUnauthorizedException(format("User %s is not allowed to update user %s",
         securityContext.getUserPrincipal().getName(), savedUser.getUserName()));
@@ -149,7 +154,8 @@ public class UserResource {
       .setFirstName(user.getFirstName())
       .setLastName(user.getLastName())
       .setEmail(user.getEmail())
-      .setVersion(user.getTag());
+      .setVersion(user.getTag())
+      .setTenant(user.getTenant());
 
     if (userId.isPresent()) {
       userBuilder.setUID(new UID(userId.get()));
