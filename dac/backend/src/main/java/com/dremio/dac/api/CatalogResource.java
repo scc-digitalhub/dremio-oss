@@ -65,6 +65,7 @@ public class CatalogResource {
 
   @GET
   public ResponseList<? extends CatalogItem> listTopLevelCatalog(@QueryParam("include") final List<String> include) {
+    System.out.println("****called GET /catalog");
     return new ResponseList<>(catalogServiceHelper.getTopLevelCatalogItems(include));
   }
 
@@ -72,6 +73,7 @@ public class CatalogResource {
   @Path("/{id}")
   public CatalogEntity getCatalogItem(@PathParam("id") String id,
                                       @QueryParam("include") final List<String> include) throws NamespaceException {
+    System.out.println("****called GET /catalog/{id}");
     Optional<CatalogEntity> entity = catalogServiceHelper.getCatalogEntityById(id, include);
 
     if (!entity.isPresent()) {
@@ -83,6 +85,7 @@ public class CatalogResource {
 
   @POST
   public CatalogEntity createCatalogItem(CatalogEntity entity) throws NamespaceException, BadRequestException {
+    System.out.println("****called POST /catalog");
     try {
       return catalogServiceHelper.createCatalogItem(entity);
     } catch (UnsupportedOperationException e) {
@@ -193,6 +196,7 @@ public class CatalogResource {
   @Path("/search")
   public ResponseList<CatalogItem> search(@QueryParam("query") String query) throws NamespaceException {
     ResponseList<CatalogItem> catalogItems = new ResponseList<>(catalogServiceHelper.search(query));
+    System.out.println("****called GET /catalog/search, catalogItems: " + catalogItems);
 
     return catalogItems;
   }

@@ -25,6 +25,7 @@ import javax.ws.rs.BadRequestException;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.DefaultValue;
 import javax.ws.rs.GET;
+import javax.ws.rs.NotAuthorizedException;
 import javax.ws.rs.NotFoundException;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
@@ -36,6 +37,7 @@ import javax.ws.rs.core.SecurityContext;
 import com.dremio.common.exceptions.UserException;
 import com.dremio.dac.annotations.APIResource;
 import com.dremio.dac.annotations.Secured;
+import com.dremio.dac.model.usergroup.UserUI;
 import com.dremio.dac.resource.BaseResourceWithAllocator;
 import com.dremio.dac.server.BufferAllocatorFactory;
 import com.dremio.dac.service.errors.InvalidReflectionJobException;
@@ -80,8 +82,13 @@ public class JobResource extends BaseResourceWithAllocator {
 
   @GET
   @Path("/{id}")
-  public JobStatus getJobStatus(@PathParam("id") String id) {
+  public JobStatus getJobStatus(@PathParam("id") String id) throws NotAuthorizedException {
     try {
+      //check if user is authorized to view this job before proceeding
+      if(!canGetJob(getJobSummaryFromId(id), (UserUI)securityContext.getUserPrincipal())) {
+        throw new NotAuthorizedException("Not authorized"); //user cannot view this job
+      }
+
       JobDetailsRequest request = JobDetailsRequest.newBuilder()
         .setJobId(com.dremio.service.job.proto.JobProtobuf.JobId.newBuilder().setId(id).build())
         .setUserName(securityContext.getUserPrincipal().getName())
@@ -104,6 +111,9 @@ public class JobResource extends BaseResourceWithAllocator {
         .setUserName(securityContext.getUserPrincipal().getName())
         .build();
       JobSummary jobSummary = jobs.getJobSummary(request);
+      if(!canGetJob(jobSummary, (UserUI)securityContext.getUserPrincipal())){
+        throw new NotAuthorizedException("Not authorized"); //user cannot view this job
+      }
 
       if (jobSummary.getJobState() != JobState.COMPLETED) {
         throw new BadRequestException(String.format("Can not fetch details for a job that is in [%s] state.", jobSummary.getJobState()));
@@ -120,6 +130,11 @@ public class JobResource extends BaseResourceWithAllocator {
   @Path("/{id}/cancel")
   public void cancelJob(@PathParam("id") String id) throws JobException {
     final String username = securityContext.getUserPrincipal().getName();
+
+    //check if user is authorized to view this job before proceeding
+    if(!canGetJob(getJobSummaryFromId(id), (UserUI)securityContext.getUserPrincipal())) {
+      throw new NotAuthorizedException("Not authorized"); //user cannot view this job
+    }
 
     try {
       jobs.cancel(CancelJobRequest.newBuilder()
@@ -143,6 +158,11 @@ public class JobResource extends BaseResourceWithAllocator {
     }
 
     try {
+      //check if user is authorized to view this job before proceeding
+      if(!canGetJob(getJobSummaryFromId(id), (UserUI)securityContext.getUserPrincipal())) {
+        throw new NotAuthorizedException("Not authorized"); //user cannot view this job
+      }
+
       JobDetailsRequest.Builder jobDetailsRequestBuilder = JobDetailsRequest.newBuilder()
         .setJobId(com.dremio.service.job.proto.JobProtobuf.JobId.newBuilder().setId(id).build())
         .setUserName(securityContext.getUserPrincipal().getName());
@@ -175,6 +195,11 @@ public class JobResource extends BaseResourceWithAllocator {
     final String username = securityContext.getUserPrincipal().getName();
 
     try {
+      //check if user is authorized to view this job before proceeding
+      if(!canGetJob(getJobSummaryFromId(id), (UserUI)securityContext.getUserPrincipal())) {
+        throw new NotAuthorizedException("Not authorized"); //user cannot view this job
+      }
+
       CancelJobRequest cancelJobRequest = CancelJobRequest.newBuilder()
         .setUsername(username)
         .setJobId(JobsProtoUtil.toBuf(new JobId(id)))
@@ -190,5 +215,39 @@ public class JobResource extends BaseResourceWithAllocator {
     } catch (ReflectionJobValidationException e) {
       throw new InvalidReflectionJobException(e.getJobId().getId(), e.getReflectionId());
     }
+  }
+
+  private JobSummary getJobSummaryFromId(String id) throws JobNotFoundException {
+    JobSummaryRequest request = JobSummaryRequest.newBuilder()
+      .setJobId(JobProtobuf.JobId.newBuilder().setId(id).build())
+      .setUserName(securityContext.getUserPrincipal().getName())
+      .build();
+    return jobs.getJobSummary(request);
+  }
+
+  private boolean canGetJob(JobSummary jobSummary, UserUI currentUser) {
+    boolean isAllowed = true;
+
+    String root = jobSummary.getParent().getDatasetPathList().get(0);
+    System.out.println("*****JobResource.canGetJob: " + jobSummary);
+
+    //if path root is a home (e.g. @dremio), access is restricted to its owner
+    if(root.startsWith("@") && !("@" + currentUser.getName()).equals(root)) {
+      return false;
+    }
+
+    /* if path root has no prefix "<tenant>__", it is public */
+    //get root tenant, if any
+    String[] nameParts = root.split("__");
+    if(nameParts.length > 1) {
+      //root access is restricted to a specific tenant, compare it with user tenant
+      String tenant = currentUser.getUser().getTenant();
+      if(!currentUser.getName().equals("dremio") && tenant != null && !tenant.equals(nameParts[0])){
+        isAllowed = false;
+      }
+    } //else, there is no prefix, root is public
+    System.out.println("****root: " + root + ", isAllowed: " + isAllowed);
+
+    return isAllowed;
   }
 }
