@@ -17,6 +17,7 @@ package com.dremio.dac.resource;
 
 import static javax.ws.rs.core.MediaType.APPLICATION_JSON;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import javax.annotation.security.RolesAllowed;
@@ -36,6 +37,7 @@ import com.dremio.dac.annotations.RestResource;
 import com.dremio.dac.annotations.Secured;
 import com.dremio.dac.model.job.JobsUI;
 import com.dremio.dac.model.job.ResultOrder;
+import com.dremio.dac.model.usergroup.UserUI;
 import com.dremio.service.job.JobSummary;
 import com.dremio.service.job.SearchJobsRequest;
 import com.dremio.service.job.SearchReflectionJobsRequest;
@@ -96,7 +98,16 @@ public class JobsResource {
       requestBuilder.setSortOrder(order.toSortOrder());
     }
 
-    final List<JobSummary> jobs = ImmutableList.copyOf(jobsService.get().searchJobs(requestBuilder.build()));
+    List<JobSummary> jobsFound = ImmutableList.copyOf(jobsService.get().searchJobs(requestBuilder.build()));
+    System.out.println("*****called GET /jobs: " + jobsFound);
+    final List<JobSummary> jobs = new ArrayList<>();
+    for (JobSummary job : jobsFound) {
+      if(!canGetJob(job, (UserUI)securityContext.getUserPrincipal())){
+        continue; //user cannot view this job, do not add it to the list
+      }
+      jobs.add(job);
+    }
+
     return new JobsUI(
         namespace,
         jobs,
@@ -208,5 +219,32 @@ public class JobsResource {
     sb.append("&limit=");
     sb.append(limit);
     return sb;
+  }
+
+  private boolean canGetJob(JobSummary jobSummary, UserUI currentUser) {
+    boolean isAllowed = true;
+
+    List<String> parentPathList = jobSummary.getParent().getDatasetPathList();
+    System.out.println("*****canGetJob " + jobSummary + " parent: " + parentPathList);
+    String root = parentPathList.get(0);
+
+    //if path root is a home (e.g. @dremio), access is restricted to its owner
+    if(root.startsWith("@") && !("@" + currentUser.getName()).equals(root)) {
+      return false;
+    }
+
+    /* if path root has no prefix "<tenant>__", it is public */
+    //get root tenant, if any
+    String[] nameParts = root.split("__");
+    if(nameParts.length > 1) {
+      //root access is restricted to a specific tenant, compare it with user tenant
+      String tenant = currentUser.getUser().getTenant();
+      if(!currentUser.getName().equals("dremio") && tenant != null && !tenant.equals(nameParts[0])){
+        isAllowed = false;
+      }
+    } //else, there is no prefix, root is public
+    System.out.println("****root: " + root + ", isAllowed: " + isAllowed);
+
+    return isAllowed;
   }
 }

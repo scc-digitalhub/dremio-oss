@@ -38,6 +38,7 @@ import com.dremio.dac.model.resourcetree.ResourceTreeEntity;
 import com.dremio.dac.model.resourcetree.ResourceTreeSourceEntity;
 import com.dremio.dac.model.sources.SourceUI;
 import com.dremio.dac.model.spaces.HomeName;
+import com.dremio.dac.model.usergroup.UserUI;
 import com.dremio.dac.service.source.SourceService;
 import com.dremio.exec.catalog.ConnectionReader;
 import com.dremio.exec.server.SabotContext;
@@ -222,6 +223,9 @@ public class ResourceTreeResource {
   public List<ResourceTreeEntity>  getSpaces() throws NamespaceException, UnsupportedEncodingException  {
     final List<ResourceTreeEntity> resources = Lists.newArrayList();
     for (SpaceConfig spaceConfig : namespaceService.get().getSpaces()) {
+      if(!canGetSpace(spaceConfig)){
+        continue; //user cannot view this space, do not add it to the list
+      }
       resources.add(new ResourceTreeEntity(spaceConfig));
     }
     return resources;
@@ -248,4 +252,21 @@ public class ResourceTreeResource {
     return resources;
   }
 
+  private boolean canGetSpace(SpaceConfig spaceConfig) {
+    boolean isAllowed = true;
+
+    /* if space name has no prefix "<tenant>__", the space is public */
+    //get space tenant, if any
+    String[] nameParts = spaceConfig.getName().split("__");
+    if(nameParts.length > 1) {
+      //space access is restricted to a specific tenant, compare it with user tenant
+      String tenant = ((UserUI)securityContext.getUserPrincipal()).getUser().getTenant();
+      if(!securityContext.getUserPrincipal().getName().equals("dremio") && tenant != null && !tenant.equals(nameParts[0])){
+        isAllowed = false;
+      }
+    } //else, there is no prefix, space is public
+    System.out.println("****ResourceTreeResource space: " + spaceConfig.getName() + ", isAllowed: " + isAllowed);
+
+    return isAllowed;
+  }
 }
