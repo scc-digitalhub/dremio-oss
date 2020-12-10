@@ -4,6 +4,8 @@ classe statica
  */
 package com.dremio.dac.service.tenant;
 
+import javax.ws.rs.core.SecurityContext;
+
 import com.dremio.service.users.User;
 
 /**
@@ -39,7 +41,7 @@ public class MultiTenantServiceHelper {
    * Split path, then get resource tenant
    */
   public static String getResourceTenant(String path) {
-    return getResourceTenant(path.split("\."));
+    return getResourceTenant(path.split("\\."));
   }
 
   /**
@@ -66,5 +68,21 @@ public class MultiTenantServiceHelper {
    */
   public static boolean isSameTenant(String userTenant, String resourceTenant) {
     return userTenant.equalsIgnoreCase(resourceTenant);
+  }
+
+  /**
+   * Check if user has the given role and its tenant matches the resource tenant
+   */
+  public static boolean hasPermission(SecurityContext sc, String role, String userTenant, String resourceTenant) {
+    //short-circuit if user is admin
+    if(sc.isUserInRole("admin")){
+      return true;
+    }
+
+    if(userTenant != null && resourceTenant != null && sc.isUserInRole(role)) {
+      return isSameTenant(userTenant, resourceTenant);
+    } else {
+      return false;
+    }
   }
 }
