@@ -141,8 +141,7 @@ public class LogInLogOutResource {
               support.getClusterId().getCreated(),
               "internal".equals(dremioConfig.getString(DremioConfig.WEB_AUTH_TYPE)),
               DremioVersionInfo.getVersion(),
-              perms,
-              userConfig.getTenant()
+              perms
               )
           ).build();
     } catch (IllegalArgumentException | UserLoginException | UserNotFoundException e) {

@@ -348,6 +348,9 @@
    > `<=` javax.ws.rs.core.Response   
 
 
+## Resource defined by class com.dremio.dac.resource.OAuthResource
+
+
 ## Resource defined by class com.dremio.dac.resource.PowerBIResource
 
  - GET /powerbi/{datasetId}   
@@ -4410,7 +4413,6 @@
   lastName: "abc",
   modifiedAt: 1,
   password: "abc",
-  tenant: "abc",
   uid: {
     id: "abc",
   },
@@ -4445,7 +4447,6 @@
     firstName: "abc",
     lastName: "abc",
     modifiedAt: 1,
-    tenant: "abc",
     uid: {
       id: "abc",
     },
@@ -4475,7 +4476,6 @@
         firstName: "abc",
         lastName: "abc",
         modifiedAt: 1,
-        tenant: "abc",
         uid: {
           id: "abc",
         },

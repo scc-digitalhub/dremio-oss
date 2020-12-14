@@ -47,7 +47,13 @@ public class DACSecurityContext implements SecurityContext {
 
   @Override
   public boolean isUserInRole(String role) {
-    return true;
+    //allow only SYSTEM and "admin" for admin role (changed to dremio because otherwise the default user is not admin)
+    if("admin".equals(role)) {
+      return ("dremio".equals(user.getUserName().getName()) ||
+          SystemUser.SYSTEM_USERNAME.equals(user.getUserName().getName()));
+    } else {
+      return true;
+    }
   }
 
   @Override
