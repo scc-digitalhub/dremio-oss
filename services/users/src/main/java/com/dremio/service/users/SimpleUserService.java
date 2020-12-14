@@ -130,10 +130,7 @@ public class SimpleUserService implements UserService {
       .setModifiedAt(userConfig.getCreatedAt())
       .setTag(null);
 
-    if(newUser.getTenant() == null && newUser.getEmail() != null){
-      newUser.setTenant((newUser.getEmail().split("@")[1]).split("\\.")[0]);
-    }
-    System.out.println("*****called SimpleUserService.createUser: " + userConfig.getUserName() + ", tenant: " + newUser.getTenant());
+    System.out.println("*****called SimpleUserService.createUser: " + userConfig.getUserName());
     UserInfo userInfo = new UserInfo();
     userInfo.setConfig(newUser);
     userInfo.setAuth(buildUserAuth(newUser.getUid(), authKey));
@@ -166,9 +163,6 @@ public class SimpleUserService implements UserService {
     }
     if (newConfig.getTag() == null) {
       newConfig.setTag(oldConfig.getTag());
-    }
-    if (newConfig.getTenant() == null) {
-      newConfig.setTenant(oldConfig.getTenant());
     }
   }
 
@@ -397,8 +391,7 @@ public class SimpleUserService implements UserService {
       .setEmail(user.getEmail())
       .setCreatedAt(user.getCreatedAt())
       .setModifiedAt(user.getModifiedAt())
-      .setTag(user.getVersion())
-      .setTenant(user.getTenant());
+      .setTag(user.getVersion());
   }
 
   protected User fromUserConfig(UserConfig userConfig) {
@@ -411,7 +404,6 @@ public class SimpleUserService implements UserService {
       .setCreatedAt(userConfig.getCreatedAt())
       .setModifiedAt(userConfig.getModifiedAt())
       .setVersion(userConfig.getTag())
-      .setTenant(userConfig.getTenant())
       .build();
   }
 

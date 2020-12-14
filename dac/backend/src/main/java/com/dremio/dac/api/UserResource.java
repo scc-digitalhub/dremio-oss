@@ -154,8 +154,7 @@ public class UserResource {
       .setFirstName(user.getFirstName())
       .setLastName(user.getLastName())
       .setEmail(user.getEmail())
-      .setVersion(user.getTag())
-      .setTenant(user.getTenant());
+      .setVersion(user.getTag());
 
     if (userId.isPresent()) {
       userBuilder.setUID(new UID(userId.get()));
