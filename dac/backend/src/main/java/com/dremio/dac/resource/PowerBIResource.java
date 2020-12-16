@@ -42,7 +42,7 @@ import com.dremio.service.namespace.NamespaceService;
  */
 @RestResource
 @Secured
-@RolesAllowed({"admin", "user"})
+@RolesAllowed({"admin"})
 @Path("/powerbi/{datasetId}")
 @Options
 public class PowerBIResource extends BaseBIToolResource {
