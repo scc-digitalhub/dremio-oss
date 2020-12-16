@@ -43,7 +43,7 @@ import com.dremio.service.namespace.NamespaceService;
  */
 @RestResource
 @Secured
-@RolesAllowed({"admin", "user"})
+@RolesAllowed({"admin"})
 @Path("/qlik/{datasetId}")
 @Options
 public class QlikResource extends BaseBIToolResource {

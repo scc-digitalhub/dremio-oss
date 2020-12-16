@@ -43,7 +43,7 @@ import com.dremio.service.namespace.NamespaceService;
  */
 @RestResource
 @Secured
-@RolesAllowed({"admin", "user"})
+@RolesAllowed({"admin"})
 @Path("/tableau/{datasetId}")
 @Options
 public class TableauResource extends BaseBIToolResource {

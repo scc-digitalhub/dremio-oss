@@ -40,7 +40,7 @@ import com.dremio.service.users.UserNotFoundException;
  */
 @RestResource
 @Secured
-@RolesAllowed({"admin", "user"})
+@RolesAllowed({"admin"})
 @Path("/space/{spaceName}")
 public class PutSpaceResource {
   private final NamespaceService namespaceService;

@@ -49,7 +49,7 @@ import com.dremio.service.users.UserNotFoundException;
  */
 @RestResource
 @Secured
-@RolesAllowed({ "admin", "user" })
+@RolesAllowed({ "admin"})
 @Path("/support/{jobId}")
 public class SupportResource {
 
