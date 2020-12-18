@@ -19,6 +19,7 @@ package com.dremio.dac.api;
 import static com.dremio.dac.util.DateUtils.getStartOfLastMonth;
 import static javax.ws.rs.core.MediaType.APPLICATION_JSON;
 
+import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.GET;
@@ -58,6 +59,7 @@ public class UserStatsResource {
   }
 
   @GET
+  @RolesAllowed({"admin"})
   public UserStats getActiveUserStats() {
     try {
       final UserStats.Builder activeUserStats = new UserStats.Builder();
