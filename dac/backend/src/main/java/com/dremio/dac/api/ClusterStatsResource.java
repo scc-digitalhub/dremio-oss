@@ -100,7 +100,7 @@ public class ClusterStatsResource {
   }
 
   @GET
-  @RolesAllowed({"admin", "user"})
+  @RolesAllowed({"admin"})
   public ClusterStats getStats(@DefaultValue("false") @QueryParam("showCompactStats") final boolean showCompactStats) {
     return createStats(showCompactStats);
   }

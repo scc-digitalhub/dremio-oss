@@ -34,7 +34,7 @@ import com.dremio.provision.service.ProvisioningServiceImpl;
  */
 @APIResource
 @Secured
-@RolesAllowed({"user", "admin"})
+@RolesAllowed({"admin"})
 @Path("/info")
 @Consumes(APPLICATION_JSON)
 @Produces(APPLICATION_JSON)

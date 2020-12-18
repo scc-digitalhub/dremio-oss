@@ -77,7 +77,7 @@ public class DailyJobStatsResource {
   }
 
   @GET
-  @RolesAllowed({"admin", "user"})
+  @RolesAllowed({"admin"})
   public DailyJobStats getStats() {
     return createStats();
   }
