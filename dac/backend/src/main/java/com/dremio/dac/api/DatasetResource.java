@@ -22,18 +22,25 @@ import java.util.List;
 import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
 import javax.ws.rs.Consumes;
+import javax.ws.rs.ForbiddenException;
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
+import javax.ws.rs.core.Context;
+import javax.ws.rs.core.SecurityContext;
 
 import com.dremio.dac.annotations.APIResource;
 import com.dremio.dac.annotations.Secured;
+import com.dremio.dac.explore.model.DatasetPath;
+import com.dremio.dac.model.spaces.HomeName;
+import com.dremio.dac.model.spaces.TempSpace;
 import com.dremio.dac.service.catalog.CatalogServiceHelper;
 import com.dremio.dac.service.errors.DatasetNotFoundException;
 import com.dremio.dac.service.reflection.ReflectionServiceHelper;
 import com.dremio.dac.service.reflection.ReflectionStatusUI;
+import com.dremio.dac.service.tenant.MultiTenantServiceHelper;
 import com.dremio.service.namespace.dataset.proto.DatasetConfig;
 import com.dremio.service.reflection.proto.ReflectionGoal;
 import com.google.common.base.Function;
@@ -52,11 +59,13 @@ import com.google.common.collect.Lists;
 public class DatasetResource {
   private ReflectionServiceHelper reflectionServiceHelper;
   private CatalogServiceHelper catalogServiceHelper;
+  private final SecurityContext securityContext;
 
   @Inject
-  public DatasetResource(ReflectionServiceHelper reflectionServiceHelper, CatalogServiceHelper catalogServiceHelper) {
+  public DatasetResource(ReflectionServiceHelper reflectionServiceHelper, CatalogServiceHelper catalogServiceHelper, @Context SecurityContext securityContext) {
     this.reflectionServiceHelper = reflectionServiceHelper;
     this.catalogServiceHelper = catalogServiceHelper;
+    this.securityContext = securityContext;
   }
 
   @GET
@@ -66,6 +75,10 @@ public class DatasetResource {
 
     if (!dataset.isPresent()) {
       throw new DatasetNotFoundException(id);
+    }
+
+    if (!isAuthorized("user", dataset.get())) {
+      throw new ForbiddenException(String.format("User not authorized to access dataset %s.", id));
     }
 
     ResponseList<Reflection> response = new ResponseList<>();
@@ -89,6 +102,10 @@ public class DatasetResource {
       throw new DatasetNotFoundException(id);
     }
 
+    if (!isAuthorized("user", dataset.get())) {
+      throw new ForbiddenException(String.format("User not authorized to access dataset %s.", id));
+    }
+
     List<Reflection> recommendations = Lists.transform(reflectionServiceHelper.getRecommendedReflections(id), new Function<ReflectionGoal, Reflection>() {
       @Override
       public Reflection apply(ReflectionGoal goal) {
@@ -96,5 +113,23 @@ public class DatasetResource {
       }
     });
     return new ResponseList<>(recommendations);
+  }
+
+  private boolean isAuthorized(String role, DatasetConfig dataset) {
+    DatasetPath datasetPath = new DatasetPath(dataset.getFullPathList());
+
+    //short-circuit if the dataset root is the home of the current user
+    if (HomeName.getUserHomePath(securityContext.getUserPrincipal().getName()).getName().equals(datasetPath.getRoot().getName())) {
+      return true;
+    }
+
+    //short-circuit if the dataset root is the temp space
+    if (TempSpace.isTempSpace(datasetPath.getRoot().getName())) {
+      return true;
+    }
+
+    String userTenant = MultiTenantServiceHelper.getUserTenant(securityContext.getUserPrincipal().getName());
+    String resourceTenant = MultiTenantServiceHelper.getResourceTenant(datasetPath.getRoot().getName());
+    return MultiTenantServiceHelper.hasPermission(securityContext, role, userTenant, resourceTenant);
   }
 }

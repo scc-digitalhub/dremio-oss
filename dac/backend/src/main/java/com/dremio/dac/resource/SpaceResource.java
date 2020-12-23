@@ -24,13 +24,16 @@ import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
 import javax.ws.rs.DELETE;
 import javax.ws.rs.DefaultValue;
+import javax.ws.rs.ForbiddenException;
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
 import javax.ws.rs.QueryParam;
+import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
+import javax.ws.rs.core.SecurityContext;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,6 +57,7 @@ import com.dremio.dac.service.errors.DatasetNotFoundException;
 import com.dremio.dac.service.errors.FileNotFoundException;
 import com.dremio.dac.service.errors.SpaceNotFoundException;
 import com.dremio.dac.util.ResourceUtil;
+import com.dremio.dac.service.tenant.MultiTenantServiceHelper;
 import com.dremio.service.namespace.BoundedDatasetCount;
 import com.dremio.service.namespace.NamespaceException;
 import com.dremio.service.namespace.NamespaceNotFoundException;
@@ -77,18 +81,21 @@ public class SpaceResource {
   private final CollaborationHelper collaborationService;
   private final SpaceName spaceName;
   private final SpacePath spacePath;
+  private final SecurityContext securityContext;
 
   @Inject
   public SpaceResource(
       NamespaceService namespaceService,
       DatasetVersionMutator datasetService,
       CollaborationHelper collaborationService,
-      @PathParam("spaceName") SpaceName spaceName) {
+      @PathParam("spaceName") SpaceName spaceName,
+      @Context SecurityContext securityContext) {
     this.namespaceService = namespaceService;
     this.datasetService = datasetService;
     this.collaborationService = collaborationService;
     this.spaceName = spaceName;
     this.spacePath = new SpacePath(spaceName);
+    this.securityContext = securityContext;
   }
 
   protected Space newSpace(SpaceConfig spaceConfig, NamespaceTree contents, int datasetCount) throws Exception {
@@ -99,6 +106,9 @@ public class SpaceResource {
   @Produces(MediaType.APPLICATION_JSON)
   public Space getSpace(@QueryParam("includeContents") @DefaultValue("true") boolean includeContents)
       throws Exception {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access space %s.", spaceName.getName()));
+    }
     try {
       final SpaceConfig config = namespaceService.getSpace(spacePath.toNamespaceKey());
       final int datasetCount = namespaceService.getDatasetCount(spacePath.toNamespaceKey(), BoundedDatasetCount.SEARCH_TIME_LIMIT_MS, BoundedDatasetCount.COUNT_LIMIT_TO_STOP_SEARCH).getCount();
@@ -115,6 +125,9 @@ public class SpaceResource {
   @Produces(MediaType.APPLICATION_JSON)
   @Deprecated
   public void deleteSpace(@QueryParam("version") String version) throws NamespaceException, SpaceNotFoundException, UserException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access space %s.", spaceName.getName()));
+    }
     if (version == null) {
       throw new ClientErrorException("missing version parameter");
     }
@@ -143,6 +156,10 @@ public class SpaceResource {
   @Produces(MediaType.APPLICATION_JSON)
   public Dataset getDataset(@PathParam("path") String path)
     throws NamespaceException, FileNotFoundException, DatasetNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access space %s.", spaceName.getName()));
+    }
+
     DatasetPath datasetPath = DatasetPath.fromURLPath(spaceName, path);
     final DatasetConfig datasetConfig = namespaceService.getDataset(datasetPath.toNamespaceKey());
     final VirtualDatasetUI vds = datasetService.get(datasetPath, datasetConfig.getVirtualDataset().getVersion());
@@ -159,5 +176,11 @@ public class SpaceResource {
 
   protected NamespaceTree newNamespaceTree(List<NameSpaceContainer> children) throws DatasetNotFoundException, NamespaceException {
     return NamespaceTree.newInstance(datasetService, children, SPACE, collaborationService);
+  }
+
+  private boolean isAuthorized(String role) {
+    String userTenant = MultiTenantServiceHelper.getUserTenant(securityContext.getUserPrincipal().getName());
+    String resourceTenant = MultiTenantServiceHelper.getResourceTenant(spaceName.getName());
+    return MultiTenantServiceHelper.hasPermission(securityContext, role, userTenant, resourceTenant);
   }
 }
