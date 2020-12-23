@@ -31,7 +31,6 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import javax.inject.Inject;
-import javax.ws.rs.NotAuthorizedException;
 import javax.ws.rs.core.SecurityContext;
 
 import org.apache.commons.collections.CollectionUtils;
@@ -56,7 +55,6 @@ import com.dremio.dac.model.sources.PhysicalDatasetPath;
 import com.dremio.dac.model.spaces.HomeName;
 import com.dremio.dac.model.spaces.HomePath;
 import com.dremio.dac.model.spaces.SpaceName;
-import com.dremio.dac.model.usergroup.UserUI;
 import com.dremio.dac.service.datasets.DatasetVersionMutator;
 import com.dremio.dac.service.errors.SourceNotFoundException;
 import com.dremio.dac.service.reflection.ReflectionServiceHelper;
@@ -207,7 +205,6 @@ public class CatalogServiceHelper {
   }
 
   public List<? extends CatalogItem> getTopLevelCatalogItems(final List<String> include) {
-    System.out.println("****called CatalogServiceHelper.getTopLevelCatalogItems");
     Preconditions.checkNotNull(include);
 
     List<CatalogItem> topLevelItems = new ArrayList<>();
@@ -221,9 +218,6 @@ public class CatalogServiceHelper {
     }
 
     for (SpaceConfig spaceConfig : namespaceService.getSpaces()) {
-      if(!canGetSpace(spaceConfig)){
-        continue; //user cannot view this space, do not add it to the list
-      }
       topLevelItems.add(CatalogItem.fromSpaceConfig(spaceConfig));
     }
 
@@ -248,9 +242,6 @@ public class CatalogServiceHelper {
   }
 
   public Optional<CatalogEntity> getCatalogEntityByPath(List<String> path) throws NamespaceException {
-    if (!canAccessPath(path)) {
-      throw new NotAuthorizedException("Not authorized");
-    }
     NameSpaceContainer entity = getNamespaceEntity(new NamespaceKey(path));
 
     if (entity == null) {
@@ -273,12 +264,7 @@ public class CatalogServiceHelper {
       return Optional.absent();
     }
 
-    Optional<CatalogEntity> catalogEntity = getCatalogEntityFromNamespaceContainer(entity.get());
-    if (canAccessCatalogEntity(catalogEntity.get())) {
-      return catalogEntity;
-    } else {
-      throw new NotAuthorizedException("Not authorized"); //user cannot view this entity
-    }
+    return getCatalogEntityFromNamespaceContainer(entity.get());
   }
 
   private Optional<CatalogEntity> getCatalogEntityFromNamespaceContainer(Object object) throws NamespaceException {
@@ -562,10 +548,6 @@ public class CatalogServiceHelper {
   }
 
   public CatalogEntity createCatalogItem(CatalogEntity entity) throws NamespaceException, UnsupportedOperationException, ExecutionSetupException {
-    if (!canAccessCatalogEntity(entity)) {
-      throw new NotAuthorizedException("Not authorized"); //user cannot create an entity in the given path
-    }
-
     if (entity instanceof Space) {
       Space space = (Space) entity;
       return createSpace(space, getNamespaceAttributes(entity));
@@ -634,10 +616,6 @@ public class CatalogServiceHelper {
     // getPathFromInternalId will return a path without quotes so make sure we do the same for the dataset path
     List<String> normalizedPath = dataset.getPath().stream().map(PathUtils::removeQuotes).collect(Collectors.toList());
     Preconditions.checkArgument(CollectionUtils.isEqualCollection(path, normalizedPath), "Entity id does not match the path specified in the dataset.");
-
-    if (!canAccessPath(path)) {
-      throw new NotAuthorizedException("Not authorized"); //user is not authorized to access this path
-    }
 
     // validation
     validateDataset(dataset);
@@ -854,10 +832,6 @@ public class CatalogServiceHelper {
   public CatalogEntity updateCatalogItem(CatalogEntity entity, String id) throws NamespaceException, UnsupportedOperationException, ExecutionSetupException, IOException {
     Preconditions.checkArgument(entity.getId().equals(id), "Ids must match.");
 
-    if (!canAccessCatalogEntity(entity)) {
-      throw new NotAuthorizedException("Not authorized"); //user cannot update an entity in the given path
-    }
-
     if (entity instanceof Dataset) {
       Dataset dataset = (Dataset) entity;
       updateDataset(dataset, getNamespaceAttributes(entity));
@@ -896,10 +870,6 @@ public class CatalogServiceHelper {
     if (object instanceof SourceConfig) {
       SourceConfig config = (SourceConfig) object;
 
-      if (!sourceService.canGetSource(config)) {
-        throw new NotAuthorizedException("Not authorized");
-      }
-
       if (tag != null) {
         config.setTag(tag);
       }
@@ -907,10 +877,6 @@ public class CatalogServiceHelper {
       sourceService.deleteSource(config);
     } else if (object instanceof SpaceConfig) {
       SpaceConfig config = (SpaceConfig) object;
-
-      if (!canGetSpace(config)) {
-        throw new NotAuthorizedException("Not authorized");
-      }
 
       String version = config.getTag();
 
@@ -921,10 +887,6 @@ public class CatalogServiceHelper {
     } else if (object instanceof DatasetConfig) {
       DatasetConfig config = (DatasetConfig) object;
 
-      if (!canAccessPath(config.getFullPathList())) {
-        throw new NotAuthorizedException("Not authorized");
-      }
-
       try {
         deleteDataset(config, tag);
       } catch (IOException e) {
@@ -932,10 +894,6 @@ public class CatalogServiceHelper {
       }
     } else if (object instanceof FolderConfig) {
       FolderConfig config = (FolderConfig) object;
-
-      if (!canAccessPath(config.getFullPathList())) {
-        throw new NotAuthorizedException("Not authorized");
-      }
 
       String version = config.getTag();
 
@@ -1010,9 +968,6 @@ public class CatalogServiceHelper {
     Object object = entity.get();
 
     if (object instanceof DatasetConfig) {
-      if (!canAccessPath(((DatasetConfig)object).getFullPathList())) {
-        throw new NotAuthorizedException("Not authorized");
-      }
       reflectionServiceHelper.refreshReflectionsForDataset(id);
     } else {
       throw new UnsupportedOperationException(String.format("Can only refresh datasets but found [%s].", object.getClass().getName()));
@@ -1036,9 +991,6 @@ public class CatalogServiceHelper {
     Object object = entity.get();
 
     if (object instanceof DatasetConfig) {
-      if (!canAccessPath(((DatasetConfig)object).getFullPathList())) {
-        throw new NotAuthorizedException("Not authorized");
-      }
       final NamespaceKey namespaceKey = catalog.resolveSingle(new NamespaceKey(((DatasetConfig)object).getFullPathList()));
       final DatasetRetrievalOptions.Builder retrievalOptionsBuilder = DatasetRetrievalOptions.newBuilder();
 
@@ -1203,25 +1155,14 @@ public class CatalogServiceHelper {
   }
 
   public List<CatalogItem> search(String query) throws NamespaceException {
-    System.out.println("****called CatalogServiceHelper.search: " + query);
     List<SearchContainer> searchResults = searchByQuery(query);
-    List<CatalogItem> allowedItems = new ArrayList<>();
 
-    List<CatalogItem> items = searchResults.stream().map(searchResult -> {
+    return searchResults.stream().map(searchResult -> {
       return CatalogItem.fromNamespaceContainer(searchResult.getNamespaceContainer());
     })
       .filter(Optional::isPresent)
       .map(Optional::get)
       .collect(Collectors.toList());
-
-    for (CatalogItem item : items) {
-      if (!canAccessPath(item.getPath())) {
-        continue; //user cannot view this item, do not add it to the list
-      }
-      allowedItems.add(item);
-    }
-
-    return allowedItems;
   }
 
   public List<CatalogItem> applyAdditionalInfoToContainers(
@@ -1247,78 +1188,5 @@ public class CatalogServiceHelper {
         new HomeConfig().setCtime(System.currentTimeMillis()).setOwner(userName)
       );
     }
-  }
-
-  private boolean canAccessPath(List<String> path) {
-    System.out.println("****CatalogServiceHelper.canAccessPath: " + path);
-    boolean isAllowed = true;
-    String root = path.get(0);
-
-    //if path root is a home (e.g. @dremio), access is restricted to its owner
-    if(root.startsWith("@") && !("@" + context.getUserPrincipal().getName()).equals(root)) {
-      return false;
-    }
-
-    /* if path root has no prefix "<tenant>__", it is public */
-    //get root tenant, if any
-    String[] nameParts = root.split("__");
-    if(nameParts.length > 1) {
-      //root access is restricted to a specific tenant, compare it with user tenant
-      String tenant = ((UserUI)context.getUserPrincipal()).getUser().getTenant();
-      if(!context.getUserPrincipal().getName().equals("dremio") && tenant != null && !tenant.equals(nameParts[0])){
-        isAllowed = false;
-      }
-    } //else, there is no prefix, root is public
-    System.out.println("****root: " + root + ", isAllowed: " + isAllowed);
-
-    return isAllowed;
-  }
-
-  private boolean canAccessCatalogEntity(CatalogEntity entity) {
-    boolean isAllowed = true;
-
-    if(entity instanceof Dataset) {
-      System.out.println("****canAccessCatalogEntity, dataset: " + ((Dataset)entity).getPath());
-      isAllowed = canAccessPath(((Dataset)entity).getPath());
-    } else if(entity instanceof File) {
-      System.out.println("****canAccessCatalogEntity, file: " + ((File)entity).getPath());
-      isAllowed = canAccessPath(((File)entity).getPath());
-    } else if(entity instanceof Folder) {
-      System.out.println("****canAccessCatalogEntity, folder: " + ((Folder)entity).getPath());
-      isAllowed = canAccessPath(((Folder)entity).getPath());
-    } else if(entity instanceof Home) {
-      System.out.println("****canAccessCatalogEntity, home: " + ((Home)entity).getName());
-      isAllowed = ((Home)entity).getName().equals("@" + context.getUserPrincipal().getName());
-    } else if(entity instanceof Source) {
-      System.out.println("****canAccessCatalogEntity, source: " + ((Source)entity).getName());
-      List<String> nameList = new ArrayList<>();
-      nameList.add(((Source)entity).getName());
-      isAllowed = canAccessPath(nameList);
-    } else if(entity instanceof Space) {
-      System.out.println("****canAccessCatalogEntity, space: " + ((Space)entity).getName());
-      isAllowed = canGetSpace(getSpaceConfig((Space)entity));
-    } else {
-      isAllowed = false;
-    }
-
-    return isAllowed;
-  }
-
-  private boolean canGetSpace(SpaceConfig spaceConfig) {
-    boolean isAllowed = true;
-
-    /* if space name has no prefix "<tenant>__", the space is public */
-    //get space tenant, if any
-    String[] nameParts = spaceConfig.getName().split("__");
-    if(nameParts.length > 1) {
-      //space access is restricted to a specific tenant, compare it with user tenant
-      String tenant = ((UserUI)context.getUserPrincipal()).getUser().getTenant();
-      if(!context.getUserPrincipal().getName().equals("dremio") && tenant != null && !tenant.equals(nameParts[0])){
-        isAllowed = false;
-      }
-    } //else, there is no prefix, space is public
-    System.out.println("****space: " + spaceConfig.getName() + ", isAllowed: " + isAllowed);
-
-    return isAllowed;
   }
 }

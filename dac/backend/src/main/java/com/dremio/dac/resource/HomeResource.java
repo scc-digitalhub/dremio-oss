@@ -202,6 +202,9 @@ public class HomeResource extends BaseResourceWithAllocator {
   @GET
   @Produces(MediaType.APPLICATION_JSON)
   public Home getHome(@QueryParam("includeContents") @DefaultValue("true") boolean includeContents) throws NamespaceException, HomeNotFoundException, DatasetNotFoundException {
+    if (!isAuthorized()) {
+      throw new ForbiddenException(String.format("User not authorized to access %s home.", homeName.getName()));
+    }
     try {
       long dsCount = namespaceService.getDatasetCount(homePath.toNamespaceKey(), BoundedDatasetCount.SEARCH_TIME_LIMIT_MS, BoundedDatasetCount.COUNT_LIMIT_TO_STOP_SEARCH).getCount();
       final HomeConfig homeConfig = namespaceService.getHome(homePath.toNamespaceKey()).setExtendedConfig(new ExtendedConfig().setDatasetCount(dsCount));
@@ -220,6 +223,9 @@ public class HomeResource extends BaseResourceWithAllocator {
   @Produces(MediaType.APPLICATION_JSON)
   public Dataset getDataset(@PathParam("path") String path)
     throws NamespaceException, FileNotFoundException, DatasetNotFoundException {
+    if (!isAuthorized()) {
+      throw new ForbiddenException(String.format("User not authorized to access %s home.", homeName.getName()));
+    }
     DatasetPath datasetPath = DatasetPath.fromURLPath(homeName, path);
     final DatasetConfig datasetConfig = namespaceService.getDataset(datasetPath.toNamespaceKey());
     final VirtualDatasetUI vds = datasetService.get(datasetPath, datasetConfig.getVirtualDataset().getVersion());
@@ -243,6 +249,10 @@ public class HomeResource extends BaseResourceWithAllocator {
                          @FormDataParam("file") FormDataContentDisposition contentDispositionHeader,
                          @FormDataParam("fileName") FileName fileName,
                          @QueryParam("extension") String extension) throws Exception {
+    if (!isAuthorized()) {
+      throw new ForbiddenException(String.format("User not authorized to access %s home.", homeName.getName()));
+    }
+
     // check if file uploads are allowed
     if (!projectOptionManager.getOption(UIOptions.ALLOW_FILE_UPLOADS)) {
       throw new ForbiddenException("File uploads have been disabled.");
@@ -282,6 +292,9 @@ public class HomeResource extends BaseResourceWithAllocator {
   @Consumes(MediaType.APPLICATION_JSON)
   @Produces(MediaType.APPLICATION_JSON)
   public void cancelUploadFile(FileFormat fileFormat, @PathParam("path") String path) throws IOException, DACException {
+    if (!isAuthorized()) {
+      throw new ForbiddenException(String.format("User not authorized to access %s home.", homeName.getName()));
+    }
     fileStore.deleteFile(fileFormat.getLocation());
   }
 
@@ -290,6 +303,10 @@ public class HomeResource extends BaseResourceWithAllocator {
   @Consumes(MediaType.APPLICATION_JSON)
   @Produces(MediaType.APPLICATION_JSON)
   public File finishUploadFile(FileFormat fileFormat, @PathParam("path") String path) throws Exception {
+    if (!isAuthorized()) {
+      throw new ForbiddenException(String.format("User not authorized to access %s home.", homeName.getName()));
+    }
+
     // check if file uploads are allowed
     if (!projectOptionManager.getOption(UIOptions.ALLOW_FILE_UPLOADS)) {
       throw new ForbiddenException("File uploads have been disabled.");
@@ -328,6 +345,9 @@ public class HomeResource extends BaseResourceWithAllocator {
   @Consumes(MediaType.APPLICATION_JSON)
   public JobDataFragment previewFormatSettingsStaging(FileFormat fileFormat, @PathParam("path") String path)
     throws FileNotFoundException, SourceNotFoundException {
+    if (!isAuthorized()) {
+      throw new ForbiddenException(String.format("User not authorized to access %s home.", homeName.getName()));
+    }
 
     if (!fileStore.validStagingLocation(com.dremio.io.file.Path.of(fileFormat.getLocation()))) {
       throw new IllegalArgumentException("Invalid staging location provided");
@@ -355,6 +375,9 @@ public class HomeResource extends BaseResourceWithAllocator {
   @Consumes(MediaType.APPLICATION_JSON)
   public JobDataFragment previewFormatSettings(FileFormat fileFormat, @PathParam("path") String path)
       throws FileNotFoundException, SourceNotFoundException {
+    if (!isAuthorized()) {
+      throw new ForbiddenException(String.format("User not authorized to access %s home.", homeName.getName()));
+    }
 
     FilePath filePath = FilePath.fromURLPath(homeName, path);
     logger.debug("filePath: " + filePath.toPathString());
@@ -375,6 +398,10 @@ public class HomeResource extends BaseResourceWithAllocator {
   @Produces(MediaType.APPLICATION_JSON)
   public File getFile(@PathParam("path") String path)
     throws Exception {
+    if (!isAuthorized()) {
+      throw new ForbiddenException(String.format("User not authorized to access %s home.", homeName.getName()));
+    }
+
     FilePath filePath = FilePath.fromURLPath(homeName, path);
     try {
       final DatasetConfig datasetConfig = namespaceService.getDataset(filePath.toNamespaceKey());
@@ -398,6 +425,9 @@ public class HomeResource extends BaseResourceWithAllocator {
   @Path("file/{path: .*}")
   @Produces(MediaType.APPLICATION_JSON)
   public void deleteFile(@PathParam("path") String path, @QueryParam("version") String version) throws NamespaceException, DACException {
+    if (!isAuthorized()) {
+      throw new ForbiddenException(String.format("User not authorized to access %s home.", homeName.getName()));
+    }
     FilePath filePath = FilePath.fromURLPath(homeName, path);
     if (version == null) {
       throw new ClientErrorException("missing version parameter");
@@ -413,6 +443,9 @@ public class HomeResource extends BaseResourceWithAllocator {
   @Path("file_rename/{path: .*}")
   @Produces(MediaType.APPLICATION_JSON)
   public File renameFile(@PathParam("path") String path, @QueryParam("renameTo") FileName renameTo) throws Exception {
+    if (!isAuthorized()) {
+      throw new ForbiddenException(String.format("User not authorized to access %s home.", homeName.getName()));
+    }
     FilePath filePath = FilePath.fromURLPath(homeName, path);
     final FilePath newFilePath = filePath.rename(renameTo.getName());
     final DatasetConfig datasetConfig = namespaceService.renameDataset(filePath.toNamespaceKey(), newFilePath.toNamespaceKey());
@@ -432,6 +465,9 @@ public class HomeResource extends BaseResourceWithAllocator {
   @Produces(MediaType.APPLICATION_JSON)
   public FileFormatUI getFormatSettings(@PathParam("path") String path)
     throws FileNotFoundException, HomeNotFoundException, NamespaceException {
+    if (!isAuthorized()) {
+      throw new ForbiddenException(String.format("User not authorized to access %s home.", homeName.getName()));
+    }
     FilePath filePath = FilePath.fromURLPath(homeName, path);
     final FileConfig fileConfig = toFileConfig(namespaceService.getDataset(filePath.toNamespaceKey()));
     return new FileFormatUI(FileFormat.getForFile(fileConfig), filePath);
@@ -443,6 +479,10 @@ public class HomeResource extends BaseResourceWithAllocator {
   @Consumes(MediaType.APPLICATION_JSON)
   public FileFormatUI saveFormatSettings(FileFormat fileFormat, @PathParam("path") String path)
       throws FileNotFoundException, HomeNotFoundException, NamespaceException {
+    if (!isAuthorized()) {
+      throw new ForbiddenException(String.format("User not authorized to access %s home.", homeName.getName()));
+    }
+
     FilePath filePath = FilePath.fromURLPath(homeName, path);
     // merge file configs
     final DatasetConfig existingDSConfig = namespaceService.getDataset(filePath.toNamespaceKey());
@@ -463,6 +503,9 @@ public class HomeResource extends BaseResourceWithAllocator {
   @Path("/folder/{path: .*}")
   @Produces(MediaType.APPLICATION_JSON)
   public Folder getFolder(@PathParam("path") String path, @QueryParam("includeContents") @DefaultValue("true") boolean includeContents) throws Exception {
+    if (!isAuthorized()) {
+      throw new ForbiddenException(String.format("User not authorized to access %s home.", homeName.getName()));
+    }
     FolderPath folderPath = FolderPath.fromURLPath(homeName, path);
     try {
       final FolderConfig folderConfig = namespaceService.getFolder(folderPath.toNamespaceKey());
@@ -479,6 +522,9 @@ public class HomeResource extends BaseResourceWithAllocator {
   @Path("/folder/{path: .*}")
   @Produces(MediaType.APPLICATION_JSON)
   public void deleteFolder(@PathParam("path") String path, @QueryParam("version") String version) throws NamespaceException, FolderNotFoundException {
+    if (!isAuthorized()) {
+      throw new ForbiddenException(String.format("User not authorized to access %s home.", homeName.getName()));
+    }
     FolderPath folderPath = FolderPath.fromURLPath(homeName, path);
     if (version == null) {
       throw new ClientErrorException("missing version parameter");
@@ -495,6 +541,9 @@ public class HomeResource extends BaseResourceWithAllocator {
   @Produces(MediaType.APPLICATION_JSON)
   @Consumes(MediaType.APPLICATION_JSON)
   public Folder createFolder(FolderName name, @PathParam("path") String path) throws Exception  {
+    if (!isAuthorized()) {
+      throw new ForbiddenException(String.format("User not authorized to access %s home.", homeName.getName()));
+    }
     String fullPath = PathUtils.toFSPathString(Arrays.asList(path, name.toString()));
     FolderPath folderPath = FolderPath.fromURLPath(homeName, fullPath);
 
@@ -518,6 +567,15 @@ public class HomeResource extends BaseResourceWithAllocator {
       @PathParam("path") String path,
       @QueryParam("limit") Integer limit)
     throws DatasetNotFoundException, DatasetVersionNotFoundException, NamespaceException, NewDatasetQueryException {
+    if (!isAuthorized()) {
+      throw new ForbiddenException(String.format("User not authorized to access %s home.", homeName.getName()));
+    }
     return datasetsResource.createUntitledFromHomeFile(homeName, path, limit);
+  }
+
+  private boolean isAuthorized() {
+    //allow only if user is home owner or admin
+    String currentUserHome = HomeName.getUserHomePath(securityContext.getUserPrincipal().getName()).getName();
+    return securityContext.isUserInRole("admin") || currentUserHome.equals(homeName.getName());
   }
 }

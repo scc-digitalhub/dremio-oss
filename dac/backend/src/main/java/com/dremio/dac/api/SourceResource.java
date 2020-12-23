@@ -24,6 +24,7 @@ import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.DELETE;
+import javax.ws.rs.ForbiddenException;
 import javax.ws.rs.GET;
 import javax.ws.rs.NotFoundException;
 import javax.ws.rs.POST;
@@ -31,7 +32,9 @@ import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
+import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
+import javax.ws.rs.core.SecurityContext;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,6 +44,7 @@ import com.dremio.dac.annotations.APIResource;
 import com.dremio.dac.annotations.Secured;
 import com.dremio.dac.service.errors.ServerErrorException;
 import com.dremio.dac.service.source.SourceService;
+import com.dremio.dac.service.tenant.MultiTenantServiceHelper;
 import com.dremio.exec.catalog.ConnectionReader;
 import com.dremio.exec.catalog.conf.ConnectionConf;
 import com.dremio.exec.catalog.conf.SourceType;
@@ -101,11 +105,13 @@ public class SourceResource {
 
   private final SourceService sourceService;
   private final SabotContext sabotContext;
+  private final SecurityContext securityContext;
 
   @Inject
-  public SourceResource(SourceService sourceService, SabotContext sabotContext) {
+  public SourceResource(SourceService sourceService, SabotContext sabotContext, @Context SecurityContext securityContext) {
     this.sourceService = sourceService;
     this.sabotContext = sabotContext;
+    this.securityContext = securityContext;
   }
 
   @GET
@@ -115,9 +121,10 @@ public class SourceResource {
 
     final List<SourceConfig> sourceConfigs = sourceService.getSources();
     for (SourceConfig sourceConfig : sourceConfigs) {
-      Source source = fromSourceConfig(sourceConfig);
-
-      sources.add(source);
+      if (isAuthorized("user", sourceConfig)) {
+        Source source = fromSourceConfig(sourceConfig);
+        sources.add(source);
+      }
     }
 
     return sources;
@@ -140,6 +147,9 @@ public class SourceResource {
   @Path("/{id}")
   public SourceDeprecated getSource(@PathParam("id") String id) throws NamespaceException {
     SourceConfig sourceConfig = sourceService.getById(id);
+    if (!isAuthorized("user", sourceConfig)) {
+      throw new ForbiddenException(String.format("User not authorized to access source %s.", id));
+    }
 
     return fromSourceConfig(sourceConfig);
   }
@@ -211,5 +221,11 @@ public class SourceResource {
   @VisibleForTesting
   protected SourceDeprecated fromSourceConfig(SourceConfig sourceConfig) {
     return new SourceDeprecated(sourceService.fromSourceConfig(sourceConfig));
+  }
+
+  private boolean isAuthorized(String role, SourceConfig sourceConfig) {
+    String userTenant = MultiTenantServiceHelper.getUserTenant(securityContext.getUserPrincipal().getName());
+    String resourceTenant = MultiTenantServiceHelper.getResourceTenant(sourceConfig.getName());
+    return MultiTenantServiceHelper.hasPermission(securityContext, role, userTenant, resourceTenant);
   }
 }

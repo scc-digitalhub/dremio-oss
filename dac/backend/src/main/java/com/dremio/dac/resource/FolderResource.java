@@ -26,13 +26,16 @@ import javax.inject.Inject;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.DELETE;
 import javax.ws.rs.DefaultValue;
+import javax.ws.rs.ForbiddenException;
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
 import javax.ws.rs.QueryParam;
+import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
+import javax.ws.rs.core.SecurityContext;
 
 import com.dremio.common.exceptions.UserException;
 import com.dremio.common.utils.PathUtils;
@@ -48,6 +51,7 @@ import com.dremio.dac.service.datasets.DatasetVersionMutator;
 import com.dremio.dac.service.errors.ClientErrorException;
 import com.dremio.dac.service.errors.DatasetNotFoundException;
 import com.dremio.dac.service.errors.FolderNotFoundException;
+import com.dremio.dac.service.tenant.MultiTenantServiceHelper;
 import com.dremio.service.namespace.NamespaceException;
 import com.dremio.service.namespace.NamespaceNotFoundException;
 import com.dremio.service.namespace.NamespaceService;
@@ -68,23 +72,29 @@ public class FolderResource {
   private final NamespaceService namespaceService;
   private final CollaborationHelper collaborationHelper;
   private final SpaceName spaceName;
+  private final SecurityContext securityContext;
 
   @Inject
   public FolderResource(
       DatasetVersionMutator datasetService,
       NamespaceService namespaceService,
       CollaborationHelper collaborationHelper,
-      @PathParam("space") SpaceName spaceName) {
+      @PathParam("space") SpaceName spaceName,
+      @Context SecurityContext securityContext) {
     this.datasetService = datasetService;
     this.namespaceService = namespaceService;
     this.collaborationHelper = collaborationHelper;
     this.spaceName = spaceName;
+    this.securityContext = securityContext;
   }
 
   @GET
   @Path("/folder/{path: .*}")
   @Produces(MediaType.APPLICATION_JSON)
   public Folder getFolder(@PathParam("path") String path, @QueryParam("includeContents") @DefaultValue("true") boolean includeContents) throws NamespaceException, FolderNotFoundException, DatasetNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access folders in %s space.", spaceName.getName()));
+    }
     FolderPath folderPath = FolderPath.fromURLPath(spaceName, path);
     try {
       final FolderConfig folderConfig = namespaceService.getFolder(folderPath.toNamespaceKey());
@@ -101,6 +111,9 @@ public class FolderResource {
   @Path("/folder/{path: .*}")
   @Produces(MediaType.APPLICATION_JSON)
   public void deleteFolder(@PathParam("path") String path, @QueryParam("version") String version) throws NamespaceException, FolderNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access folders in %s space.", spaceName.getName()));
+    }
     FolderPath folderPath = FolderPath.fromURLPath(spaceName, path);
     if (version == null) {
       throw new ClientErrorException("missing version parameter");
@@ -117,6 +130,9 @@ public class FolderResource {
   @Produces(MediaType.APPLICATION_JSON)
   @Consumes(MediaType.APPLICATION_JSON)
   public Folder createFolder(FolderName name, @PathParam("path") String path) throws NamespaceException  {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access folders in %s space.", spaceName.getName()));
+    }
     String fullPath = PathUtils.toFSPathString(Arrays.asList(path, name.toString()));
     FolderPath folderPath = FolderPath.fromURLPath(spaceName, fullPath);
 
@@ -148,6 +164,12 @@ public class FolderResource {
     throw UserException.unsupportedError()
         .message("Renaming a folder is not supported")
         .build(logger);
+  }
+
+  private boolean isAuthorized(String role) {
+    String userTenant = MultiTenantServiceHelper.getUserTenant(securityContext.getUserPrincipal().getName());
+    String resourceTenant = MultiTenantServiceHelper.getResourceTenant(spaceName.getName());
+    return MultiTenantServiceHelper.hasPermission(securityContext, role, userTenant, resourceTenant);
   }
 
 }
