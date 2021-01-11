@@ -24,7 +24,9 @@ import javax.ws.rs.GET;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
+import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
+import javax.ws.rs.core.SecurityContext;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,6 +36,7 @@ import com.dremio.dac.annotations.Secured;
 import com.dremio.dac.model.sources.SourceUI;
 import com.dremio.dac.model.sources.Sources;
 import com.dremio.dac.service.source.SourceService;
+import com.dremio.dac.service.tenant.MultiTenantServiceHelper;
 import com.dremio.service.namespace.BoundedDatasetCount;
 import com.dremio.service.namespace.NamespaceKey;
 import com.dremio.service.namespace.NamespaceService;
@@ -53,17 +56,22 @@ public class SourcesResource {
 
   private final NamespaceService namespaceService;
   private final SourceService sourceService;
+  private final SecurityContext securityContext;
 
   @Inject
-  public SourcesResource(NamespaceService namespaceService, SourceService sourceService) {
+  public SourcesResource(NamespaceService namespaceService, SourceService sourceService, @Context SecurityContext securityContext) {
     this.namespaceService = namespaceService;
     this.sourceService = sourceService;
+    this.securityContext = securityContext;
   }
 
   @GET
   public Sources getSources() throws Exception {
     final Sources sources = new Sources();
     for (SourceConfig sourceConfig : sourceService.getSources()) {
+      if (!isAuthorized("user", sourceConfig.getName())) {
+        continue; //do not add source to the result
+      }
       SourceUI source = newSource(sourceConfig);
 
       BoundedDatasetCount datasetCount = namespaceService.getDatasetCount(new NamespaceKey(source.getName()), BoundedDatasetCount.SEARCH_TIME_LIMIT_MS, BoundedDatasetCount.COUNT_LIMIT_TO_STOP_SEARCH);
@@ -104,5 +112,11 @@ public class SourcesResource {
 
   protected SourceUI newSource(SourceConfig sourceConfig) throws Exception {
     return SourceUI.get(sourceConfig, sourceService.getConnectionReader());
+  }
+
+  private boolean isAuthorized(String role, String sourceName) {
+    String userTenant = MultiTenantServiceHelper.getUserTenant(securityContext.getUserPrincipal().getName());
+    String resourceTenant = MultiTenantServiceHelper.getResourceTenant(sourceName);
+    return MultiTenantServiceHelper.hasPermission(securityContext, role, userTenant, resourceTenant);
   }
 }

@@ -21,6 +21,7 @@ import java.util.List;
 import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
 import javax.inject.Provider;
+import javax.ws.rs.ForbiddenException;
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
@@ -38,8 +39,8 @@ import com.dremio.dac.model.resourcetree.ResourceTreeEntity;
 import com.dremio.dac.model.resourcetree.ResourceTreeSourceEntity;
 import com.dremio.dac.model.sources.SourceUI;
 import com.dremio.dac.model.spaces.HomeName;
-import com.dremio.dac.model.usergroup.UserUI;
 import com.dremio.dac.service.source.SourceService;
+import com.dremio.dac.service.tenant.MultiTenantServiceHelper;
 import com.dremio.exec.catalog.ConnectionReader;
 import com.dremio.exec.server.SabotContext;
 import com.dremio.service.namespace.NamespaceException;
@@ -94,7 +95,7 @@ public class ResourceTreeResource {
     if (showHomes) {
       resources.addAll(getHomes(false));
     }
-    return new ResourceList(resources);
+    return new ResourceList(filterResources(resources));
   }
 
   @GET
@@ -103,6 +104,9 @@ public class ResourceTreeResource {
   public ResourceList getResources(@PathParam("rootPath") String rootPath, @QueryParam("showDatasets") boolean showDatasets)
     throws NamespaceException, UnsupportedEncodingException {
     final FolderPath folderPath = new FolderPath(rootPath);
+    if (!isAuthorized("user", folderPath.getRoot().getName())) {
+      throw new ForbiddenException(String.format("User not authorized to access path [%s]", rootPath));
+    }
     return new ResourceList(listPath(folderPath.toNamespaceKey(), showDatasets));
   }
 
@@ -119,6 +123,10 @@ public class ResourceTreeResource {
     final FolderPath folderPath = new FolderPath(rootPath);
     final List<String> expandPathList = folderPath.toPathList();
     ResourceTreeEntity root = null;
+
+    if (!isAuthorized("user", folderPath.getRoot().getName())) {
+      throw new ForbiddenException(String.format("User not authorized to access path [%s]", rootPath));
+    }
 
     if (showSpaces) {
       for (ResourceTreeEntity resourceTreeEntity : getSpaces()) {
@@ -194,7 +202,7 @@ public class ResourceTreeResource {
         }
       } else {
         // parent is empty stop exploring.
-        return new ResourceList(resources);
+        return new ResourceList(filterResources(resources));
       }
     }
 
@@ -205,7 +213,7 @@ public class ResourceTreeResource {
     if (root.isListable()) {
       root.expand(listPath(new NamespaceKey(expandPathList), showDatasets));
     }
-    return new ResourceList(resources);
+    return new ResourceList(filterResources(resources));
   }
 
   public List<ResourceTreeEntity> listPath(NamespaceKey root, boolean showDatasets) throws NamespaceException, UnsupportedEncodingException {
@@ -223,9 +231,6 @@ public class ResourceTreeResource {
   public List<ResourceTreeEntity>  getSpaces() throws NamespaceException, UnsupportedEncodingException  {
     final List<ResourceTreeEntity> resources = Lists.newArrayList();
     for (SpaceConfig spaceConfig : namespaceService.get().getSpaces()) {
-      if(!canGetSpace(spaceConfig)){
-        continue; //user cannot view this space, do not add it to the list
-      }
       resources.add(new ResourceTreeEntity(spaceConfig));
     }
     return resources;
@@ -252,21 +257,25 @@ public class ResourceTreeResource {
     return resources;
   }
 
-  private boolean canGetSpace(SpaceConfig spaceConfig) {
-    boolean isAllowed = true;
-
-    /* if space name has no prefix "<tenant>__", the space is public */
-    //get space tenant, if any
-    String[] nameParts = spaceConfig.getName().split("__");
-    if(nameParts.length > 1) {
-      //space access is restricted to a specific tenant, compare it with user tenant
-      String tenant = ((UserUI)securityContext.getUserPrincipal()).getUser().getTenant();
-      if(!securityContext.getUserPrincipal().getName().equals("dremio") && tenant != null && !tenant.equals(nameParts[0])){
-        isAllowed = false;
+  private List<ResourceTreeEntity> filterResources(List<ResourceTreeEntity> resources) {
+    List<ResourceTreeEntity> result = Lists.newArrayList();
+    for (ResourceTreeEntity entity : resources) {
+      if (isAuthorized("user", entity.getFullPath().get(0))) {
+        result.add(entity);
       }
-    } //else, there is no prefix, space is public
-    System.out.println("****ResourceTreeResource space: " + spaceConfig.getName() + ", isAllowed: " + isAllowed);
-
-    return isAllowed;
+    }
+    return result;
   }
+
+  private boolean isAuthorized(String role, String root) {
+    //short-circuit if the root is the home of the current user
+    if (HomeName.getUserHomePath(securityContext.getUserPrincipal().getName()).getName().equals(root)) {
+      return true;
+    }
+
+    String userTenant = MultiTenantServiceHelper.getUserTenant(securityContext.getUserPrincipal().getName());
+    String resourceTenant = MultiTenantServiceHelper.getResourceTenant(root);
+    return MultiTenantServiceHelper.hasPermission(securityContext, role, userTenant, resourceTenant);
+  }
+
 }
