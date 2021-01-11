@@ -21,13 +21,16 @@ import javax.inject.Inject;
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
+import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
+import javax.ws.rs.core.SecurityContext;
 
 import com.dremio.dac.annotations.RestResource;
 import com.dremio.dac.annotations.Secured;
 import com.dremio.dac.model.spaces.Space;
 import com.dremio.dac.model.spaces.SpacePath;
 import com.dremio.dac.model.spaces.Spaces;
+import com.dremio.dac.service.tenant.MultiTenantServiceHelper;
 import com.dremio.service.namespace.BoundedDatasetCount;
 import com.dremio.service.namespace.NamespaceException;
 import com.dremio.service.namespace.NamespaceNotFoundException;
@@ -46,10 +49,12 @@ public class SpacesResource {
   static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(SpacesResource.class);
 
   private final NamespaceService namespaceService;
+  private final SecurityContext securityContext;
 
   @Inject
-  public SpacesResource(NamespaceService namespaceService) {
+  public SpacesResource(NamespaceService namespaceService, @Context SecurityContext securityContext) {
     this.namespaceService = namespaceService;
+    this.securityContext = securityContext;
   }
 
   @GET
@@ -57,6 +62,10 @@ public class SpacesResource {
   public Spaces getSpaces() throws Exception {
     final Spaces spaces = new Spaces();
     for (SpaceConfig spaceConfig : namespaceService.getSpaces()) {
+      if (!isAuthorized("user", spaceConfig.getName())) {
+        continue; //do not add space to the result
+      }
+
       int datasetCount = 0;
 
       try {
@@ -79,5 +88,11 @@ public class SpacesResource {
 
   protected Space newSpace(SpaceConfig spaceConfig, int datasetCount) throws Exception {
     return Space.newInstance(spaceConfig, null, datasetCount);
+  }
+
+  private boolean isAuthorized(String role, String spaceName) {
+    String userTenant = MultiTenantServiceHelper.getUserTenant(securityContext.getUserPrincipal().getName());
+    String resourceTenant = MultiTenantServiceHelper.getResourceTenant(spaceName);
+    return MultiTenantServiceHelper.hasPermission(securityContext, role, userTenant, resourceTenant);
   }
 }

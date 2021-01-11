@@ -38,6 +38,7 @@ import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.DefaultValue;
+import javax.ws.rs.ForbiddenException;
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
@@ -87,6 +88,8 @@ import com.dremio.dac.explore.model.extract.MapSelection;
 import com.dremio.dac.explore.model.extract.ReplaceCards;
 import com.dremio.dac.explore.model.extract.ReplaceCards.ReplaceValuesCard;
 import com.dremio.dac.explore.model.extract.Selection;
+import com.dremio.dac.model.spaces.HomeName;
+import com.dremio.dac.model.spaces.TempSpace;
 import com.dremio.dac.proto.model.dataset.DataType;
 import com.dremio.dac.proto.model.dataset.ExtractListRule;
 import com.dremio.dac.proto.model.dataset.ExtractMapRule;
@@ -103,6 +106,7 @@ import com.dremio.dac.service.errors.ClientErrorException;
 import com.dremio.dac.service.errors.ConflictException;
 import com.dremio.dac.service.errors.DatasetNotFoundException;
 import com.dremio.dac.service.errors.DatasetVersionNotFoundException;
+import com.dremio.dac.service.tenant.MultiTenantServiceHelper;
 import com.dremio.exec.server.SabotContext;
 import com.dremio.service.job.proto.JobId;
 import com.dremio.service.job.proto.QueryType;
@@ -291,6 +295,9 @@ public class DatasetVersionResource extends BaseResourceWithAllocator {
   @GET
   @Produces(APPLICATION_JSON)
   public Dataset getDataset() throws DatasetVersionNotFoundException, DatasetNotFoundException, NamespaceException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     return getCurrentDataset();
   }
 
@@ -307,6 +314,9 @@ public class DatasetVersionResource extends BaseResourceWithAllocator {
       @QueryParam("tipVersion") DatasetVersion tipVersion,
       @QueryParam("limit") Integer limit,
       @QueryParam("engineName") String engineName) throws DatasetVersionNotFoundException, NamespaceException, JobNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     // tip version is optional, as it is only needed when we are navigated back in history
     // otherwise assume the current version is at the tip of the history
     VirtualDatasetUI dataset = getDatasetConfig();
@@ -322,6 +332,9 @@ public class DatasetVersionResource extends BaseResourceWithAllocator {
       @QueryParam("tipVersion") DatasetVersion tipVersion,
       @QueryParam("limit") Integer limit)
       throws DatasetVersionNotFoundException, NamespaceException, JobNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     return tool.createReviewResponse(datasetPath, getDatasetConfig(), jobId, tipVersion, getOrCreateAllocator("reviewDatasetVersion"), limit);
   }
 
@@ -344,6 +357,9 @@ public class DatasetVersionResource extends BaseResourceWithAllocator {
       @QueryParam("newVersion") DatasetVersion newVersion,
       @QueryParam("limit") @DefaultValue("50") int limit)
       throws DatasetVersionNotFoundException, DatasetNotFoundException, NamespaceException, JobNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     if (newVersion == null) {
       throw new ClientErrorException("Query parameter 'newVersion' should not be null");
     }
@@ -369,6 +385,9 @@ public class DatasetVersionResource extends BaseResourceWithAllocator {
       /* Body */ TransformBase transform,
       @QueryParam("newVersion") DatasetVersion newVersion
   ) throws DatasetVersionNotFoundException, DatasetNotFoundException, NamespaceException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
 
     if (newVersion == null) {
       throw new ClientErrorException("Query parameter 'newVersion' should not be null");
@@ -392,8 +411,15 @@ public class DatasetVersionResource extends BaseResourceWithAllocator {
    */
   @GET @Path("run")
   @Produces(APPLICATION_JSON) @Consumes(APPLICATION_JSON)
+<<<<<<< 0a610c59ccf9c5e535645da4e3e0d94f87330d3c
   public InitialRunResponse run(@QueryParam("tipVersion") DatasetVersion tipVersion,
                                 @QueryParam("engineName") String engineName) throws DatasetVersionNotFoundException, InterruptedException, NamespaceException {
+=======
+  public InitialRunResponse run(@QueryParam("tipVersion") DatasetVersion tipVersion) throws DatasetVersionNotFoundException, InterruptedException, NamespaceException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
+>>>>>>> Tenant check on some APIs, removed old changes in SourceService
     final VirtualDatasetUI virtualDatasetUI = getDatasetConfig();
 
     final SqlQuery query = new SqlQuery(virtualDatasetUI.getSql(), virtualDatasetUI.getState().getContextList(), securityContext,
@@ -438,6 +464,9 @@ public class DatasetVersionResource extends BaseResourceWithAllocator {
       /* Body */ TransformBase transform,
       @QueryParam("newVersion") DatasetVersion newVersion,
       @QueryParam("limit") @DefaultValue("50") int limit) throws DatasetVersionNotFoundException, DatasetNotFoundException, NamespaceException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     final VirtualDatasetUI virtualDatasetUI = getDatasetConfig();
     checkNotNull(virtualDatasetUI.getState());
 
@@ -464,6 +493,9 @@ public class DatasetVersionResource extends BaseResourceWithAllocator {
       @QueryParam("as") DatasetPath asDatasetPath,
       @QueryParam("savedTag") String savedTag // null for the first save
   ) throws DatasetVersionNotFoundException, UserNotFoundException, NamespaceException, DatasetNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     if (asDatasetPath == null) {
       asDatasetPath = datasetPath;
     }
@@ -548,6 +580,9 @@ public class DatasetVersionResource extends BaseResourceWithAllocator {
   @POST @Path("extract") @Produces(APPLICATION_JSON) @Consumes(APPLICATION_JSON)
   public Cards<ExtractRule> getExtractCards(
       /* Body */ Selection selection) throws DatasetVersionNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     validateColumnType("Extract text", TEXT, selection.getColName());
     List<Card<ExtractRule>> cards = recommenders.recommendExtract(selection, getDatasetSql(), getOrCreateAllocator("getExtractCards"));
     return new Cards<>(cards);
@@ -557,6 +592,9 @@ public class DatasetVersionResource extends BaseResourceWithAllocator {
   @Produces(APPLICATION_JSON) @Consumes(APPLICATION_JSON)
   public Card<ExtractRule> getExtractCard(
       /* Body */ PreviewReq<ExtractRule, Selection> req) throws DatasetVersionNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     String colName = req.getSelection().getColName();
     return recommenders.generateExtractCard(req.getRule(), colName, getDatasetSql(), getOrCreateAllocator("getExtractCard"));
   }
@@ -564,6 +602,9 @@ public class DatasetVersionResource extends BaseResourceWithAllocator {
   @POST @Path("extract_map") @Produces(APPLICATION_JSON) @Consumes(APPLICATION_JSON)
   public Cards<ExtractMapRule> getExtractMapCards(
       /* Body */ MapSelection mapSelection) throws DatasetVersionNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     /**
      * Unfortunately we store the column type as ANY (comes from Calcite row type) for complex types,
      * so we can't have this check now.
@@ -576,6 +617,9 @@ public class DatasetVersionResource extends BaseResourceWithAllocator {
   @POST @Path("extract_map_preview") @Produces(APPLICATION_JSON) @Consumes(APPLICATION_JSON)
   public Card<ExtractMapRule> getExtractMapCard(
       /* Body */ PreviewReq<ExtractMapRule, MapSelection> req) throws DatasetVersionNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     String colName = req.getSelection().getColName();
     return recommenders.generateExtractMapCard(req.getRule(), colName, getDatasetSql(), getOrCreateAllocator("getExtractMapCard"));
   }
@@ -583,6 +627,9 @@ public class DatasetVersionResource extends BaseResourceWithAllocator {
   @POST @Path("extract_list") @Produces(APPLICATION_JSON) @Consumes(APPLICATION_JSON)
   public Cards<ExtractListRule> getExtractListCards(
       /* Body */ Selection selection) throws DatasetVersionNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     /**
      * Unfortunately we store the column type as ANY (comes from Calcite row type) for complex types,
      * so we can't have this check now.
@@ -595,6 +642,9 @@ public class DatasetVersionResource extends BaseResourceWithAllocator {
   @POST @Path("extract_list_preview") @Produces(APPLICATION_JSON) @Consumes(APPLICATION_JSON)
   public Card<ExtractListRule> getExtractListCard(
       /* Body */ PreviewReq<ExtractListRule, Selection> req) throws DatasetVersionNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     String colName = req.getSelection().getColName();
     return recommenders.generateExtractListCard(req.getRule(), colName, getDatasetSql(), getOrCreateAllocator("getExtractListCard"));
   }
@@ -602,6 +652,9 @@ public class DatasetVersionResource extends BaseResourceWithAllocator {
   @POST @Path("split") @Produces(APPLICATION_JSON) @Consumes(APPLICATION_JSON)
   public Cards<SplitRule> getSplitCards(
       /* Body */ Selection selection) throws DatasetVersionNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     validateColumnType("Split", TEXT, selection.getColName());
     List<Card<SplitRule>> rules = recommenders.recommendSplit(selection, getDatasetSql(), getOrCreateAllocator("getSplitCards"));
     return new Cards<>(rules);
@@ -610,6 +663,9 @@ public class DatasetVersionResource extends BaseResourceWithAllocator {
   @POST @Path("split_preview") @Produces(APPLICATION_JSON) @Consumes(APPLICATION_JSON)
   public Card<SplitRule> getSplitCard(
       /* Body */ PreviewReq<SplitRule, Selection> req) throws DatasetVersionNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     String colName = req.getSelection().getColName();
     return recommenders.generateSplitCard(req.getRule(), colName, getDatasetSql(), getOrCreateAllocator("getSplitCard"));
   }
@@ -624,6 +680,9 @@ public class DatasetVersionResource extends BaseResourceWithAllocator {
   @POST @Path("/editOriginalSql")
   @Produces(APPLICATION_JSON)
   public InitialPreviewResponse reapplyDatasetAndPreview() throws DatasetVersionNotFoundException, DatasetNotFoundException, NamespaceException, JobNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     Transformer.DatasetAndData datasetAndData = reapplyDataset(QueryType.UI_PREVIEW, JobStatusListener.NO_OP);
     //max records = 0 means, that we should not wait for job completion
     return tool.createPreviewResponse(new DatasetPath(datasetAndData.getDataset().getFullPathList()), datasetAndData, getOrCreateAllocator("reapplyDatasetAndPreview"), 0, false);
@@ -645,6 +704,9 @@ public class DatasetVersionResource extends BaseResourceWithAllocator {
   public DatasetUIWithHistory reapplySave(
       @QueryParam("as") DatasetPath asDatasetPath
   ) throws DatasetVersionNotFoundException, UserNotFoundException, DatasetNotFoundException, NamespaceException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     final CompletionListener completionListener = new CompletionListener();
     Transformer.DatasetAndData datasetAndData = reapplyDataset(QueryType.UI_PREVIEW, completionListener);
     completionListener.awaitUnchecked();
@@ -674,6 +736,9 @@ public class DatasetVersionResource extends BaseResourceWithAllocator {
   @POST @Path("replace") @Produces(APPLICATION_JSON) @Consumes(APPLICATION_JSON)
   public ReplaceCards getReplaceCards(
       /* Body */ Selection selection) throws DatasetVersionNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     return getCards(selection);
   }
 
@@ -692,6 +757,9 @@ public class DatasetVersionResource extends BaseResourceWithAllocator {
   @Produces(APPLICATION_JSON) @Consumes(APPLICATION_JSON)
   public Card<ReplacePatternRule> getReplaceCard(
       /* Body */ PreviewReq<ReplacePatternRule, Selection> req) throws DatasetVersionNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     return getPatternCard(req);
   }
 
@@ -699,12 +767,18 @@ public class DatasetVersionResource extends BaseResourceWithAllocator {
   @Produces(APPLICATION_JSON) @Consumes(APPLICATION_JSON)
   public ReplaceValuesCard getReplaceValuesCard(
       /* Body */ ReplaceValuesPreviewReq req) throws DatasetVersionNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     return getValuesCard(req);
   }
 
   @POST @Path("keeponly") @Produces(APPLICATION_JSON) @Consumes(APPLICATION_JSON)
   public ReplaceCards getKeeponlyCards(
       /* Body */ Selection selection) throws DatasetVersionNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     return getCards(selection);
   }
 
@@ -712,6 +786,9 @@ public class DatasetVersionResource extends BaseResourceWithAllocator {
   @Produces(APPLICATION_JSON) @Consumes(APPLICATION_JSON)
   public Card<ReplacePatternRule> getKeeponlyCard(
       /* Body */ PreviewReq<ReplacePatternRule, Selection> req) throws DatasetVersionNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     return getPatternCard(req);
   }
 
@@ -719,12 +796,18 @@ public class DatasetVersionResource extends BaseResourceWithAllocator {
   @Produces(APPLICATION_JSON) @Consumes(APPLICATION_JSON)
   public ReplaceValuesCard getKeeponlyValuesCard(
       /* Body */ ReplaceValuesPreviewReq req) throws DatasetVersionNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     return getValuesCard(req);
   }
 
   @POST @Path("exclude") @Produces(APPLICATION_JSON) @Consumes(APPLICATION_JSON)
   public ReplaceCards getExcludeCards(
       /* Body */ Selection selection) throws DatasetVersionNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     return getCards(selection);
   }
 
@@ -732,6 +815,9 @@ public class DatasetVersionResource extends BaseResourceWithAllocator {
   @Produces(APPLICATION_JSON) @Consumes(APPLICATION_JSON)
   public Card<ReplacePatternRule> getExcludeCard(
       /* Body */ PreviewReq<ReplacePatternRule, Selection> req) throws DatasetVersionNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     return getPatternCard(req);
   }
 
@@ -739,6 +825,9 @@ public class DatasetVersionResource extends BaseResourceWithAllocator {
   @Produces(APPLICATION_JSON) @Consumes(APPLICATION_JSON)
   public ReplaceValuesCard getExcludeValuesCard(
       /* Body */ ReplaceValuesPreviewReq req) throws DatasetVersionNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     return getValuesCard(req);
   }
 
@@ -779,6 +868,9 @@ public class DatasetVersionResource extends BaseResourceWithAllocator {
   @GET @Path("history")
   @Produces(APPLICATION_JSON)
   public History getHistory(@QueryParam("tipVersion") DatasetVersion tipVersion) throws DatasetVersionNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     // tip version is optional, as it is only needed when we are navigated back in history
     // otherwise assume the current version is at the tip of the history
     tipVersion = tipVersion != null ? tipVersion : virtualDatasetUI.getVersion();
@@ -790,6 +882,10 @@ public class DatasetVersionResource extends BaseResourceWithAllocator {
   @POST @Path("clean") @Produces(APPLICATION_JSON) @Consumes(APPLICATION_JSON)
   public CleanDataCard getCleanDataCard(
       ColumnForCleaning col) throws DatasetVersionNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
+
     boolean[] casts = { true, false };
     final VirtualDatasetUI virtualDatasetUI = getDatasetConfig();
     String sql = virtualDatasetUI.getSql();
@@ -843,6 +939,9 @@ public class DatasetVersionResource extends BaseResourceWithAllocator {
   @Path("join_recs")
   @Produces(APPLICATION_JSON)
   public JoinRecommendations getJoinRecommendations() throws DatasetVersionNotFoundException, DatasetNotFoundException, NamespaceException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     final Dataset currentDataset = getCurrentDataset();
     return joinRecommender.recommendJoins(currentDataset);
   }
@@ -851,6 +950,10 @@ public class DatasetVersionResource extends BaseResourceWithAllocator {
   @Path("parents")
   @Produces(APPLICATION_JSON)
   public List<ParentDatasetUI> getParents() throws DatasetNotFoundException, NamespaceException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
+
     final VirtualDatasetUI virtualDatasetUI = datasetService.get(datasetPath, version);
     final List<ParentDatasetUI> parentDatasetUIs = Lists.newArrayList();
     final List<NamespaceKey> parentDatasetPaths = Lists.newArrayList();
@@ -886,5 +989,21 @@ public class DatasetVersionResource extends BaseResourceWithAllocator {
   SqlQuery getDatasetSql() throws DatasetVersionNotFoundException {
     final VirtualDatasetUI datasetConfig = getDatasetConfig();
     return new SqlQuery(datasetConfig.getSql(), datasetConfig.getState().getContextList(), securityContext.getUserPrincipal().getName());
+  }
+
+  private boolean isAuthorized(String role) {
+    //short-circuit if the dataset root is the home of the current user
+    if (HomeName.getUserHomePath(securityContext.getUserPrincipal().getName()).getName().equals(datasetPath.getRoot().getName())) {
+      return true;
+    }
+
+    //short-circuit if the dataset root is the temp space
+    if (TempSpace.isTempSpace(datasetPath.getRoot().getName())) {
+      return true;
+    }
+
+    String userTenant = MultiTenantServiceHelper.getUserTenant(securityContext.getUserPrincipal().getName());
+    String resourceTenant = MultiTenantServiceHelper.getResourceTenant(datasetPath.getRoot().getName());
+    return MultiTenantServiceHelper.hasPermission(securityContext, role, userTenant, resourceTenant);
   }
 }

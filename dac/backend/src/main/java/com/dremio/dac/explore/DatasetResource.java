@@ -25,6 +25,7 @@ import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
 import javax.ws.rs.DELETE;
 import javax.ws.rs.DefaultValue;
+import javax.ws.rs.ForbiddenException;
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
 import javax.ws.rs.PUT;
@@ -46,6 +47,8 @@ import com.dremio.dac.explore.model.DatasetUI;
 import com.dremio.dac.explore.model.InitialDataPreviewResponse;
 import com.dremio.dac.model.job.JobData;
 import com.dremio.dac.model.job.JobDataWrapper;
+import com.dremio.dac.model.spaces.HomeName;
+import com.dremio.dac.model.spaces.TempSpace;
 import com.dremio.dac.proto.model.dataset.VirtualDatasetUI;
 import com.dremio.dac.resource.BaseResourceWithAllocator;
 import com.dremio.dac.server.BufferAllocatorFactory;
@@ -55,6 +58,7 @@ import com.dremio.dac.service.errors.ClientErrorException;
 import com.dremio.dac.service.errors.DatasetNotFoundException;
 import com.dremio.dac.service.errors.DatasetVersionNotFoundException;
 import com.dremio.dac.service.reflection.ReflectionServiceHelper;
+import com.dremio.dac.service.tenant.MultiTenantServiceHelper;
 import com.dremio.dac.util.JobRequestUtil;
 import com.dremio.exec.record.BatchSchema;
 import com.dremio.service.job.QueryType;
@@ -128,6 +132,9 @@ public class DatasetResource extends BaseResourceWithAllocator {
   @Path("descendants/count")
   @Produces(APPLICATION_JSON)
   public long getDescendantsCount() {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     return datasetService.getDescendantsCount(datasetPath.toNamespaceKey());
   }
 
@@ -135,6 +142,9 @@ public class DatasetResource extends BaseResourceWithAllocator {
   @Path("descendants")
   @Produces(APPLICATION_JSON)
   public List<List<String>> getDescendants() throws NamespaceException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     final List<List<String>> descendantPaths = Lists.newArrayList();
     for (DatasetPath path : datasetService.getDescendants(datasetPath)) {
       descendantPaths.add(path.toPathList());
@@ -146,6 +156,9 @@ public class DatasetResource extends BaseResourceWithAllocator {
   @Path("acceleration/settings")
   @Produces(APPLICATION_JSON)
   public AccelerationSettingsDescriptor getAccelerationSettings() throws NamespaceException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     final DatasetConfig config = namespaceService.getDataset(datasetPath.toNamespaceKey());
     if (config.getType() == DatasetType.VIRTUAL_DATASET) {
       final String msg = String.format("acceleration settings apply only to physical dataset. %s is a virtual dataset",
@@ -185,6 +198,9 @@ public class DatasetResource extends BaseResourceWithAllocator {
   @Path("acceleration/settings")
   @Produces(APPLICATION_JSON)
   public void updateAccelerationSettings(final AccelerationSettingsDescriptor descriptor) throws NamespaceException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     Preconditions.checkArgument(descriptor != null, "acceleration settings descriptor is required");
     Preconditions.checkArgument(descriptor.getAccelerationRefreshPeriod() != null, "refreshPeriod is required");
     Preconditions.checkArgument(descriptor.getAccelerationGracePeriod() != null, "gracePeriod is required");
@@ -243,6 +259,9 @@ public class DatasetResource extends BaseResourceWithAllocator {
   @GET
   @Produces(APPLICATION_JSON)
   public DatasetUI getDataset() throws DatasetNotFoundException, NamespaceException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     final VirtualDatasetUI virtualDataset = datasetService.get(datasetPath);
     return newDataset(virtualDataset);
   }
@@ -251,6 +270,9 @@ public class DatasetResource extends BaseResourceWithAllocator {
   @Produces(APPLICATION_JSON)
   public DatasetUI deleteDataset(@QueryParam("savedTag") String savedTag)
       throws DatasetNotFoundException, UserNotFoundException, NamespaceException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     if (savedTag == null) {
       throw new ClientErrorException("missing savedTag parameter");
     }
@@ -277,6 +299,10 @@ public class DatasetResource extends BaseResourceWithAllocator {
   @Produces(APPLICATION_JSON)
   public DatasetUI createDatasetFrom(@PathParam("cpathFrom") DatasetPath existingDatasetPath)
     throws NamespaceException, DatasetNotFoundException, UserNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
+
     final VirtualDatasetUI ds = datasetService.get(existingDatasetPath);
     // Set a new version, name.
     ds.setFullPathList(datasetPath.toPathList());
@@ -306,6 +332,9 @@ public class DatasetResource extends BaseResourceWithAllocator {
   @Produces(APPLICATION_JSON)
   public DatasetUI renameDataset(@QueryParam("renameTo") String renameTo)
     throws NamespaceException, DatasetNotFoundException, DatasetVersionNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     final DatasetPath newDatasetPath = datasetPath.rename(new DatasetName(renameTo));
     final VirtualDatasetUI ds = datasetService.renameDataset(datasetPath, newDatasetPath);
 
@@ -316,6 +345,9 @@ public class DatasetResource extends BaseResourceWithAllocator {
   @Produces(APPLICATION_JSON)
   public DatasetUI moveDataset(@PathParam("newpath") DatasetPath newDatasetPath)
     throws NamespaceException, DatasetNotFoundException, DatasetVersionNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     final VirtualDatasetUI ds = datasetService.renameDataset(datasetPath, newDatasetPath);
 
     return newDataset(ds);
@@ -330,6 +362,9 @@ public class DatasetResource extends BaseResourceWithAllocator {
   @Path("preview")
   @Produces(APPLICATION_JSON)
   public InitialDataPreviewResponse preview(@QueryParam("limit") @DefaultValue("50") Integer limit) {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     final SqlQuery query = JobRequestUtil.createSqlQuery(String.format("select * from %s", datasetPath.toPathString()),
       securityContext.getUserPrincipal().getName());
 
@@ -349,5 +384,21 @@ public class DatasetResource extends BaseResourceWithAllocator {
 
   protected DatasetUI newDataset(VirtualDatasetUI vds) throws NamespaceException {
     return DatasetUI.newInstance(vds, null, namespaceService);
+  }
+
+  private boolean isAuthorized(String role) {
+    //short-circuit if the dataset root is the home of the current user
+    if (HomeName.getUserHomePath(securityContext.getUserPrincipal().getName()).getName().equals(datasetPath.getRoot().getName())) {
+      return true;
+    }
+
+    //short-circuit if the dataset root is the temp space
+    if (TempSpace.isTempSpace(datasetPath.getRoot().getName())) {
+      return true;
+    }
+
+    String userTenant = MultiTenantServiceHelper.getUserTenant(securityContext.getUserPrincipal().getName());
+    String resourceTenant = MultiTenantServiceHelper.getResourceTenant(datasetPath.getRoot().getName());
+    return MultiTenantServiceHelper.hasPermission(securityContext, role, userTenant, resourceTenant);
   }
 }

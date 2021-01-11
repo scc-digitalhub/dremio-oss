@@ -26,6 +26,7 @@ import javax.inject.Inject;
 import javax.ws.rs.BadRequestException;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.DELETE;
+import javax.ws.rs.ForbiddenException;
 import javax.ws.rs.GET;
 import javax.ws.rs.InternalServerErrorException;
 import javax.ws.rs.NotFoundException;
@@ -35,12 +36,16 @@ import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
 import javax.ws.rs.QueryParam;
+import javax.ws.rs.core.Context;
 import javax.ws.rs.core.PathSegment;
+import javax.ws.rs.core.SecurityContext;
 
 import com.dremio.common.exceptions.ExecutionSetupException;
 import com.dremio.dac.annotations.APIResource;
 import com.dremio.dac.annotations.Secured;
+import com.dremio.dac.model.spaces.HomeName;
 import com.dremio.dac.service.catalog.CatalogServiceHelper;
+import com.dremio.dac.service.tenant.MultiTenantServiceHelper;
 import com.dremio.service.namespace.NamespaceException;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -57,27 +62,38 @@ import com.google.common.base.Optional;
 @Produces(APPLICATION_JSON)
 public class CatalogResource {
   private final CatalogServiceHelper catalogServiceHelper;
+  private final SecurityContext securityContext;
 
   @Inject
-  public CatalogResource(CatalogServiceHelper catalogServiceHelper) {
+  public CatalogResource(CatalogServiceHelper catalogServiceHelper, @Context SecurityContext securityContext) {
     this.catalogServiceHelper = catalogServiceHelper;
+    this.securityContext = securityContext;
   }
 
   @GET
   public ResponseList<? extends CatalogItem> listTopLevelCatalog(@QueryParam("include") final List<String> include) {
-    System.out.println("****called GET /catalog");
-    return new ResponseList<>(catalogServiceHelper.getTopLevelCatalogItems(include));
+    List<CatalogItem> topLevelItems = new ArrayList<>();
+    for (CatalogItem item : catalogServiceHelper.getTopLevelCatalogItems(include)) {
+      if (isAuthorized("user", item.getPath().get(0))) {
+        topLevelItems.add(item);
+      }
+    }
+
+    return new ResponseList<>(topLevelItems);
   }
 
   @GET
   @Path("/{id}")
   public CatalogEntity getCatalogItem(@PathParam("id") String id,
                                       @QueryParam("include") final List<String> include) throws NamespaceException {
-    System.out.println("****called GET /catalog/{id}");
     Optional<CatalogEntity> entity = catalogServiceHelper.getCatalogEntityById(id, include);
 
     if (!entity.isPresent()) {
       throw new NotFoundException(String.format("Could not find entity with id [%s]", id));
+    }
+
+    if (!isAuthorized("user", getCatalogEntityRoot(entity.get()))) {
+      throw new ForbiddenException(String.format("User not authorized to access entity with id [%s].", id));
     }
 
     return entity.get();
@@ -85,7 +101,9 @@ public class CatalogResource {
 
   @POST
   public CatalogEntity createCatalogItem(CatalogEntity entity) throws NamespaceException, BadRequestException {
-    System.out.println("****called POST /catalog");
+    if (!isAuthorized("user", getCatalogEntityRoot(entity))) {
+      throw new ForbiddenException(String.format("User not authorized to create entity with this path."));
+    }
     try {
       return catalogServiceHelper.createCatalogItem(entity);
     } catch (UnsupportedOperationException e) {
@@ -98,6 +116,10 @@ public class CatalogResource {
   @POST
   @Path("/{id}")
   public Dataset promoteToDataset(Dataset dataset, @PathParam("id") String id) throws NamespaceException, BadRequestException {
+    if (!isAuthorized("user", getCatalogEntityRoot(dataset))) {
+      throw new ForbiddenException(String.format("User not authorized to access dataset with id [%s].", id));
+    }
+
     try {
       return catalogServiceHelper.promoteToDataset(id, dataset);
     } catch (UnsupportedOperationException e) {
@@ -108,6 +130,10 @@ public class CatalogResource {
   @PUT
   @Path("/{id}")
   public CatalogEntity updateCatalogItem(CatalogEntity entity, @PathParam("id") String id) throws NamespaceException, BadRequestException {
+    if (!isAuthorized("user", getCatalogEntityRoot(entity))) {
+      throw new ForbiddenException(String.format("User not authorized to access entity with id [%s].", id));
+    }
+
     try {
       return catalogServiceHelper.updateCatalogItem(entity, id);
     } catch (IllegalArgumentException e) {
@@ -122,6 +148,11 @@ public class CatalogResource {
   @DELETE
   @Path("/{id}")
   public void deleteCatalogItem(@PathParam("id") String id, @QueryParam("tag") String tag) throws NamespaceException, BadRequestException {
+    Optional<CatalogEntity> entity = catalogServiceHelper.getCatalogEntityById(id, null);
+    if (entity.isPresent() && !isAuthorized("user", getCatalogEntityRoot(entity.get()))) {
+      throw new ForbiddenException(String.format("User not authorized to access entity with id [%s].", id));
+    }
+
     try {
       catalogServiceHelper.deleteCatalogItem(id, tag);
     } catch (IllegalArgumentException e) {
@@ -133,7 +164,12 @@ public class CatalogResource {
 
   @POST
   @Path("/{id}/refresh")
-  public void refreshCatalogItem(@PathParam("id") String id) {
+  public void refreshCatalogItem(@PathParam("id") String id) throws NamespaceException {
+    Optional<CatalogEntity> entity = catalogServiceHelper.getCatalogEntityById(id, null);
+    if (entity.isPresent() && !isAuthorized("user", getCatalogEntityRoot(entity.get()))) {
+      throw new ForbiddenException(String.format("User not authorized to access entity with id [%s].", id));
+    }
+
     try {
       catalogServiceHelper.refreshCatalogItem(id);
     } catch (IllegalArgumentException e) {
@@ -148,7 +184,12 @@ public class CatalogResource {
   public MetadataRefreshResponse refreshCatalogItemMetadata(@PathParam("id") String id,
                                                             @QueryParam("deleteWhenMissing") Boolean delete,
                                                             @QueryParam("forceUpdate") Boolean force,
-                                                            @QueryParam("autoPromotion") Boolean promotion) {
+                                                            @QueryParam("autoPromotion") Boolean promotion) throws NamespaceException {
+    Optional<CatalogEntity> entity = catalogServiceHelper.getCatalogEntityById(id, null);
+    if (entity.isPresent() && !isAuthorized("user", getCatalogEntityRoot(entity.get()))) {
+      throw new ForbiddenException(String.format("User not authorized to access entity with id [%s].", id));
+    }
+
     try {
       boolean changed = false;
       boolean deleted = false;
@@ -189,14 +230,24 @@ public class CatalogResource {
       throw new NotFoundException(String.format("Could not find entity with path [%s]", pathList));
     }
 
+    if (!isAuthorized("user", getCatalogEntityRoot(entity.get()))) {
+      throw new ForbiddenException(String.format("User not authorized to access entity with path [%s]", pathList));
+    }
+
     return entity.get();
   }
 
   @GET
   @Path("/search")
   public ResponseList<CatalogItem> search(@QueryParam("query") String query) throws NamespaceException {
-    ResponseList<CatalogItem> catalogItems = new ResponseList<>(catalogServiceHelper.search(query));
-    System.out.println("****called GET /catalog/search, catalogItems: " + catalogItems);
+    List<CatalogItem> searchResult = new ArrayList<>();
+    for (CatalogItem item : catalogServiceHelper.search(query)) {
+      if (isAuthorized("user", item.getPath().get(0))) {
+        searchResult.add(item);
+      }
+    }
+
+    ResponseList<CatalogItem> catalogItems = new ResponseList<>(searchResult);
 
     return catalogItems;
   }
@@ -224,5 +275,34 @@ public class CatalogResource {
     public boolean getDeleted() {
       return deleted;
     }
+  }
+
+  private String getCatalogEntityRoot(CatalogEntity entity) {
+    String root = null;
+    if (entity instanceof Space) {
+      root = ((Space)entity).getName();
+    } else if (entity instanceof Source) {
+      root = ((Source)entity).getName();
+    } else if (entity instanceof Home) {
+      root = ((Home)entity).getName();
+    } else if (entity instanceof Folder) {
+      root = ((Folder)entity).getPath().get(0);
+    } else if (entity instanceof File) {
+      root = ((File)entity).getPath().get(0);
+    } else if (entity instanceof Dataset) {
+      root = ((Dataset)entity).getPath().get(0);
+    }
+    return root;
+  }
+
+  private boolean isAuthorized(String role, String root) {
+    //short-circuit if the root is the home of the current user
+    if (HomeName.getUserHomePath(securityContext.getUserPrincipal().getName()).getName().equals(root)) {
+      return true;
+    }
+
+    String userTenant = MultiTenantServiceHelper.getUserTenant(securityContext.getUserPrincipal().getName());
+    String resourceTenant = MultiTenantServiceHelper.getResourceTenant(root);
+    return MultiTenantServiceHelper.hasPermission(securityContext, role, userTenant, resourceTenant);
   }
 }

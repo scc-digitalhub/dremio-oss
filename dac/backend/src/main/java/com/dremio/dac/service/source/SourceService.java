@@ -47,7 +47,6 @@ import com.dremio.dac.model.sources.SourceName;
 import com.dremio.dac.model.sources.SourcePath;
 import com.dremio.dac.model.sources.SourceUI;
 import com.dremio.dac.model.spaces.HomeName;
-import com.dremio.dac.model.usergroup.UserUI;
 import com.dremio.dac.proto.model.collaboration.CollaborationTag;
 import com.dremio.dac.service.collaboration.CollaborationHelper;
 import com.dremio.dac.service.collaboration.TagsSearchResult;
@@ -637,7 +636,6 @@ public class SourceService {
   }
 
   public List<SourceConfig> getSources() {
-    System.out.println("*****called SourceService.getSources*****, current user: " + security.getUserPrincipal().getName());
     final List<SourceConfig> sources = new ArrayList<>();
 
     for (SourceConfig sourceConfig : namespaceService.getSources()) {
@@ -645,13 +643,8 @@ public class SourceService {
         continue;
       }
 
-      if(!canGetSource(sourceConfig)){
-        continue; //user cannot view this source, do not add it to the list
-      }
-
       sources.add(sourceConfig);
     }
-    System.out.println("*****returning " + sources.size() + " sources");
 
     return sources;
   }
@@ -685,22 +678,5 @@ public class SourceService {
 
   public boolean isSourceConfigMetadataImpacting(SourceConfig sourceConfig) {
     return catalogService.isSourceConfigMetadataImpacting(sourceConfig);
-  }
-
-  public boolean canGetSource(SourceConfig sourceConfig) {
-    boolean isAllowed = true;
-    /* new version: if source name has no prefix "<tenant>__", the source is public */
-    //get source tenant, if any
-    String[] nameParts = sourceConfig.getName().split("__");
-    if(nameParts.length > 1) {
-      //source access is restricted to a specific tenant, compare it with user tenant
-      String tenant = "";//((UserUI)security.getUserPrincipal()).getUser().getTenant();
-      if(!security.getUserPrincipal().getName().equals("dremio") && tenant != null && !tenant.equals(nameParts[0])){
-        isAllowed = false;
-      }
-    } //else, there is no prefix, source is public
-    System.out.println("****source: " + sourceConfig.getName() + ", isAllowed: " + isAllowed);
-
-    return isAllowed;
   }
 }

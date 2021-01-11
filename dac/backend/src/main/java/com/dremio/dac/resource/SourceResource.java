@@ -24,6 +24,7 @@ import javax.inject.Inject;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.DELETE;
 import javax.ws.rs.DefaultValue;
+import javax.ws.rs.ForbiddenException;
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
 import javax.ws.rs.PUT;
@@ -60,6 +61,7 @@ import com.dremio.dac.service.errors.SourceFolderNotFoundException;
 import com.dremio.dac.service.errors.SourceNotFoundException;
 import com.dremio.dac.service.source.SourceService;
 import com.dremio.dac.util.ResourceUtil;
+import com.dremio.dac.service.tenant.MultiTenantServiceHelper;
 import com.dremio.exec.catalog.ConnectionReader;
 import com.dremio.exec.catalog.SourceCatalog;
 import com.dremio.exec.ops.ReflectionContext;
@@ -140,6 +142,9 @@ public class SourceResource extends BaseResourceWithAllocator {
   @Produces(MediaType.APPLICATION_JSON)
   public SourceUI getSource(@QueryParam("includeContents") @DefaultValue("true") boolean includeContents)
       throws Exception {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access %s source.", sourceName.getName()));
+    }
     try {
       final SourceConfig config = namespaceService.getSource(sourcePath.toNamespaceKey());
       final SourceState sourceState = sourceService.getSourceState(sourcePath.getSourceName().getName());
@@ -197,6 +202,9 @@ public class SourceResource extends BaseResourceWithAllocator {
   public Folder getFolder(@PathParam("path") String path, @QueryParam("includeContents") @DefaultValue("true") boolean includeContents)
       throws NamespaceException, IOException, SourceFolderNotFoundException, PhysicalDatasetNotFoundException, SourceNotFoundException {
     sourceService.checkSourceExists(sourceName);
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access %s source.", sourceName.getName()));
+    }
     SourceFolderPath folderPath = SourceFolderPath.fromURLPath(sourceName, path);
     return sourceService.getFolder(sourceName, folderPath, includeContents, securityContext.getUserPrincipal().getName());
   }
@@ -207,6 +215,9 @@ public class SourceResource extends BaseResourceWithAllocator {
   public PhysicalDataset getPhysicalDataset(@PathParam("path") String path)
       throws SourceNotFoundException, NamespaceException {
     sourceService.checkSourceExists(sourceName);
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access %s source.", sourceName.getName()));
+    }
     PhysicalDatasetPath datasetPath = PhysicalDatasetPath.fromURLPath(sourceName, path);
     return sourceService.getPhysicalDataset(sourceName, datasetPath);
   }
@@ -220,6 +231,9 @@ public class SourceResource extends BaseResourceWithAllocator {
   @Produces(MediaType.APPLICATION_JSON)
   public File getFile(@PathParam("path") String path)
       throws SourceNotFoundException, NamespaceException, PhysicalDatasetNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access %s source.", sourceName.getName()));
+    }
     if (useFastPreview()) {
       return sourceService.getFileDataset(sourceName, asFilePath(path), null);
     }
@@ -253,6 +267,9 @@ public class SourceResource extends BaseResourceWithAllocator {
   @Produces(MediaType.APPLICATION_JSON)
   public FileFormatUI getFileFormatSettings(@PathParam("path") String path)
       throws SourceNotFoundException, NamespaceException  {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access %s source.", sourceName.getName()));
+    }
 
     if (useFastPreview()) {
       SourceFilePath filePath = asFilePath(path);
@@ -279,6 +296,10 @@ public class SourceResource extends BaseResourceWithAllocator {
   @Consumes(MediaType.APPLICATION_JSON)
   public FileFormatUI saveFormatSettings(FileFormat fileFormat, @PathParam("path") String path)
       throws NamespaceException, SourceNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access %s source.", sourceName.getName()));
+    }
+
     SourceFilePath filePath = SourceFilePath.fromURLPath(sourceName, path);
     sourceService.checkSourceExists(filePath.getSourceName());
     fileFormat.setFullPath(filePath.toPathList());
@@ -300,6 +321,9 @@ public class SourceResource extends BaseResourceWithAllocator {
   @Consumes(MediaType.APPLICATION_JSON)
   public JobDataFragment previewFileFormat(FileFormat format, @PathParam("path") String path)
       throws SourceFileNotFoundException, SourceNotFoundException, NamespaceException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access %s source.", sourceName.getName()));
+    }
     if (useFastPreview()) {
       return formatTools.previewData(format, asFilePath(path), false);
     }
@@ -313,6 +337,9 @@ public class SourceResource extends BaseResourceWithAllocator {
   @Consumes(MediaType.APPLICATION_JSON)
   public JobDataFragment previewFolderFormat(FileFormat format, @PathParam("path") String path)
     throws SourceFileNotFoundException, SourceNotFoundException, NamespaceException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access %s source.", sourceName.getName()));
+    }
     if (useFastPreview()) {
       return formatTools.previewData(format, asFolderPath(path), false);
     }
@@ -325,6 +352,9 @@ public class SourceResource extends BaseResourceWithAllocator {
   @Path("/file_format/{path: .*}")
   public void deleteFileFormat(@PathParam("path") String path,
                                @QueryParam("version") String version) throws PhysicalDatasetNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access %s source.", sourceName.getName()));
+    }
     SourceFilePath filePath = SourceFilePath.fromURLPath(sourceName, path);
     if (version == null) {
       throw new ClientErrorException("missing version parameter");
@@ -343,6 +373,10 @@ public class SourceResource extends BaseResourceWithAllocator {
   @Produces(MediaType.APPLICATION_JSON)
   public FileFormatUI getFolderFormat(@PathParam("path") String path)
       throws PhysicalDatasetNotFoundException, NamespaceException, SourceNotFoundException, IOException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access %s source.", sourceName.getName()));
+    }
+
     if (useFastPreview()) {
       SourceFolderPath folderPath = asFolderPath(path);
       return new FileFormatUI(formatTools.getOrDetectFormat(folderPath, DatasetType.PHYSICAL_DATASET_SOURCE_FOLDER), folderPath);
@@ -368,6 +402,10 @@ public class SourceResource extends BaseResourceWithAllocator {
   @Consumes(MediaType.APPLICATION_JSON)
   public FileFormatUI saveFolderFormat(FileFormat fileFormat, @PathParam("path") String path)
       throws NamespaceException, SourceNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access %s source.", sourceName.getName()));
+    }
+
     SourceFolderPath folderPath = SourceFolderPath.fromURLPath(sourceName, path);
     sourceService.checkSourceExists(folderPath.getSourceName());
     fileFormat.setFullPath(folderPath.toPathList());
@@ -388,6 +426,10 @@ public class SourceResource extends BaseResourceWithAllocator {
   @Produces(MediaType.APPLICATION_JSON)
   public void deleteFolderFormat(@PathParam("path") String path,
                                  @QueryParam("version") String version) throws PhysicalDatasetNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access %s source.", sourceName.getName()));
+    }
+
     if (version == null) {
       throw new ClientErrorException("missing version parameter");
     }
@@ -408,6 +450,9 @@ public class SourceResource extends BaseResourceWithAllocator {
       @PathParam("path") String path,
       @QueryParam("limit") Integer limit)
     throws DatasetNotFoundException, DatasetVersionNotFoundException, NamespaceException, NewDatasetQueryException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access %s source.", sourceName.getName()));
+    }
     return datasetsResource.createUntitledFromSourceFile(sourceName, path, limit);
   }
 
@@ -419,6 +464,9 @@ public class SourceResource extends BaseResourceWithAllocator {
       @PathParam("path") String path,
       @QueryParam("limit") Integer limit)
     throws DatasetNotFoundException, DatasetVersionNotFoundException, NamespaceException, NewDatasetQueryException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access %s source.", sourceName.getName()));
+    }
     return datasetsResource.createUntitledFromSourceFolder(sourceName, path, limit);
   }
 
@@ -430,7 +478,16 @@ public class SourceResource extends BaseResourceWithAllocator {
       @PathParam("path") String path,
       @QueryParam("limit") Integer limit)
     throws DatasetNotFoundException, DatasetVersionNotFoundException, NamespaceException, NewDatasetQueryException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access %s source.", sourceName.getName()));
+    }
     return datasetsResource.createUntitledFromPhysicalDataset(sourceName, path, limit);
+  }
+
+  private boolean isAuthorized(String role) {
+    String userTenant = MultiTenantServiceHelper.getUserTenant(securityContext.getUserPrincipal().getName());
+    String resourceTenant = MultiTenantServiceHelper.getResourceTenant(sourceName.getName());
+    return MultiTenantServiceHelper.hasPermission(securityContext, role, userTenant, resourceTenant);
   }
 
 }
