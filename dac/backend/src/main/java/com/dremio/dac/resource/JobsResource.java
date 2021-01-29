@@ -17,7 +17,6 @@ package com.dremio.dac.resource;
 
 import static javax.ws.rs.core.MediaType.APPLICATION_JSON;
 
-import java.util.ArrayList;
 import java.util.List;
 
 import javax.annotation.security.RolesAllowed;
@@ -37,7 +36,7 @@ import com.dremio.dac.annotations.RestResource;
 import com.dremio.dac.annotations.Secured;
 import com.dremio.dac.model.job.JobsUI;
 import com.dremio.dac.model.job.ResultOrder;
-import com.dremio.dac.model.usergroup.UserUI;
+import com.dremio.dac.service.tenant.MultiTenantServiceHelper;
 import com.dremio.service.job.JobSummary;
 import com.dremio.service.job.SearchJobsRequest;
 import com.dremio.service.job.SearchReflectionJobsRequest;
@@ -45,6 +44,7 @@ import com.dremio.service.jobs.JobsService;
 import com.dremio.service.namespace.NamespaceService;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
 import com.google.common.escape.Escaper;
 import com.google.common.net.UrlEscapers;
 
@@ -98,16 +98,7 @@ public class JobsResource {
       requestBuilder.setSortOrder(order.toSortOrder());
     }
 
-    List<JobSummary> jobsFound = ImmutableList.copyOf(jobsService.get().searchJobs(requestBuilder.build()));
-    System.out.println("*****called GET /jobs: " + jobsFound);
-    final List<JobSummary> jobs = new ArrayList<>();
-    for (JobSummary job : jobsFound) {
-      if(!canGetJob(job, (UserUI)securityContext.getUserPrincipal())){
-        continue; //user cannot view this job, do not add it to the list
-      }
-      jobs.add(job);
-    }
-
+    final List<JobSummary> jobs = ImmutableList.copyOf(filterJobs(jobsService.get().searchJobs(requestBuilder.build())));
     return new JobsUI(
         namespace,
         jobs,
@@ -184,7 +175,7 @@ public class JobsResource {
     .setOffset(offset)
     .setReflectionId(reflectionId);
 
-    final List<JobSummary> jobs = ImmutableList.copyOf(jobsService.get().searchReflectionJobs(requestBuilder.build()));
+    final List<JobSummary> jobs = ImmutableList.copyOf(filterJobs(jobsService.get().searchReflectionJobs(requestBuilder.build())));
 
     return new JobsUI(
       namespace,
@@ -221,30 +212,21 @@ public class JobsResource {
     return sb;
   }
 
-  private boolean canGetJob(JobSummary jobSummary, UserUI currentUser) {
-    boolean isAllowed = true;
-
-    List<String> parentPathList = jobSummary.getParent().getDatasetPathList();
-    System.out.println("*****canGetJob " + jobSummary + " parent: " + parentPathList);
-    String root = parentPathList.get(0);
-
-    //if path root is a home (e.g. @dremio), access is restricted to its owner
-    if(root.startsWith("@") && !("@" + currentUser.getName()).equals(root)) {
-      return false;
-    }
-
-    /* if path root has no prefix "<tenant>__", it is public */
-    //get root tenant, if any
-    String[] nameParts = root.split("__");
-    if(nameParts.length > 1) {
-      //root access is restricted to a specific tenant, compare it with user tenant
-      String tenant = currentUser.getUser().getTenant();
-      if(!currentUser.getName().equals("dremio") && tenant != null && !tenant.equals(nameParts[0])){
-        isAllowed = false;
+  private Iterable<JobSummary> filterJobs(Iterable<JobSummary> jobs) {
+    //TODO job ha parent solo se completed e in caso di join ha solo un parent, non usare job summary
+    List<JobSummary> result = Lists.newArrayList();
+    for (JobSummary jobSummary : jobs) {
+      if (isAuthorized("user", jobSummary.getUser())) {
+        result.add(jobSummary);
       }
-    } //else, there is no prefix, root is public
-    System.out.println("****root: " + root + ", isAllowed: " + isAllowed);
+    }
+    return result;
+  }
 
-    return isAllowed;
+  private boolean isAuthorized(String role, String jobCreator) {
+    //check if job creator and current user have same tenant, if not then current user is not authorized to access job
+    String userTenant = MultiTenantServiceHelper.getUserTenant(securityContext.getUserPrincipal().getName());
+    String creatorTenant = MultiTenantServiceHelper.getUserTenant(jobCreator);
+    return MultiTenantServiceHelper.hasPermission(securityContext, role, userTenant, creatorTenant);
   }
 }

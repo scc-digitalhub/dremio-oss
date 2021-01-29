@@ -23,6 +23,7 @@ import java.io.IOException;
 import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
 import javax.ws.rs.Consumes;
+import javax.ws.rs.ForbiddenException;
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
@@ -52,11 +53,13 @@ import com.dremio.dac.service.datasets.DatasetDownloadManager;
 import com.dremio.dac.service.datasets.DatasetVersionMutator;
 import com.dremio.dac.service.errors.InvalidReflectionJobException;
 import com.dremio.dac.service.errors.JobResourceNotFoundException;
+import com.dremio.dac.service.tenant.MultiTenantServiceHelper;
 import com.dremio.dac.util.DownloadUtil;
 import com.dremio.service.job.CancelJobRequest;
 import com.dremio.service.job.CancelReflectionJobRequest;
 import com.dremio.service.job.JobDetails;
 import com.dremio.service.job.JobDetailsRequest;
+import com.dremio.service.job.JobSummary;
 import com.dremio.service.job.JobSummaryRequest;
 import com.dremio.service.job.ReflectionJobDetailsRequest;
 import com.dremio.service.job.proto.JobId;
@@ -107,6 +110,11 @@ public class JobResource extends BaseResourceWithAllocator {
   @GET
   @Produces(APPLICATION_JSON)
   public JobUI getJob(@PathParam("jobId") String jobId) throws JobResourceNotFoundException {
+    JobSummary jobSummary = getJobSummary(jobId);
+    if (jobSummary != null && !isAuthorized("user", jobSummary.getUser())) {
+      throw new ForbiddenException(String.format("User not authorized to access job [%s]", jobId));
+    }
+
     return new JobUI(jobsService, new JobId(jobId), securityContext.getUserPrincipal().getName());
   }
 
@@ -115,6 +123,11 @@ public class JobResource extends BaseResourceWithAllocator {
   @Produces(APPLICATION_JSON)
   public NotificationResponse cancel(@PathParam("jobId") String jobId) throws JobResourceNotFoundException {
     try {
+      JobSummary jobSummary = getJobSummary(jobId);
+      if (jobSummary != null && !isAuthorized("user", jobSummary.getUser())) {
+        throw new ForbiddenException(String.format("User not authorized to access job [%s]", jobId));
+      }
+
       final String username = securityContext.getUserPrincipal().getName();
       jobsService.cancel(CancelJobRequest.newBuilder()
           .setUsername(username)
@@ -138,6 +151,11 @@ public class JobResource extends BaseResourceWithAllocator {
   public JobDetailsUI getJobDetail(@PathParam("jobId") String jobId) throws JobResourceNotFoundException {
     final JobDetails jobDetails;
     try {
+      JobSummary jobSummary = getJobSummary(jobId);
+      if (jobSummary != null && !isAuthorized("user", jobSummary.getUser())) {
+        throw new ForbiddenException(String.format("User not authorized to access job [%s]", jobId));
+      }
+
       JobDetailsRequest request = JobDetailsRequest.newBuilder()
           .setJobId(JobProtobuf.JobId.newBuilder().setId(jobId).build())
           .setUserName(securityContext.getUserPrincipal().getName())
@@ -167,6 +185,11 @@ public class JobResource extends BaseResourceWithAllocator {
     Preconditions.checkArgument(offset >= 0, "Limit should be greater than or equal to 0");
 
     try {
+      JobSummary jobSummary = getJobSummary(jobId.getId());
+      if (jobSummary != null && !isAuthorized("user", jobSummary.getUser())) {
+        throw new ForbiddenException(String.format("User not authorized to access job [%s]", jobId.getId()));
+      }
+
       jobsService.getJobSummary(JobSummaryRequest.newBuilder()
         .setJobId(JobsProtoUtil.toBuf(jobId))
         .setUserName(securityContext.getUserPrincipal().getName())
@@ -191,6 +214,11 @@ public class JobResource extends BaseResourceWithAllocator {
       @PathParam("columnName") String columnName) throws JobResourceNotFoundException {
     Preconditions.checkArgument(rowNum >= 0, "Row number shouldn't be negative");
     Preconditions.checkNotNull(columnName, "Expected a non-null column name");
+
+    JobSummary jobSummary = getJobSummary(jobId.getId());
+    if (jobSummary != null && !isAuthorized("user", jobSummary.getUser())) {
+      throw new ForbiddenException(String.format("User not authorized to access job [%s]", jobId.getId()));
+    }
 
     JobDataClientUtils.waitForFinalState(jobsService, jobId);
     try (final JobDataFragment dataFragment = new JobDataWrapper(jobsService, jobId, securityContext.getUserPrincipal().getName())
@@ -224,6 +252,11 @@ public class JobResource extends BaseResourceWithAllocator {
     @PathParam("jobId") JobId previewJobId,
     @QueryParam("downloadFormat") DownloadFormat downloadFormat
   ) throws JobResourceNotFoundException, JobNotFoundException {
+    JobSummary jobSummary = getJobSummary(previewJobId.getId());
+    if (jobSummary != null && !isAuthorized("user", jobSummary.getUser())) {
+      throw new ForbiddenException(String.format("User not authorized to access job [%s]", previewJobId.getId()));
+    }
+
     return doDownload(previewJobId, downloadFormat);
   }
 
@@ -242,6 +275,11 @@ public class JobResource extends BaseResourceWithAllocator {
     }
 
     try {
+      JobSummary jobSummary = getJobSummary(jobId);
+      if (jobSummary != null && !isAuthorized("user", jobSummary.getUser())) {
+        throw new ForbiddenException(String.format("User not authorized to access job [%s]", jobId));
+      }
+
       JobDetailsRequest.Builder jobDetailsRequestBuilder = JobDetailsRequest.newBuilder()
         .setJobId(com.dremio.service.job.proto.JobProtobuf.JobId.newBuilder().setId(jobId).build())
         .setProvideResultInfo(true)
@@ -275,7 +313,10 @@ public class JobResource extends BaseResourceWithAllocator {
 
     try {
       final String username = securityContext.getUserPrincipal().getName();
-
+      JobSummary jobSummary = getJobSummary(jobId);
+      if (jobSummary != null && !isAuthorized("user", jobSummary.getUser())) {
+        throw new ForbiddenException(String.format("User not authorized to access job [%s]", jobId));
+      }
 
       CancelJobRequest cancelJobRequest = CancelJobRequest.newBuilder()
         .setUsername(username)
@@ -353,5 +394,24 @@ public class JobResource extends BaseResourceWithAllocator {
 
   protected long getDelay() {
     return 0L;
+  }
+
+  private JobSummary getJobSummary(String jobId) {
+    try {
+      JobSummaryRequest request = JobSummaryRequest.newBuilder()
+        .setJobId(JobProtobuf.JobId.newBuilder().setId(jobId).build())
+        .setUserName(securityContext.getUserPrincipal().getName())
+        .build();
+      return jobsService.getJobSummary(request);
+    } catch (JobNotFoundException e) {
+      return null;
+    }
+  }
+
+  private boolean isAuthorized(String role, String jobCreator) {
+    //check if job creator and current user have same tenant, if not then current user is not authorized to access job
+    String userTenant = MultiTenantServiceHelper.getUserTenant(securityContext.getUserPrincipal().getName());
+    String creatorTenant = MultiTenantServiceHelper.getUserTenant(jobCreator);
+    return MultiTenantServiceHelper.hasPermission(securityContext, role, userTenant, creatorTenant);
   }
 }

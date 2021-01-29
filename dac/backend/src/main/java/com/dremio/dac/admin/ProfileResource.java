@@ -25,6 +25,7 @@ import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
 import javax.ws.rs.BadRequestException;
 import javax.ws.rs.DefaultValue;
+import javax.ws.rs.ForbiddenException;
 import javax.ws.rs.GET;
 import javax.ws.rs.NotFoundException;
 import javax.ws.rs.Path;
@@ -43,6 +44,7 @@ import com.dremio.dac.resource.NotificationResponse;
 import com.dremio.dac.resource.NotificationResponse.ResponseType;
 import com.dremio.dac.server.admin.profile.ProfileWrapper;
 import com.dremio.dac.service.errors.InvalidReflectionJobException;
+import com.dremio.dac.service.tenant.MultiTenantServiceHelper;
 import com.dremio.exec.ExecConstants;
 import com.dremio.exec.proto.UserBitShared.QueryProfile;
 import com.dremio.exec.serialization.InstanceSerializer;
@@ -50,6 +52,8 @@ import com.dremio.exec.serialization.ProtoSerializer;
 import com.dremio.exec.server.options.ProjectOptionManager;
 import com.dremio.service.job.CancelJobRequest;
 import com.dremio.service.job.CancelReflectionJobRequest;
+import com.dremio.service.job.JobSummary;
+import com.dremio.service.job.JobSummaryRequest;
 import com.dremio.service.job.QueryProfileRequest;
 import com.dremio.service.job.ReflectionJobProfileRequest;
 import com.dremio.service.job.proto.JobId;
@@ -91,6 +95,11 @@ public class ProfileResource {
   @Produces(MediaType.TEXT_PLAIN)
   public NotificationResponse cancelQuery(@PathParam("queryid") String queryId) {
     try {
+      JobSummary jobSummary = getJobSummary(queryId);
+      if (jobSummary != null && !isAuthorized("user", jobSummary.getUser())) {
+        throw new ForbiddenException(String.format("User not authorized to access query [%s]", queryId));
+      }
+
       final String username = securityContext.getUserPrincipal().getName();
       jobsService.cancel(CancelJobRequest.newBuilder()
           .setUsername(username)
@@ -112,6 +121,11 @@ public class ProfileResource {
       @QueryParam("attempt") @DefaultValue("0") int attempt) throws IOException {
     final QueryProfile profile;
     try {
+      JobSummary jobSummary = getJobSummary(queryId);
+      if (jobSummary != null && !isAuthorized("user", jobSummary.getUser())) {
+        throw new ForbiddenException(String.format("User not authorized to access query [%s]", queryId));
+      }
+
       final String username = securityContext.getUserPrincipal().getName();
       QueryProfileRequest request = QueryProfileRequest.newBuilder()
         .setJobId(JobProtobuf.JobId.newBuilder()
@@ -135,6 +149,11 @@ public class ProfileResource {
       @QueryParam("attempt") @DefaultValue("0") int attempt) {
     final QueryProfile profile;
     try {
+      JobSummary jobSummary = getJobSummary(queryId);
+      if (jobSummary != null && !isAuthorized("user", jobSummary.getUser())) {
+        throw new ForbiddenException(String.format("User not authorized to access query [%s]", queryId));
+      }
+
       final String username = securityContext.getUserPrincipal().getName();
       QueryProfileRequest request = QueryProfileRequest.newBuilder()
         .setJobId(JobProtobuf.JobId.newBuilder()
@@ -164,6 +183,11 @@ public class ProfileResource {
     }
 
     try {
+      JobSummary jobSummary = getJobSummary(queryId);
+      if (jobSummary != null && !isAuthorized("user", jobSummary.getUser())) {
+        throw new ForbiddenException(String.format("User not authorized to access query [%s]", queryId));
+      }
+
       final String username = securityContext.getUserPrincipal().getName();
       CancelJobRequest cancelJobRequest = CancelJobRequest.newBuilder()
         .setUsername(username)
@@ -197,6 +221,11 @@ public class ProfileResource {
 
     final QueryProfile profile;
     try {
+      JobSummary jobSummary = getJobSummary(queryId);
+      if (jobSummary != null && !isAuthorized("user", jobSummary.getUser())) {
+        throw new ForbiddenException(String.format("User not authorized to access query [%s]", queryId));
+      }
+
       final String username = securityContext.getUserPrincipal().getName();
       QueryProfileRequest request = QueryProfileRequest.newBuilder()
         .setJobId(JobProtobuf.JobId.newBuilder()
@@ -228,6 +257,11 @@ public class ProfileResource {
                                @PathParam("reflectionId") String reflectionId) throws IOException {
     final QueryProfile profile;
     try {
+      JobSummary jobSummary = getJobSummary(queryId);
+      if (jobSummary != null && !isAuthorized("user", jobSummary.getUser())) {
+        throw new ForbiddenException(String.format("User not authorized to access query [%s]", queryId));
+      }
+
       final String username = securityContext.getUserPrincipal().getName();
       QueryProfileRequest request = QueryProfileRequest.newBuilder()
         .setJobId(JobProtobuf.JobId.newBuilder()
@@ -263,6 +297,25 @@ public class ProfileResource {
     } catch (Exception e){
       throw new BadRequestException("Failed to get query profile.", e);
     }
+  }
+
+  private JobSummary getJobSummary(String jobId) {
+    try {
+      JobSummaryRequest request = JobSummaryRequest.newBuilder()
+        .setJobId(JobProtobuf.JobId.newBuilder().setId(jobId).build())
+        .setUserName(securityContext.getUserPrincipal().getName())
+        .build();
+      return jobsService.getJobSummary(request);
+    } catch (JobNotFoundException e) {
+      return null;
+    }
+  }
+
+  private boolean isAuthorized(String role, String jobCreator) {
+    //check if job creator and current user have same tenant, if not then current user is not authorized to access job
+    String userTenant = MultiTenantServiceHelper.getUserTenant(securityContext.getUserPrincipal().getName());
+    String creatorTenant = MultiTenantServiceHelper.getUserTenant(jobCreator);
+    return MultiTenantServiceHelper.hasPermission(securityContext, role, userTenant, creatorTenant);
   }
 
 }

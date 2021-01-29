@@ -24,8 +24,8 @@ import javax.validation.Valid;
 import javax.ws.rs.BadRequestException;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.DefaultValue;
+import javax.ws.rs.ForbiddenException;
 import javax.ws.rs.GET;
-import javax.ws.rs.NotAuthorizedException;
 import javax.ws.rs.NotFoundException;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
@@ -37,10 +37,10 @@ import javax.ws.rs.core.SecurityContext;
 import com.dremio.common.exceptions.UserException;
 import com.dremio.dac.annotations.APIResource;
 import com.dremio.dac.annotations.Secured;
-import com.dremio.dac.model.usergroup.UserUI;
 import com.dremio.dac.resource.BaseResourceWithAllocator;
 import com.dremio.dac.server.BufferAllocatorFactory;
 import com.dremio.dac.service.errors.InvalidReflectionJobException;
+import com.dremio.dac.service.tenant.MultiTenantServiceHelper;
 import com.dremio.service.job.CancelJobRequest;
 import com.dremio.service.job.CancelReflectionJobRequest;
 import com.dremio.service.job.JobDetails;
@@ -82,11 +82,11 @@ public class JobResource extends BaseResourceWithAllocator {
 
   @GET
   @Path("/{id}")
-  public JobStatus getJobStatus(@PathParam("id") String id) throws NotAuthorizedException {
+  public JobStatus getJobStatus(@PathParam("id") String id) {
     try {
-      //check if user is authorized to view this job before proceeding
-      if(!canGetJob(getJobSummaryFromId(id), (UserUI)securityContext.getUserPrincipal())) {
-        throw new NotAuthorizedException("Not authorized"); //user cannot view this job
+      JobSummary jobSummary = getJobSummary(id);
+      if (jobSummary != null && !isAuthorized("user", jobSummary.getUser())) {
+        throw new ForbiddenException(String.format("User not authorized to access job [%s]", id));
       }
 
       JobDetailsRequest request = JobDetailsRequest.newBuilder()
@@ -111,8 +111,9 @@ public class JobResource extends BaseResourceWithAllocator {
         .setUserName(securityContext.getUserPrincipal().getName())
         .build();
       JobSummary jobSummary = jobs.getJobSummary(request);
-      if(!canGetJob(jobSummary, (UserUI)securityContext.getUserPrincipal())){
-        throw new NotAuthorizedException("Not authorized"); //user cannot view this job
+
+      if (!isAuthorized("user", jobSummary.getUser())) {
+        throw new ForbiddenException(String.format("User not authorized to access job [%s]", id));
       }
 
       if (jobSummary.getJobState() != JobState.COMPLETED) {
@@ -131,12 +132,12 @@ public class JobResource extends BaseResourceWithAllocator {
   public void cancelJob(@PathParam("id") String id) throws JobException {
     final String username = securityContext.getUserPrincipal().getName();
 
-    //check if user is authorized to view this job before proceeding
-    if(!canGetJob(getJobSummaryFromId(id), (UserUI)securityContext.getUserPrincipal())) {
-      throw new NotAuthorizedException("Not authorized"); //user cannot view this job
-    }
-
     try {
+      JobSummary jobSummary = getJobSummary(id);
+      if (jobSummary != null && !isAuthorized("user", jobSummary.getUser())) {
+        throw new ForbiddenException(String.format("User not authorized to access job [%s]", id));
+      }
+
       jobs.cancel(CancelJobRequest.newBuilder()
           .setUsername(username)
           .setJobId(JobsProtoUtil.toBuf(new JobId(id)))
@@ -158,9 +159,9 @@ public class JobResource extends BaseResourceWithAllocator {
     }
 
     try {
-      //check if user is authorized to view this job before proceeding
-      if(!canGetJob(getJobSummaryFromId(id), (UserUI)securityContext.getUserPrincipal())) {
-        throw new NotAuthorizedException("Not authorized"); //user cannot view this job
+      JobSummary jobSummary = getJobSummary(id);
+      if (jobSummary != null && !isAuthorized("user", jobSummary.getUser())) {
+        throw new ForbiddenException(String.format("User not authorized to access job [%s]", id));
       }
 
       JobDetailsRequest.Builder jobDetailsRequestBuilder = JobDetailsRequest.newBuilder()
@@ -195,9 +196,9 @@ public class JobResource extends BaseResourceWithAllocator {
     final String username = securityContext.getUserPrincipal().getName();
 
     try {
-      //check if user is authorized to view this job before proceeding
-      if(!canGetJob(getJobSummaryFromId(id), (UserUI)securityContext.getUserPrincipal())) {
-        throw new NotAuthorizedException("Not authorized"); //user cannot view this job
+      JobSummary jobSummary = getJobSummary(id);
+      if (jobSummary != null && !isAuthorized("user", jobSummary.getUser())) {
+        throw new ForbiddenException(String.format("User not authorized to access job [%s]", id));
       }
 
       CancelJobRequest cancelJobRequest = CancelJobRequest.newBuilder()
@@ -217,37 +218,22 @@ public class JobResource extends BaseResourceWithAllocator {
     }
   }
 
-  private JobSummary getJobSummaryFromId(String id) throws JobNotFoundException {
-    JobSummaryRequest request = JobSummaryRequest.newBuilder()
-      .setJobId(JobProtobuf.JobId.newBuilder().setId(id).build())
-      .setUserName(securityContext.getUserPrincipal().getName())
-      .build();
-    return jobs.getJobSummary(request);
+  private JobSummary getJobSummary(String jobId) {
+    try {
+      JobSummaryRequest request = JobSummaryRequest.newBuilder()
+        .setJobId(JobProtobuf.JobId.newBuilder().setId(jobId).build())
+        .setUserName(securityContext.getUserPrincipal().getName())
+        .build();
+      return jobs.getJobSummary(request);
+    } catch (JobNotFoundException e) {
+      return null;
+    }
   }
 
-  private boolean canGetJob(JobSummary jobSummary, UserUI currentUser) {
-    boolean isAllowed = true;
-
-    String root = jobSummary.getParent().getDatasetPathList().get(0);
-    System.out.println("*****JobResource.canGetJob: " + jobSummary);
-
-    //if path root is a home (e.g. @dremio), access is restricted to its owner
-    if(root.startsWith("@") && !("@" + currentUser.getName()).equals(root)) {
-      return false;
-    }
-
-    /* if path root has no prefix "<tenant>__", it is public */
-    //get root tenant, if any
-    String[] nameParts = root.split("__");
-    if(nameParts.length > 1) {
-      //root access is restricted to a specific tenant, compare it with user tenant
-      String tenant = currentUser.getUser().getTenant();
-      if(!currentUser.getName().equals("dremio") && tenant != null && !tenant.equals(nameParts[0])){
-        isAllowed = false;
-      }
-    } //else, there is no prefix, root is public
-    System.out.println("****root: " + root + ", isAllowed: " + isAllowed);
-
-    return isAllowed;
+  private boolean isAuthorized(String role, String jobCreator) {
+    //check if job creator and current user have same tenant, if not then current user is not authorized to access job
+    String userTenant = MultiTenantServiceHelper.getUserTenant(securityContext.getUserPrincipal().getName());
+    String creatorTenant = MultiTenantServiceHelper.getUserTenant(jobCreator);
+    return MultiTenantServiceHelper.hasPermission(securityContext, role, userTenant, creatorTenant);
   }
 }

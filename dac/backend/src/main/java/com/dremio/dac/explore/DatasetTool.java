@@ -54,7 +54,6 @@ import com.dremio.dac.model.job.JobDetailsUI;
 import com.dremio.dac.model.job.JobUI;
 import com.dremio.dac.model.job.QueryError;
 import com.dremio.dac.model.spaces.TempSpace;
-import com.dremio.dac.model.usergroup.UserUI;
 import com.dremio.dac.proto.model.dataset.DataType;
 import com.dremio.dac.proto.model.dataset.Derivation;
 import com.dremio.dac.proto.model.dataset.From;
@@ -484,28 +483,12 @@ public class DatasetTool {
 
     final VirtualDatasetUI newDataset = createNewUntitledMetadataOnly(from, version, context);
     final SqlQuery query = new SqlQuery(newDataset.getSql(), newDataset.getState().getContextList(), username());
-    System.out.println("****called DatasetTool.newUntitled: " + from);
-
-    if(from.wrap().getType() == FromType.Table) {//NOTA: adesso ridondante
-      //user clicked on a table or requested it via URL
-      if(!canQueryTable(from)) {
-        //prevent query execution
-        throw new DatasetNotFoundException(new DatasetPath(from.wrap().getTable().getDatasetPath()), "Dataset not found");
-      }
-    }
 
     try {
       final MetadataCollectingJobStatusListener listener = new MetadataCollectingJobStatusListener();
       final QueryType queryType = prepare ? QueryType.PREPARE_INTERNAL : QueryType.UI_PREVIEW;
       final JobData jobData = executor.runQueryWithListener(query, queryType, TMP_DATASET_PATH, newDataset.getVersion(), listener, runInSameThread);
       final QueryMetadata queryMetadata = listener.getMetadata();
-      System.out.println("****check QueryMetadata From: " + queryMetadata.getState().getFrom());
-      //stop if user is querying a restricted space or source
-      if(!canPerformThisQuery(queryMetadata)) {
-        //prevent job saving and sending data
-        throw new DatasetNotFoundException(new DatasetPath(from.wrap().getTable().getDatasetPath()), "Dataset not found");
-      }
-
       // get the job's info after the query metadata is available to make sure the schema has already been populated
       final JobDetails jobDetails = jobsService.getJobDetails(
         JobDetailsRequest.newBuilder()
@@ -551,8 +534,6 @@ public class DatasetTool {
 
     final VirtualDatasetUI newDataset = createNewUntitledMetadataOnly(from, version, context);
     final SqlQuery query = new SqlQuery(newDataset.getSql(), newDataset.getState().getContextList(), username());
-    System.out.println("****called DatasetTool.newUntitledAndRun: " + from);
-    //non dovrebbe servire chiamare canQueryTable perché questa funzione viene chiamata solo da pulsante Run
 
     newDataset.setLastTransform(new Transform(TransformType.createFromParent).setTransformCreateFromParent(new TransformCreateFromParent(from.wrap())));
     MetadataCollectingJobStatusListener listener = new MetadataCollectingJobStatusListener();
@@ -560,13 +541,6 @@ public class DatasetTool {
     try {
       final JobId jobId = executor.runQueryWithListener(query, QueryType.UI_RUN, TMP_DATASET_PATH, version, listener).getJobId();
       final QueryMetadata queryMetadata = listener.getMetadata();
-      System.out.println("****check QueryMetadata From: " + queryMetadata.getState().getFrom());
-      //stop if user is querying a restricted space or source
-      if(!canPerformThisQuery(queryMetadata)) {
-        //prevent job saving and sending data
-        throw new DatasetNotFoundException(new DatasetPath(from.wrap().getTable().getDatasetPath()), "Dataset not found");
-      }
-
       // get the job's info after the query metadata is available to make sure the schema has already been populated
       final JobDetails jobDetails = jobsService.getJobDetails(
         JobDetailsRequest.newBuilder()
@@ -872,57 +846,6 @@ public class DatasetTool {
 
   protected DatasetUI newDataset(VirtualDatasetUI vds, DatasetVersion tipVersion) throws NamespaceException {
     return DatasetUI.newInstance(vds, tipVersion, datasetService.getNamespaceService());
-  }
-
-  /**
-   * Check if the current user is allowed to access a table in a restricted space or source.
-   * Spaces and sources can be named with the prefix "<tenant>__" in order to restrict access to a specific tenant.
-   * The function compares the tenant of the current user with the space or source name at the root of the
-   * dataset path to determine if the user is allowed to perform the query.
-   *
-   * @param from The query
-   * @throws NamespaceException
-   */
-  private boolean canQueryTable(FromBase from) throws NamespaceException {
-    System.out.println("****called DatasetTool.canQueryTable, " + from);
-    boolean isAllowed = true;
-    //get dataset root tenant, if any
-    //String databaseName = new DatasetPath(from.wrap().getTable().getDatasetPath()).getDataset().getName();
-    String databaseName = from.wrap().getTable().getDatasetPath();
-    String[] nameParts = databaseName.split("__");
-
-    if(nameParts.length > 1) {
-      //space or source access is restricted to a specific tenant, compare it with user tenant
-      String tenant = ((UserUI)context.getUserPrincipal()).getUser().getTenant();
-      if(!context.getUserPrincipal().getName().equals("dremio") && tenant != null && !tenant.equals(nameParts[0])){
-        isAllowed = false;
-      }
-    } //else, there is no prefix, space or source is public
-
-    System.out.println("****root tenant: " + nameParts[0] + " - isAllowed: " + isAllowed);
-    return isAllowed;
-  }
-
-  /**
-   * @param queryMetadata
-   */
-  private boolean canPerformThisQuery(QueryMetadata queryMetadata) throws NamespaceException {
-    boolean isAllowed = true;
-    String fromValue = queryMetadata.getState().getFrom().getValue().replaceAll("\"", ""); //e.g. "\"spazio\".\"cartella\".\"Guests_copia\""
-    System.out.println("****called DatasetTool.canPerformThisQuery: " + fromValue);
-
-    String[] nameParts = fromValue.split("__");
-
-    if(nameParts.length > 1) {
-      //space or source access is restricted to a specific tenant, compare it with user tenant
-      String tenant = ((UserUI)context.getUserPrincipal()).getUser().getTenant();
-      if(!context.getUserPrincipal().getName().equals("dremio") && tenant != null && !tenant.equals(nameParts[0])){
-        isAllowed = false;
-      }
-    } //else, there is no prefix, space or source is public
-
-    System.out.println("****root tenant: " + nameParts[0] + " - isAllowed: " + isAllowed);
-    return isAllowed;
   }
 
 }
