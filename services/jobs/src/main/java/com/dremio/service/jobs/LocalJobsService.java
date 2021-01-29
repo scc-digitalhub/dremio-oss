@@ -218,10 +218,14 @@ import com.dremio.service.namespace.dataset.proto.FieldOrigin;
 import com.dremio.service.namespace.dataset.proto.Origin;
 import com.dremio.service.namespace.dataset.proto.ParentDataset;
 import com.dremio.service.namespace.proto.NameSpaceContainer;
+import com.dremio.service.namespace.source.proto.SourceConfig;
+import com.dremio.service.namespace.space.proto.HomeConfig;
+import com.dremio.service.namespace.space.proto.SpaceConfig;
 import com.dremio.service.scheduler.Cancellable;
 import com.dremio.service.scheduler.Schedule;
 import com.dremio.service.scheduler.ScheduleUtils;
 import com.dremio.service.scheduler.SchedulerService;
+import com.dremio.service.tenant.MultiTenantServiceHelper;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
@@ -739,6 +743,49 @@ public class LocalJobsService implements Service, JobResultInfoProvider {
 
   }
 
+  /**
+   * Verify that the query does not involve datasets the user is not allowed to access. In that case, stop job submission.
+   */
+  private boolean canPerformQuery(String username, List<String> contextList, String sql) {
+    boolean allowed = true;
+
+    if (!username.equals(MultiTenantServiceHelper.DEFAULT_USER) && !username.equals(SYSTEM_USERNAME)) {//not admin
+      List<String> containers = Lists.newArrayList(); //all spaces/sources/homes mentioned in the query + query context
+
+      if (!contextList.isEmpty()) {
+        containers.add(contextList.get(0));
+      }
+
+      for (SpaceConfig space : namespaceService.getSpaces()) {
+        if (sql.contains(space.getName())) {
+          containers.add(space.getName());
+        }
+      }
+      for (HomeConfig home : namespaceService.getHomeSpaces()) {
+        if (sql.contains(MultiTenantServiceHelper.getUserHomePath(home.getOwner()))) {
+          containers.add(MultiTenantServiceHelper.getUserHomePath(home.getOwner()));
+        }
+      }
+      for (SourceConfig source : namespaceService.getSources()) {
+        if (!MultiTenantServiceHelper.isInternalSource(source.getName()) && sql.contains(source.getName())) {
+          containers.add(source.getName());
+        }
+      }
+
+      for (String container : containers) {
+        //unless container is user home, check container tenant against user tenant
+        if (!container.equals(MultiTenantServiceHelper.getUserHomePath(username))) {
+          String userTenant = MultiTenantServiceHelper.getUserTenant(username);
+          String resourceTenant = MultiTenantServiceHelper.getResourceTenant(container);
+          if (userTenant == null || resourceTenant == null || !MultiTenantServiceHelper.isSameTenant(userTenant, resourceTenant)) {
+            allowed = false;
+          }
+        }
+      }
+    }
+    return allowed;
+  }
+
   @VisibleForTesting
   public JobId submitJob(
       SubmitJobRequest submitJobRequest,
@@ -751,37 +798,44 @@ public class LocalJobsService implements Service, JobResultInfoProvider {
     checkNotNull(eventObserver, "an event observer must be provided");
     final JobEventCollatingObserver collatingObserver = new JobEventCollatingObserver(jobId, eventObserver);
 
-    commandPoolService.get().submit(CommandPool.Priority.HIGH,
-      ExternalIdHelper.toString(externalId) + ":job-submission",
-      (waitInMillis) -> {
-        if (!queryExecutor.get().canAcceptWork()) {
-          throw UserException.resourceError()
-            .message(UserException.QUERY_REJECTED_MSG)
-            .buildSilently();
-        }
+    if (!canPerformQuery(jobRequest.getUsername(), jobRequest.getSqlQuery().getContextList(), jobRequest.getSqlQuery().getSql())) {
+      collatingObserver.onError(
+          UserException.permissionError()
+              .message("Query contains datasets the user is not allowed to access")
+              .buildSilently());
+    } else {
+      commandPoolService.get().submit(CommandPool.Priority.HIGH,
+        ExternalIdHelper.toString(externalId) + ":job-submission",
+        (waitInMillis) -> {
+          if (!queryExecutor.get().canAcceptWork()) {
+            throw UserException.resourceError()
+              .message(UserException.QUERY_REJECTED_MSG)
+              .buildSilently();
+          }
 
-        startJob(externalId, jobRequest, collatingObserver, planTransformationListener);
-        logger.debug("Submitted new job. Id: {} Type: {} Sql: {}", jobId.getId(), jobRequest.getQueryType(),
-          jobRequest.getSqlQuery());
-        if (waitInMillis > CommandPool.WARN_DELAY_MS) {
-          logger.warn("Job submission {} waited too long in the command pool: wait was {}ms", jobId.getId(), waitInMillis);
-        }
-        return null;
-      }, jobRequest.getRunInSameThread())
-      // once job submission is done, make sure we call either jobSubmitted() or submissionFailed() depending on
-      // the outcome
-      .whenComplete((o, e) -> {
-        if (e == null) {
-          collatingObserver.onSubmitted(JobEvent.newBuilder()
-              .setJobSubmitted(Empty.newBuilder().build())
-              .build());
-        } else {
-          collatingObserver.onError(
-              UserException.systemError(e)
-                  .message("Failed to submit job %s", jobId.getId())
-                  .buildSilently());
-        }
-      });
+          startJob(externalId, jobRequest, collatingObserver, planTransformationListener);
+          logger.debug("Submitted new job. Id: {} Type: {} Sql: {}", jobId.getId(), jobRequest.getQueryType(),
+            jobRequest.getSqlQuery());
+          if (waitInMillis > CommandPool.WARN_DELAY_MS) {
+            logger.warn("Job submission {} waited too long in the command pool: wait was {}ms", jobId.getId(), waitInMillis);
+          }
+          return null;
+        }, jobRequest.getRunInSameThread())
+        // once job submission is done, make sure we call either jobSubmitted() or submissionFailed() depending on
+        // the outcome
+        .whenComplete((o, e) -> {
+          if (e == null) {
+            collatingObserver.onSubmitted(JobEvent.newBuilder()
+                .setJobSubmitted(Empty.newBuilder().build())
+                .build());
+          } else {
+            collatingObserver.onError(
+                UserException.systemError(e)
+                    .message("Failed to submit job %s", jobId.getId())
+                    .buildSilently());
+          }
+        });
+    }
 
     // begin sending events to the client, and start with jobId
     collatingObserver.start(JobEvent.newBuilder()

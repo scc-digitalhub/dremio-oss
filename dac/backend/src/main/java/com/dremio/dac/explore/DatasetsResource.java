@@ -22,6 +22,7 @@ import java.util.List;
 import javax.annotation.security.RolesAllowed;
 import javax.inject.Inject;
 import javax.ws.rs.Consumes;
+import javax.ws.rs.ForbiddenException;
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
@@ -66,6 +67,7 @@ import com.dremio.dac.service.errors.DatasetNotFoundException;
 import com.dremio.dac.service.errors.DatasetVersionNotFoundException;
 import com.dremio.dac.service.errors.NewDatasetQueryException;
 import com.dremio.dac.service.search.SearchContainer;
+import com.dremio.dac.service.tenant.MultiTenantServiceHelper;
 import com.dremio.datastore.SearchTypes.SortOrder;
 import com.dremio.exec.catalog.ConnectionReader;
 import com.dremio.exec.catalog.DatasetCatalog;
@@ -102,6 +104,7 @@ public class DatasetsResource extends BaseResourceWithAllocator {
   private final ConnectionReader connectionReader;
   private final DatasetCatalog datasetCatalog;
   private final CatalogServiceHelper catalogServiceHelper;
+  private final SecurityContext securityContext;
 
   @Inject
   public DatasetsResource(
@@ -117,7 +120,7 @@ public class DatasetsResource extends BaseResourceWithAllocator {
       ) {
     this(namespaceService, datasetService,
       new DatasetTool(datasetService, jobsService, executor, securityContext),
-      connectionReader, datasetCatalog, catalogServiceHelper, allocatorFactory);
+      connectionReader, datasetCatalog, catalogServiceHelper, allocatorFactory, securityContext);
   }
 
   protected DatasetsResource(NamespaceService namespaceService,
@@ -126,7 +129,8 @@ public class DatasetsResource extends BaseResourceWithAllocator {
       ConnectionReader connectionReader,
       DatasetCatalog datasetCatalog,
       CatalogServiceHelper catalogServiceHelper,
-      BufferAllocatorFactory allocatorFactory
+      BufferAllocatorFactory allocatorFactory,
+      SecurityContext securityContext
       )
    {
      super(allocatorFactory);
@@ -136,6 +140,7 @@ public class DatasetsResource extends BaseResourceWithAllocator {
     this.connectionReader = connectionReader;
     this.datasetCatalog = datasetCatalog;
     this.catalogServiceHelper = catalogServiceHelper;
+    this.securityContext = securityContext;
   }
 
   private InitialPreviewResponse newUntitled(DatasetPath fromDatasetPath, DatasetVersion newVersion, Integer limit, String engineName)
@@ -244,7 +249,8 @@ public class DatasetsResource extends BaseResourceWithAllocator {
                                          @QueryParam("order") SortOrder order) throws NamespaceException, DatasetVersionNotFoundException {
     final DatasetSearchUIs datasets = new DatasetSearchUIs();
     for (SearchContainer searchEntity : catalogServiceHelper.searchByQuery(filters)) {
-      if (searchEntity.getNamespaceContainer().getType().equals(NameSpaceContainer.Type.DATASET)) {
+      String pathRoot = searchEntity.getNamespaceContainer().getFullPathList().get(0);
+      if (searchEntity.getNamespaceContainer().getType().equals(NameSpaceContainer.Type.DATASET) && isAuthorized("user", pathRoot)) {
         datasets.add(new DatasetSearchUI(searchEntity.getNamespaceContainer().getDataset(), searchEntity.getCollaborationTag()));
       }
     }
@@ -262,6 +268,9 @@ public class DatasetsResource extends BaseResourceWithAllocator {
   @Produces(MediaType.APPLICATION_JSON)
   public DatasetSummary getDatasetSummary(@PathParam("path") String path) throws NamespaceException, DatasetNotFoundException {
     final DatasetPath datasetPath = new DatasetPath(PathUtils.toPathComponents(path));
+    if (!isAuthorized("user", datasetPath.getRoot().getName())) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
     return getDatasetSummary(datasetPath);
   }
 
@@ -300,6 +309,10 @@ public class DatasetsResource extends BaseResourceWithAllocator {
           new Space(null, "None", null, null, null, 0, null));
     }
 
+    if (!isAuthorized("user", datasetPath.getRoot().getName())) {
+      throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
+    }
+
     final DatasetConfig datasetConfig = namespaceService.getDataset(datasetPath.toNamespaceKey());
     String containerName = datasetConfig.getFullPathList().get(0);
     DatasetContainer spaceInfo;
@@ -335,5 +348,16 @@ public class DatasetsResource extends BaseResourceWithAllocator {
 
   protected Space newSpace(SpaceConfig spaceConfig, int datasetCount) throws Exception {
     return Space.newInstance(spaceConfig, null, datasetCount);
+  }
+
+  private boolean isAuthorized(String role, String root) {
+    //short-circuit if the root is the home of the current user
+    if (HomeName.getUserHomePath(securityContext.getUserPrincipal().getName()).getName().equals(root)) {
+      return true;
+    }
+
+    String userTenant = MultiTenantServiceHelper.getUserTenant(securityContext.getUserPrincipal().getName());
+    String resourceTenant = MultiTenantServiceHelper.getResourceTenant(root);
+    return MultiTenantServiceHelper.hasPermission(securityContext, role, userTenant, resourceTenant);
   }
 }

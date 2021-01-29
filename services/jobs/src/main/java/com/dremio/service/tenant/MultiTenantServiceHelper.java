@@ -1,15 +1,44 @@
-package com.dremio.dac.service.tenant;
+package com.dremio.service.tenant;
 
 import javax.ws.rs.core.SecurityContext;
 
 import com.dremio.service.users.User;
 
 /**
- * Multi-tenancy helper class that is used by the APIs (annotated as RestResource and APIResource) to verify that a user
- * requesting a resource is allowed to access it, i.e., user tenant and resource tenant match.
- * A duplicate of this class, used by LocalJobsService, is com.dremio.service.tenant.MultiTenantServiceHelper.
+ * Multi-tenancy helper class that is used by the jobs service (com.dremio.service.jobs.LocalJobsService) to verify that a user
+ * submitting a query is allowed to access the specified datasets, i.e., user tenant and dataset tenant match.
+ * A duplicate of this class, used by the APIs, is com.dremio.dac.service.tenant.MultiTenantServiceHelper.
  */
 public class MultiTenantServiceHelper {
+  public static final String DEFAULT_USER = "dremio"; //default admin username
+  private static final String HOME_PREFIX = "@"; //default home prefix, copied from com.dremio.dac.model.spaces.HomeName
+  /**
+   * Internal source names, used by Dremio and not by users,
+   * e.g. __home is the temporary path root of files while they are being uploaded.
+   * These sources must be skipped during tenant check, as they are common to any tenant.
+  */
+  private static final String[] RESERVED_SOURCES = new String[]{"INFORMATION_SCHEMA", "sys", "__home", "__accelerator", "__jobResultsStore", "$scratch", "__datasetDownload", "__logs", "__support"};
+
+  /**
+   * Copied from com.dremio.dac.model.spaces.HomeName to be used outside DAC
+   */
+  public static String getUserHomePath(String username) {
+    return HOME_PREFIX + username;
+  }
+
+  /**
+   * Used to avoid preventing access to internal sources (e.g. when uploading a file)
+   */
+  public static boolean isInternalSource(String sourceName) {
+    boolean internal = false;
+    for (String s : RESERVED_SOURCES) {
+      if (s.equals(sourceName)) {
+        internal = true;
+        break;
+      }
+    }
+    return internal;
+  }
 
   /**
    * Extract tenant from username, which has the syntax <username>@<tenant>.
