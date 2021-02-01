@@ -33,7 +33,7 @@ import com.dremio.dac.util.InformationUtil;
  */
 @APIResource
 @Secured
-@RolesAllowed({"admin"})
+@RolesAllowed({"user", "admin"})
 @Path("/info")
 @Consumes(APPLICATION_JSON)
 @Produces(APPLICATION_JSON)
