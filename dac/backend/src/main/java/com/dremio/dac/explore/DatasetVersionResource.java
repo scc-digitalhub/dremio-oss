@@ -312,8 +312,12 @@ public class DatasetVersionResource extends BaseResourceWithAllocator {
   @Produces(APPLICATION_JSON)
   public InitialPreviewResponse getDatasetForVersion(
       @QueryParam("tipVersion") DatasetVersion tipVersion,
+<<<<<<< HEAD
       @QueryParam("limit") Integer limit,
       @QueryParam("engineName") String engineName) throws DatasetVersionNotFoundException, NamespaceException, JobNotFoundException {
+=======
+      @QueryParam("limit") Integer limit) throws DatasetVersionNotFoundException, NamespaceException, JobNotFoundException {
+>>>>>>> 66baa36b4c3f04a6cd4bb7a4e9b8730db8ef603b
     if (!isAuthorized("user")) {
       throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
     }
@@ -411,8 +415,12 @@ public class DatasetVersionResource extends BaseResourceWithAllocator {
    */
   @GET @Path("run")
   @Produces(APPLICATION_JSON) @Consumes(APPLICATION_JSON)
+<<<<<<< HEAD
   public InitialRunResponse run(@QueryParam("tipVersion") DatasetVersion tipVersion,
                                 @QueryParam("engineName") String engineName) throws DatasetVersionNotFoundException, InterruptedException, NamespaceException {
+=======
+  public InitialRunResponse run(@QueryParam("tipVersion") DatasetVersion tipVersion) throws DatasetVersionNotFoundException, InterruptedException, NamespaceException {
+>>>>>>> 66baa36b4c3f04a6cd4bb7a4e9b8730db8ef603b
     if (!isAuthorized("user")) {
       throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
     }

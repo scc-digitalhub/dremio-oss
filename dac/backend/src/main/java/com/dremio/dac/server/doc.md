@@ -348,6 +348,9 @@
    > `<=` javax.ws.rs.core.Response   
 
 
+## Resource defined by class com.dremio.dac.resource.OAuthResource
+
+
 ## Resource defined by class com.dremio.dac.resource.PowerBIResource
 
  - GET /powerbi/{datasetId}   
