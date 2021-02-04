@@ -348,9 +348,6 @@
    > `<=` javax.ws.rs.core.Response   
 
 
-## Resource defined by class com.dremio.dac.resource.OAuthResource
-
-
 ## Resource defined by class com.dremio.dac.resource.PowerBIResource
 
  - GET /powerbi/{datasetId}   
@@ -608,6 +605,13 @@
  - GET /tableau/{datasetId}   
    > `=>`   
    > Host: {String}   
+   > `<=` javax.ws.rs.core.Response   
+
+
+## Resource defined by class com.dremio.dac.resource.TemporaryTokenResource
+
+ - POST /temp-token?request={String}&durationSeconds={long}   
+   > `=>`   
    > `<=` javax.ws.rs.core.Response   
 
 

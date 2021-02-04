@@ -411,15 +411,11 @@ public class DatasetVersionResource extends BaseResourceWithAllocator {
    */
   @GET @Path("run")
   @Produces(APPLICATION_JSON) @Consumes(APPLICATION_JSON)
-<<<<<<< 0a610c59ccf9c5e535645da4e3e0d94f87330d3c
   public InitialRunResponse run(@QueryParam("tipVersion") DatasetVersion tipVersion,
                                 @QueryParam("engineName") String engineName) throws DatasetVersionNotFoundException, InterruptedException, NamespaceException {
-=======
-  public InitialRunResponse run(@QueryParam("tipVersion") DatasetVersion tipVersion) throws DatasetVersionNotFoundException, InterruptedException, NamespaceException {
     if (!isAuthorized("user")) {
       throw new ForbiddenException(String.format("User not authorized to access datasets in %s.", datasetPath.getRoot().getName()));
     }
->>>>>>> Tenant check on some APIs, removed old changes in SourceService
     final VirtualDatasetUI virtualDatasetUI = getDatasetConfig();
 
     final SqlQuery query = new SqlQuery(virtualDatasetUI.getSql(), virtualDatasetUI.getState().getContextList(), securityContext,
