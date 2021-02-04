@@ -57,10 +57,7 @@ import com.dremio.dac.service.errors.DatasetNotFoundException;
 import com.dremio.dac.service.errors.FileNotFoundException;
 import com.dremio.dac.service.errors.SpaceNotFoundException;
 import com.dremio.dac.service.tenant.MultiTenantServiceHelper;
-<<<<<<< HEAD
 import com.dremio.dac.util.ResourceUtil;
-=======
->>>>>>> 66baa36b4c3f04a6cd4bb7a4e9b8730db8ef603b
 import com.dremio.service.namespace.BoundedDatasetCount;
 import com.dremio.service.namespace.NamespaceException;
 import com.dremio.service.namespace.NamespaceNotFoundException;

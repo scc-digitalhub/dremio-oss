@@ -61,10 +61,7 @@ import com.dremio.dac.service.errors.SourceFolderNotFoundException;
 import com.dremio.dac.service.errors.SourceNotFoundException;
 import com.dremio.dac.service.source.SourceService;
 import com.dremio.dac.service.tenant.MultiTenantServiceHelper;
-<<<<<<< HEAD
 import com.dremio.dac.util.ResourceUtil;
-=======
->>>>>>> 66baa36b4c3f04a6cd4bb7a4e9b8730db8ef603b
 import com.dremio.exec.catalog.ConnectionReader;
 import com.dremio.exec.catalog.SourceCatalog;
 import com.dremio.exec.ops.ReflectionContext;

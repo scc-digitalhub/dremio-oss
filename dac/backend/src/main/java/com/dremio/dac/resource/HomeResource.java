@@ -580,12 +580,9 @@ public class HomeResource extends BaseResourceWithAllocator {
     return datasetsResource.createUntitledFromHomeFile(homeName, path, limit);
   }
 
-<<<<<<< HEAD
   protected void checkHomeSpaceExists(HomePath homePath) {
   }
 
-=======
->>>>>>> 66baa36b4c3f04a6cd4bb7a4e9b8730db8ef603b
   private boolean isAuthorized() {
     //allow only if user is home owner or admin
     String currentUserHome = HomeName.getUserHomePath(securityContext.getUserPrincipal().getName()).getName();
