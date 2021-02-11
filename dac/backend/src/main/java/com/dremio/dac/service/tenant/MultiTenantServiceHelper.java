@@ -36,10 +36,11 @@ public class MultiTenantServiceHelper {
   }
 
   /**
-   * Split path, then get resource tenant
+   * Change string to array, then get resource tenant
    */
-  public static String getResourceTenant(String path) {
-    return getResourceTenant(path.split("\\."));
+  public static String getResourceTenant(String root) {
+    String[] rootArr = {root};
+    return getResourceTenant(rootArr);
   }
 
   /**
