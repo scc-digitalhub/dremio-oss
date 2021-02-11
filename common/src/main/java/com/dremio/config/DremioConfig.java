@@ -186,6 +186,16 @@ public class DremioConfig extends NestedConfig {
 
   public static final String REMOTE_DATASTORE_RPC_TIMEOUT_SECS = "debug.remote.datastore.rpc_timeout_seconds";
 
+  //oauth
+  public static final String WEB_AUTH_OAUTH_AUTHORIZATION_URL = "services.coordinator.web.auth.oauth.authorizationUrl";
+  public static final String WEB_AUTH_OAUTH_TOKEN_URL = "services.coordinator.web.auth.oauth.tokenUrl";
+  public static final String WEB_AUTH_OAUTH_USERINFO_URL = "services.coordinator.web.auth.oauth.userInfoUrl";
+  public static final String WEB_AUTH_OAUTH_CALLBACK_URL = "services.coordinator.web.auth.oauth.callbackUrl";
+  public static final String WEB_AUTH_OAUTH_CLIENT_ID = "services.coordinator.web.auth.oauth.clientId";
+  public static final String WEB_AUTH_OAUTH_CLIENT_SECRET = "services.coordinator.web.auth.oauth.clientSecret";
+  public static final String WEB_AUTH_OAUTH_TENANT_FIELD = "services.coordinator.web.auth.oauth.tenantField";
+  public static final String WEB_AUTH_OAUTH_SCOPE = "services.coordinator.web.auth.oauth.scope";
+
   private final Config unresolved;
   private final Config reference;
   private final SabotConfig sabot;

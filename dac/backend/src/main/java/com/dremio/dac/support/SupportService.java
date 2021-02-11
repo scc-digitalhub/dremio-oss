@@ -37,9 +37,9 @@ public interface SupportService extends Service {
   String DREMIO_LOG_PATH_PROPERTY = "dremio.log.path";
 
   TypeValidators.BooleanValidator USERS_CHAT = new TypeValidators.BooleanValidator("support.users.chat", false);
-  TypeValidators.BooleanValidator USERS_UPLOAD = new TypeValidators.BooleanValidator("support.users.upload", true);
-  TypeValidators.BooleanValidator USERS_DOWNLOAD = new TypeValidators.BooleanValidator("support.users.download", true);
-  TypeValidators.BooleanValidator USERS_EMAIL = new TypeValidators.BooleanValidator("support.users.email", true);
+  TypeValidators.BooleanValidator USERS_UPLOAD = new TypeValidators.BooleanValidator("support.users.upload", false);
+  TypeValidators.BooleanValidator USERS_DOWNLOAD = new TypeValidators.BooleanValidator("support.users.download", false);
+  TypeValidators.BooleanValidator USERS_EMAIL = new TypeValidators.BooleanValidator("support.users.email", false);
 
   TypeValidators.StringValidator SUPPORT_EMAIL_ADDR = new TypeValidators.StringValidator("support.email.addr", "");
   TypeValidators.StringValidator SUPPORT_EMAIL_SUBJECT = new TypeValidators.StringValidator("support.email.jobs.subject", "");
@@ -47,7 +47,7 @@ public interface SupportService extends Service {
   TypeValidators.StringValidator SUPPORT_UPLOAD_BASE = new TypeValidators.StringValidator("support.upload.base", "https://s3-us-west-2.amazonaws.com/supportuploads.dremio.com/");
   TypeValidators.StringValidator TEMPORARY_SUPPORT_PATH = new TypeValidators.StringValidator("support.temp", "/tmp/dremio-support/");
    TypeValidators.BooleanValidator OUTSIDE_COMMUNICATION_DISABLED =
-   new TypeValidators.BooleanValidator("dremio.ui.outside_communication_disabled", false);
+   new TypeValidators.BooleanValidator("dremio.ui.outside_communication_disabled", true);
 
   String NAME = "support";
 

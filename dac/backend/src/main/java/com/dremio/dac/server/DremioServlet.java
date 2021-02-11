@@ -119,6 +119,7 @@ public class DremioServlet implements Servlet {
     return ServerData.newBuilder()
       .setServerEnvironment(config.getBoolean(DremioConfig.DEBUG_ALLOW_TEST_APIS_BOOL) ? "DEVELOPMENT" : "PRODUCTION")
       .setServerStatus(healthMonitor.get().getStatus().toString())
+      .setAuthType(config.getString(DremioConfig.WEB_AUTH_TYPE))
       .setIntercomAppId(config.getString(DremioConfig.WEB_UI_SERVICE_CONFIG + ".intercom.appid"))
       .setShouldEnableBugFiling(config.getBoolean(DremioConfig.DEBUG_OPTIONS + ".bug.filing.enabled"))
       .setShouldEnableRSOD(config.getBoolean(DremioConfig.DEBUG_OPTIONS + ".rsod.enabled"))

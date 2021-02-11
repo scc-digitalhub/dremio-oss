@@ -20,8 +20,11 @@ import Immutable from 'immutable';
 
 import { LOGIN_VIEW_ID, loginUser } from '@inject/actions/account';
 
+import config from 'utils/config';
+
 import * as ButtonTypes from 'components/Buttons/ButtonTypes';
 import Button from '@app/components/Buttons/Button';
+import SimpleButton from 'components/Buttons/SimpleButton';
 import { FieldWithError, TextField } from '@app/components/Fields';
 import { getViewState } from 'selectors/resources';
 import { connectComplexForm, InnerComplexForm } from 'components/Forms/connectComplexForm';
@@ -68,6 +71,19 @@ export class LoginForm extends PureComponent {
       showMessage,
       viewState
     } = this.props;
+
+    const oauthForm = (
+      <div style={{marginTop: 20}}>
+        <h2 style={{color: '#43B8C9'}}>or login via external provider</h2>
+        <a href={'/apiv2/oauth/login'}>
+          <SimpleButton
+          buttonStyle='primary'>
+          OAuth login
+          </SimpleButton>
+        </a>
+      </div>
+    );
+
     return (
       <ViewStateWrapper
         style={{paddingTop: 30}}
@@ -121,6 +137,7 @@ export class LoginForm extends PureComponent {
             </div>
           </div>
         </InnerComplexForm>
+        {config.authType === 'oauth' ? oauthForm : null}
       </ViewStateWrapper>
     );
   }

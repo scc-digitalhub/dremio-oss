@@ -363,6 +363,12 @@
       <artifactId>value</artifactId>
       <scope>provided</scope>
     </dependency>
+
+    <dependency>
+      <groupId>com.github.scribejava</groupId>
+	    <artifactId>scribejava-core</artifactId>
+	    <version>6.5.1</version>
+    </dependency>
   </dependencies>
 
   <build>

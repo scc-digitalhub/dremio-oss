@@ -24,6 +24,7 @@ package com.dremio.dac.server.models;
 public class ServerData {
   private final String serverEnvironment;
   private final String serverStatus;
+  private final String authType;
   private final String intercomAppId;
   private final boolean shouldEnableBugFiling;
   private final boolean shouldEnableRSOD;
@@ -46,6 +47,7 @@ public class ServerData {
   protected ServerData(Builder builder) {
     this.serverEnvironment = builder.serverEnvironment;
     this.serverStatus = builder.serverStatus;
+    this.authType = builder.authType;
     this.intercomAppId = builder.intercomAppId;
     this.shouldEnableBugFiling = builder.shouldEnableBugFiling;
     this.shouldEnableRSOD = builder.shouldEnableRSOD;
@@ -72,6 +74,10 @@ public class ServerData {
 
   public String getServerStatus() {
     return serverStatus;
+  }
+
+  public String getAuthType() {
+    return authType;
   }
 
   public String getIntercomAppId() {
@@ -160,6 +166,7 @@ public class ServerData {
   public static class Builder {
     private String serverEnvironment;
     private String serverStatus;
+    private String authType;
     private String intercomAppId;
     private boolean shouldEnableBugFiling;
     private boolean shouldEnableRSOD;
@@ -185,6 +192,7 @@ public class ServerData {
     protected Builder(Builder builder) {
       this.serverEnvironment = builder.serverEnvironment;
       this.serverStatus = builder.serverStatus;
+      this.authType = builder.authType;
       this.intercomAppId = builder.intercomAppId;
       this.shouldEnableBugFiling = builder.shouldEnableBugFiling;
       this.shouldEnableRSOD = builder.shouldEnableRSOD;
@@ -212,6 +220,11 @@ public class ServerData {
 
     public Builder setServerStatus(String serverStatus) {
       this.serverStatus = serverStatus;
+      return this;
+    }
+
+    public Builder setAuthType(String authType) {
+      this.authType = authType;
       return this;
     }
 
