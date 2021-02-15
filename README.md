@@ -70,3 +70,115 @@ The distribution directory will be `distribution/server/target/dremio-oss-{DREMI
 
 If you have questions, please post them on https://community.dremio.com.
 
+## Configuring Dremio for Authentication with OAuth2.0
+
+In order to authenticate on Dremio via OAuth2.0, the `services.web.auth` property inside the configuration file `common/src/main/resources/dremio-reference.conf` must be updated with the following information:
+
+* authorization URL: the authorization endpoint on your authorization server
+* token URL: the token endpoint on your authorization server
+* user info URL: the user info endpoint on your authorization server
+* callback URL: the URL of your Dremio instance (e.g. http://localhost:9047)
+* client ID and client secret: the credentials of the client application configured on your authorization server
+* scope: the scope values
+
+As the DigitalHub extended Dremio to allow multitenancy, Dremio accepts usernames with the syntax `<username>@<tenant>`, therefore the configuration includes a further property named `tenantField`. It can be used to specify which user info field stores such information.
+
+Although any OAuth2.0 authentication provider can be used with this extension, the configuration required to use [AAC](https://github.com/scc-digitalhub/AAC) is provided as an example.
+
+### Configuring a Client Application on AAC
+
+On your AAC instance, create a new client app named `dremio` with the following properties:
+
+* redirect web server URLs: `http://localhost:9047/apiv2/oauth/callback`
+* grant types: `Authorization Code`
+* enabled identity providers : `internal`
+* enabled scopes: `openid, profile, email, user.roles.me`
+
+Under "Roles & Claims", set:
+
+* unique role spaces: `components/dremio`
+* role prefix filters: `components/dremio`
+* custom claim mapping function (which adds a custom claim holding a single user tenant, as AAC supports users being associated to multiple tenants while Dremio does not; see https://github.com/scc-digitalhub/AAC#53-services-scopes-and-claims):
+
+```
+function claimMapping(claims) {
+    var valid = ['ROLE_USER'];
+    var owner = ['ROLE_OWNER']
+    var prefix = "components/dremio/";
+
+    if (claims.hasOwnProperty("roles") && claims.hasOwnProperty("space")) {
+        var space = claims['space'];
+        //for debug with no space selection performed
+        if (Array.isArray(claims['space'])) {
+            space = claims['space'][0];
+        }
+
+        //lookup for policy for selected space
+        var tenant = null;
+        for (ri in claims['roles']) {
+            var role = claims['roles'][ri];
+            if (role.startsWith(prefix + space + ":")) {
+                var p = role.split(":")[1]
+
+                //replace owner with USER
+                if (owner.indexOf(p) !== -1) {
+                    p = "ROLE_USER"
+                }
+
+                if (valid.indexOf(p) !== -1) {
+                    tenant = space
+                    break;
+                }
+            }
+        }
+
+        if (tenant != null) {
+            claims["dremio/tenant"] = tenant;
+            claims["dremio/username"] = claims['username']+'@'+tenant;
+        } 
+    }
+    return claims;
+}
+```
+
+### Configuring Dremio
+
+Open the file `common/src/main/resources/dremio-reference.conf` and update `services.web.auth` as follows:
+
+```
+auth: {
+    type: "oauth",
+    oauth: {
+        authorizationUrl: "<aac_url>/eauth/authorize"
+        tokenUrl: "<aac_url>/oauth/token"
+        userInfoUrl: "<aac_url>/userinfo"
+        callbackUrl: "<dremio_url>"
+        clientId: "<your_client_id>"
+        clientSecret: "<your_client_secret>"
+        tenantField: "dremio/username"
+        scope: "openid profile email user.roles.me"
+    }
+}
+```
+
+The `tenantField` property matches the claim defined in the function above, which holds both the username and the user tenant with the syntax `<username>@<tenant>`. That will be used as username in Dremio.
+
+## Multitenancy
+
+The multitenancy model implemented in Dremio is structured as follows:
+
+* admin privileges are not assignable, ADMIN role is reserved to `dremio` user, every other user is assigned USER role
+* each user is associated to a single tenant (during the authorization step on AAC, the user will be asked to select which one to use)
+* the tenant is attached to the username with the syntax `<username>@<tenant>`
+* all APIs accessible to regular users are protected so that non-admin users can only access resources within their own tenant
+* when a resource belongs to a tenant (i.e. is shared among all its users), such tenant is specified as a prefix in the resource path with the syntax `<tenant>__<rootname>/path/to/resource`
+
+In Dremio, resources are either containers (spaces, sources, homes) or inside a container (folders, datasets), therefore spaces and sources are prefixed with their tenant, while folders and datasets inherit it from their container, which is the root of their path, and do not need to be prefixed. For example, in the following resource tree, `myspace`, `myfolder` and `mydataset` all belong to `mytenant`:
+
+```
+mytenant__myspace
+└───myfolder
+    └───mydataset
+```
+
+The admin user can access any resource. Regular users can only access resources inside their own home or belonging to their tenant.
