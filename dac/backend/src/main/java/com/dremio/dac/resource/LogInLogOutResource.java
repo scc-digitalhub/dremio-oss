@@ -127,10 +127,7 @@ public class LogInLogOutResource {
       );
 
       //assign role user to everyone but superadmin
-      boolean isAdmin = false;
-      if(userLogin.getUserName().equals(MultiTenantServiceHelper.DEFAULT_USER)) {
-        isAdmin == true;
-      }
+      boolean isAdmin = userLogin.getUserName().equals(MultiTenantServiceHelper.DEFAULT_USER);
 
       return Response.ok(
           new UserLoginSession(
