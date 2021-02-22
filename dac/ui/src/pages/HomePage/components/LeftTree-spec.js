@@ -90,13 +90,13 @@ describe('LeftTree', () => {
   });
 
   describe('Data Lake List: #getInitialSourcesContent()', () => {
-    it("only sample source(s), user can't add; do not show the empty state", () => {
+    /*it("only sample source(s), user can't add; do not show the empty state", () => {
       context.loggedInUser.admin = false;
       sinon.stub(sourcesActions, 'isSampleSource').returns(true);
       const instance = shallow(<LeftTree {...commonProps} />, { context }).instance();
       expect(instance.getInitialSourcesContent(commonProps.sources, false)).to.be.null;
       sourcesActions.isSampleSource.restore();
-    });
+    });*/
     it('have a non-sample source; do not show the empty state', () => {
       const instance = shallow(<LeftTree {...commonProps} />, { context }).instance();
       expect(instance.getInitialSourcesContent(commonProps.sources, false)).to.be.null;
@@ -122,7 +122,7 @@ describe('LeftTree', () => {
         sourcesContent.find('LinkButton')
       ).to.have.length(1);
     });
-    it("no data lakes, user can't add: show text", () => {
+    /*it("no data lakes, user can't add: show text", () => {
       commonProps.sources = Immutable.fromJS([]);
       context.loggedInUser.admin = false;
       const instance = shallow(<LeftTree {...commonProps} />, { context }).instance();
@@ -136,7 +136,7 @@ describe('LeftTree', () => {
       ).to.be.equal(
         'Source.NoDataLakes'
       );
-    });
+    });*/
     it('only sample source(s), user can add: show text and add button', () => {
       sinon.stub(sourcesActions, 'isSampleSource').returns(true);
 
@@ -177,7 +177,7 @@ describe('LeftTree', () => {
         sourcesContent.find('LinkButton')
       ).to.have.length(1);
     });
-    it("no external sources, user can't add: show text", () => {
+    /*it("no external sources, user can't add: show text", () => {
       commonProps.sources = Immutable.fromJS([]);
       context.loggedInUser.admin = false;
       const instance = shallow(<LeftTree {...commonProps} />, { context }).instance();
@@ -191,7 +191,7 @@ describe('LeftTree', () => {
       ).to.be.equal(
         'Source.NoExternalSources'
       );
-    });
+    });*/
   });
 
 });

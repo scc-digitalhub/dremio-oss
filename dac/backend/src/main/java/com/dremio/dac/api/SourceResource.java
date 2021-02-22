@@ -131,8 +131,13 @@ public class SourceResource {
   }
 
   @POST
-  @RolesAllowed({"admin"})
+  @RolesAllowed({"admin", "user"})
   public SourceDeprecated addSource(SourceDeprecated source) {
+    SourceConfig sourceConfig = source.toSourceConfig();
+    if (!isAuthorized("user", sourceConfig)) {
+      throw new ForbiddenException(String.format("User not authorized to access source %s.", source.getName()));
+    }
+
     try {
       SourceConfig newSourceConfig = sourceService.createSource(source.toSourceConfig());
 
@@ -155,9 +160,14 @@ public class SourceResource {
   }
 
   @PUT
-  @RolesAllowed({"admin"})
+  @RolesAllowed({"admin", "user"})
   @Path("/{id}")
-  public SourceDeprecated updateSource(@PathParam("id") String id, SourceDeprecated source) {
+  public SourceDeprecated updateSource(@PathParam("id") String id, SourceDeprecated source) throws NamespaceException {
+    SourceConfig oldSourceConfig = sourceService.getById(id);
+    if (!isAuthorized("user", oldSourceConfig)) {
+      throw new ForbiddenException(String.format("User not authorized to access source %s.", id));
+    }
+
     SourceConfig sourceConfig;
     try {
       sourceConfig = sourceService.updateSource(id, source.toSourceConfig());
@@ -169,17 +179,20 @@ public class SourceResource {
   }
 
   @DELETE
-  @RolesAllowed("admin")
+  @RolesAllowed({"admin", "user"})
   @Path("/{id}")
   public Response deleteSource(@PathParam("id") String id) throws NamespaceException {
     SourceConfig config = sourceService.getById(id);
+    if (!isAuthorized("user", config)) {
+      throw new ForbiddenException(String.format("User not authorized to access source %s.", id));
+    }
     sourceService.deleteSource(config);
     return Response.ok().build();
   }
 
   // Returns all source types in Dremio
   @GET
-  @RolesAllowed("admin")
+  @RolesAllowed({"admin", "user"})
   @Path("/type")
   public ResponseList<SourceTypeTemplate> getSourceTypes() {
     final ConnectionReader connectionReader = sabotContext.getConnectionReaderProvider().get();
@@ -197,7 +210,7 @@ public class SourceResource {
 
   // Returns the specified source type with all its properties expanded
   @GET
-  @RolesAllowed("admin")
+  @RolesAllowed({"admin", "user"})
   @Path("/type/{name}")
   public SourceTypeTemplate getSourceByType(@PathParam("name") String name) {
     final ConnectionReader connectionReader = sabotContext.getConnectionReaderProvider().get();

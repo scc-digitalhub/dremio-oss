@@ -175,10 +175,12 @@ public class SourceResource extends BaseResourceWithAllocator {
     }
   }
 
-  @RolesAllowed("admin")
   @DELETE
   @Produces(MediaType.APPLICATION_JSON)
   public void deleteSource(@QueryParam("version") String version) throws NamespaceException, SourceNotFoundException {
+    if (!isAuthorized("user")) {
+      throw new ForbiddenException(String.format("User not authorized to access %s source.", sourceName.getName()));
+    }
     if (version == null) {
       throw new ClientErrorException("missing version parameter");
     }
