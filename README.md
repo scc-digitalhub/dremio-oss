@@ -72,7 +72,7 @@ If you have questions, please post them on https://community.dremio.com.
 
 ## Configuring Dremio for Authentication with OAuth2.0
 
-In order to authenticate on Dremio via OAuth2.0, the `services.web.auth` property inside the configuration file `common/src/main/resources/dremio-reference.conf` must be updated with the following information:
+In order to authenticate on Dremio via OAuth2.0, the `services.coordinator.web.auth` property inside the configuration file `common/src/main/resources/dremio-reference.conf` must be updated with the following information:
 
 * authorization URL: the authorization endpoint on your authorization server
 * token URL: the token endpoint on your authorization server
@@ -143,7 +143,7 @@ function claimMapping(claims) {
 
 ### Configuring Dremio
 
-Open the file `common/src/main/resources/dremio-reference.conf` and update `services.web.auth` as follows:
+Open the file `common/src/main/resources/dremio-reference.conf` and update `services.coordinator.web.auth` as follows:
 
 ```
 auth: {
@@ -181,4 +181,4 @@ mytenant__myspace
     └───mydataset
 ```
 
-The admin user can access any resource. Regular users can only access resources inside their own home or belonging to their tenant.
+The admin user can access any resource. Regular users can only access resources inside their own home or belonging to their tenant. This implies that users can only query data and access job results according to these constraints.

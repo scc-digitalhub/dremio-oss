@@ -57,7 +57,7 @@ import com.dremio.service.users.UserLoginException;
 import com.dremio.service.users.UserNotFoundException;
 import com.dremio.service.users.UserService;
 import com.google.common.base.Strings;
-
+import com.dremio.service.tenant.MultiTenantServiceHelper;
 /**
  * API for user log in and log out.
  */
@@ -126,6 +126,9 @@ public class LogInLogOutResource {
         projectOptionManager.getOption(SupportService.USERS_CHAT)
       );
 
+      //assign role user to everyone but superadmin
+      boolean isAdmin = userLogin.getUserName().equals(MultiTenantServiceHelper.DEFAULT_USER);
+
       return Response.ok(
           new UserLoginSession(
               tokenDetails.token,
@@ -135,7 +138,7 @@ public class LogInLogOutResource {
               tokenDetails.expiresAt,
               userConfig.getEmail(),
               userConfig.getUID().getId(),
-              true,
+              isAdmin,
               userConfig.getCreatedAt(),
               support.getClusterId().getIdentity(),
               support.getClusterId().getCreated(),
