@@ -66,9 +66,9 @@ To build dremio with only OSS dependencies, you can add the following option to 
 
 The distribution directory will be `distribution/server/target/dremio-oss-{DREMIO_VERSION}/dremio-oss-{DREMIO_VERSION}`
 
-## Questions?
+## First Access
 
-If you have questions, please post them on https://community.dremio.com.
+The first time you open Dremio, you will be asked to create an administrator account (unless you started Dremio with the default user). The admin user **must** have the username `dremio`, as that is currently the only user that can have admin privileges.
 
 ## Configuring Dremio for Authentication with OAuth2.0
 
@@ -182,3 +182,5 @@ mytenant__myspace
 ```
 
 The admin user can access any resource. Regular users can only access resources inside their own home or belonging to their tenant. This implies that users can only query data and access job results according to these constraints.
+
+**NOTE**: currently, when you create a new source or space, you must **manually prefix its name with the tenant** you want it to belong to. Non-admin users cannot create sources or spaces with a different tenant than their own.
