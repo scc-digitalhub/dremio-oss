@@ -57,7 +57,7 @@ import com.dremio.service.users.UserLoginException;
 import com.dremio.service.users.UserNotFoundException;
 import com.dremio.service.users.UserService;
 import com.google.common.base.Strings;
-import com.dremio.service.tenant.MultiTenantServiceHelper;
+import com.dremio.dac.service.tenant.MultiTenantServiceHelper;
 /**
  * API for user log in and log out.
  */

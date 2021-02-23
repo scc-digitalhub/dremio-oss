@@ -10,7 +10,8 @@ import com.dremio.service.users.User;
  * A duplicate of this class, used by LocalJobsService, is com.dremio.service.tenant.MultiTenantServiceHelper.
  */
 public class MultiTenantServiceHelper {
-
+  public static final String DEFAULT_USER = "dremio"; //default admin username
+  private static final String HOME_PREFIX = "@"; //default home prefix, copied from com.dremio.dac.model.spaces.HomeName
   /**
    * Extract tenant from username, which has the syntax <username>@<tenant>.
    * The tenant is found after the last "@" (username may contain more than one "@", e.g. if it is an email).
