@@ -7,6 +7,7 @@ import java.io.StringWriter;
 import java.math.BigInteger;
 import java.net.URI;
 import java.security.SecureRandom;
+import java.util.Base64;
 import java.util.concurrent.ExecutionException;
 
 import javax.inject.Inject;
@@ -43,7 +44,6 @@ import com.dremio.service.tokens.TokenManager;
 import com.dremio.service.users.SimpleUser;
 import com.dremio.service.users.SystemUser;
 import com.dremio.service.users.User;
-import com.dremio.service.users.UserLoginException;
 import com.dremio.service.users.UserNotFoundException;
 import com.dremio.service.users.UserService;
 import com.fasterxml.jackson.core.JsonGenerationException;
@@ -52,8 +52,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.scribejava.core.builder.ServiceBuilder;
 import com.github.scribejava.core.builder.api.DefaultApi20;
 import com.github.scribejava.core.model.OAuth2AccessToken;
-import com.github.scribejava.core.model.OAuthRequest;
-import com.github.scribejava.core.model.Verb;
 import com.github.scribejava.core.oauth.OAuth20Service;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -130,43 +128,44 @@ public class OAuthResource {
     try {
       // get access token and userInfo
       final OAuth2AccessToken accessToken = service.getAccessToken(code);
-      final OAuthRequest req = new OAuthRequest(Verb.GET, oauthConfig.getUserInfoUrl());
-      service.signRequest(accessToken, req);
-      final com.github.scribejava.core.model.Response res = service.execute(req);
+      logger.info("access token: {}", accessToken.getRawResponse());
+
+      // parse JWT token to extract user profile
+      JsonObject json = getUserProfileFromAccessToken(accessToken);
+      logger.info("access token info parsed as json object: {}", json);
+
+      if (json == null) {
+        throw new IllegalArgumentException("access token is not a valid JWT");
+      }
 
       User userInfo = null;
       String role = "";
 
-      if (res.getCode() == 200) {
-        JsonObject json = new JsonParser().parse(res.getBody()).getAsJsonObject();
-        userInfo = getUserInfo(json);
+      userInfo = getUserInfo(json);
+      logger.info("user info parsed as dremio user: {}", userInfo);
 
-        /*if (oauthConfig.requireRoles()) {
-          // fetch role from json
-          if (json.has(oauthConfig.getRoleField())) {
-            JsonArray roles = json.get(oauthConfig.getRoleField()).getAsJsonArray(); //TODO import com.google.gson.JsonArray;
-            while (roles.iterator().hasNext()) {
-              String r = roles.iterator().next().getAsString();
-              if (r.equals(oauthConfig.getRoleUserMapping())) {
-                role = "user";
-              }
-              if (r.equals(oauthConfig.getRoleUserMapping())) {
-                role = "admin";
-              }
-              if (!role.isEmpty()) {
-                break;
-              }
-
+      /*if (oauthConfig.requireRoles()) {
+        // fetch role from json
+        if (json.has(oauthConfig.getRoleField())) {
+          JsonArray roles = json.get(oauthConfig.getRoleField()).getAsJsonArray(); //TODO import com.google.gson.JsonArray;
+          while (roles.iterator().hasNext()) {
+            String r = roles.iterator().next().getAsString();
+            if (r.equals(oauthConfig.getRoleUserMapping())) {
+              role = "user";
             }
-          }
-        }*/
+            if (r.equals(oauthConfig.getRoleUserMapping())) {
+              role = "admin";
+            }
+            if (!role.isEmpty()) {
+              break;
+            }
 
-      } else {
-        throw new UserLoginException("", "oauth error");
-      }
+          }
+        }
+      }*/
 
       if ((userInfo == null) || (userInfo.getUserName().isEmpty() || userInfo.getEmail().isEmpty())) {
-        throw new IllegalArgumentException("user name or email cannot be null or empty");
+        throw new IllegalArgumentException("user tenant or email cannot be null, empty or invalid");
       }
 
       /*if (oauthConfig.requireRoles() && role.isEmpty()) {
@@ -177,8 +176,9 @@ public class OAuthResource {
 
       // search user in service
       try {
+        logger.info("verifying if user with username {} exists", userInfo.getUserName());
         user = userService.getUser(userInfo.getUserName());
-        logger.info("found user " + user.getUserName());
+        logger.info("user already exists: {}", user);
 
       } catch (UserNotFoundException uex) {
         // create as new with random password
@@ -187,7 +187,7 @@ public class OAuthResource {
 
         // build userConfig from userInfo
         user = userService.createUser(userInfo, password);
-        logger.info("created user " + user.getUserName());
+        logger.info("created user {}", user);
 
         // create user home
         try {
@@ -204,7 +204,7 @@ public class OAuthResource {
       }
 
       String userName = user.getUserName();
-      logger.info("login user " + userName);
+      logger.info("logging in user {} with first name: {} last name: {} email: {}", userName, user.getFirstName(), user.getLastName(), user.getEmail());
 
       // create a token for the session
       final String clientAddress = request.getRemoteAddr();
@@ -240,7 +240,7 @@ public class OAuthResource {
       String response = buildResponse(login);
 
       return Response.ok().entity(response).type(MediaType.TEXT_HTML).build();
-    } catch (IllegalArgumentException | UserLoginException | UserNotFoundException e) {
+    } catch (IllegalArgumentException | UserNotFoundException e) {
       return Response.status(UNAUTHORIZED).entity(new GenericErrorMessage(e.getMessage())).build();
 
     } catch (IOException | InterruptedException | ExecutionException | NullPointerException e) {
@@ -255,6 +255,28 @@ public class OAuthResource {
    * Helpers
    */
 
+  private JsonObject getUserProfileFromAccessToken(OAuth2AccessToken accessToken) {
+    //accessToken.getRawResponse() gives an object with properties access_token, token_type, expires_in, scope, id_token
+    //accessToken.getAccessToken() gives the access token as a string
+    String tokenString = accessToken.getAccessToken();
+    logger.info("access token string is {}", tokenString);
+
+    //if token is not a JWT (<header>.<data>.<signature>), return null
+    String[] tokenPieces = tokenString.split("\\.");
+    if (tokenPieces.length != 3) {
+      logger.info("token is not a JWT");
+      return null;
+    }
+
+    //convert token data from base64 to string
+    String decodedString = new String(Base64.getDecoder().decode(tokenPieces[1]));
+    logger.info("decoded access token data is {}", decodedString);
+
+    //parse data as json
+    JsonObject profile = new JsonParser().parse(decodedString).getAsJsonObject();
+    return profile;
+  }
+
   private User createUser(String email, String firstName, String lastName, String userName) {
     long now = System.currentTimeMillis();
     return SimpleUser.newBuilder().setEmail(email).setUserName(userName).setFirstName(firstName)
@@ -268,28 +290,50 @@ public class OAuthResource {
     String firstName = "";
     String lastName = "";
 
+    // if user has no tenant, return null
+    if (!json.has(oauthConfig.getTenantField()) || json.get(oauthConfig.getTenantField()).getAsString().isEmpty()) {
+      logger.info("user info has no tenant, returning null");
+      return null;
+    }
+
+    logger.info("tenant field " + oauthConfig.getTenantField() + " contains " + json.get(oauthConfig.getTenantField()).getAsString());
+
+    // if tenant is not alphanumeric with _ or -, return null
+    if (!json.get(oauthConfig.getTenantField()).getAsString().matches("[a-zA-Z0-9_-]+")) {
+      logger.info("tenant {} contains invalid characters", json.get(oauthConfig.getTenantField()).getAsString());
+      return null;
+    }
+
     if (json.has("email")) {
       email = json.get("email").getAsString();
     }
-    if (json.has(oauthConfig.getTenantField())) {
-      // use username with tenant if present
-      userName = json.get(oauthConfig.getTenantField()).getAsString();
 
-    } else if (json.has("username")) {
-      userName = json.get("username").getAsString();
+    if (json.has("given_name")) {
+      firstName = json.get("given_name").getAsString();
+    }
+
+    if (json.has("family_name")) {
+      lastName = json.get("family_name").getAsString();
+    }
+
+    // set username with tenant
+    if (json.has("username")) {
+      userName = json.get("username").getAsString() + "@" + json.get(oauthConfig.getTenantField()).getAsString();
 
     } else if (json.has("user_name")) {
-      userName = json.get("user_name").getAsString();
+      userName = json.get("user_name").getAsString() + "@" + json.get(oauthConfig.getTenantField()).getAsString();
 
     } else if (json.has("preferred_username")) {
-      userName = json.get("preferred_username").getAsString();
+      userName = json.get("preferred_username").getAsString() + "@" + json.get(oauthConfig.getTenantField()).getAsString();
 
     } else if (json.has("given_name")) {
-      userName = json.get("given_name").getAsString();
+      userName = json.get("given_name").getAsString() + "@" + json.get(oauthConfig.getTenantField()).getAsString();
     } else {
       // use email as fallback
-      userName = email;
+      userName = email + "@" + json.get(oauthConfig.getTenantField()).getAsString();
     }
+
+    logger.info("user info that  will be used is username: {} email: {} firstname: {} lastname: {}", userName, email, firstName, lastName);
 
     return createUser(email, firstName, lastName, userName);
   }
