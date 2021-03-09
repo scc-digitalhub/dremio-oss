@@ -17,6 +17,7 @@ import { shallow } from 'enzyme';
 import Immutable from 'immutable';
 import { findMenuItemLinkByText, findMenuItemByText } from 'testUtil';
 import { RestrictedArea } from '@app/components/Auth/RestrictedArea';
+import { Capabilities } from '@app/utils/authUtils';
 import { AllSourcesMenu } from './AllSourcesMenu';
 
 describe('AllSourcesMenu', () => {
@@ -51,7 +52,8 @@ describe('AllSourcesMenu', () => {
     const restrictedAreaWrapper = shallow(<AllSourcesMenu {...minimalProps}/>, {context: contextTypes}).find(RestrictedArea);
     expect(restrictedAreaWrapper).to.have.length(1, 'RestrictedArea must be rendered');
     expect(restrictedAreaWrapper.prop('rule')).to.be.eql({
-      isAdmin: true
+      isAdmin: true,
+      capabilities: [Capabilities.manageSpaces]
     }, 'We should allow access for a restricted area only for admins');
 
     expect(findMenuItemByText(restrictedAreaWrapper, 'Remove Source')).to.have.length(1,

@@ -109,7 +109,8 @@ describe('HeaderButtonsMixin', () => {
           }
         },
         authRule: {
-          isAdmin: true
+          isAdmin: true,
+          capabilities: [Capabilities.manageSpaces]
         }
       }]);
     });
