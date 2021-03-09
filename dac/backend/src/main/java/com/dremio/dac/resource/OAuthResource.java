@@ -232,7 +232,7 @@ public class OAuthResource {
         isAdmin = "admin".equals(role);
       }*/
 
-      UserLoginSession login = new UserLoginSession(tokenDetails.token, user.getUserName(), user.getFirstName(),
+      UserLoginSession login = new UserLoginSession(tokenDetails.token, userName, user.getFirstName(),
           user.getLastName(), tokenDetails.expiresAt, user.getEmail(), user.getUID().getId(), isAdmin,
           user.getCreatedAt(), support.getClusterId().getIdentity(), support.getClusterId().getCreated(),
           true, DremioVersionInfo.getVersion(), perms);
@@ -241,7 +241,9 @@ public class OAuthResource {
 
       return Response.ok().entity(response).type(MediaType.TEXT_HTML).build();
     } catch (IllegalArgumentException | UserNotFoundException e) {
-      return Response.status(UNAUTHORIZED).entity(new GenericErrorMessage(e.getMessage())).build();
+      //return Response.status(UNAUTHORIZED).entity(new GenericErrorMessage(e.getMessage())).build();
+      logger.error("login failed, redirecting to login page due to ", e.getMessage());
+      return Response.temporaryRedirect(URI.create("/login")).build();
 
     } catch (IOException | InterruptedException | ExecutionException | NullPointerException e) {
       logger.error("server error: "+e.getMessage());
@@ -296,11 +298,12 @@ public class OAuthResource {
       return null;
     }
 
-    logger.info("tenant field " + oauthConfig.getTenantField() + " contains " + json.get(oauthConfig.getTenantField()).getAsString());
+    String tenant = json.get(oauthConfig.getTenantField()).getAsString();
+    logger.info("tenant field " + oauthConfig.getTenantField() + " contains " + tenant);
 
     // if tenant is not alphanumeric with _ or -, return null
-    if (!json.get(oauthConfig.getTenantField()).getAsString().matches("[a-zA-Z0-9_-]+")) {
-      logger.info("tenant {} contains invalid characters", json.get(oauthConfig.getTenantField()).getAsString());
+    if (!tenant.matches("[a-zA-Z0-9_-]+")) {
+      logger.info("tenant {} contains invalid characters", tenant);
       return null;
     }
 
@@ -318,19 +321,19 @@ public class OAuthResource {
 
     // set username with tenant
     if (json.has("username")) {
-      userName = json.get("username").getAsString() + "@" + json.get(oauthConfig.getTenantField()).getAsString();
+      userName = json.get("username").getAsString() + "@" + tenant;
 
     } else if (json.has("user_name")) {
-      userName = json.get("user_name").getAsString() + "@" + json.get(oauthConfig.getTenantField()).getAsString();
+      userName = json.get("user_name").getAsString() + "@" + tenant;
 
     } else if (json.has("preferred_username")) {
-      userName = json.get("preferred_username").getAsString() + "@" + json.get(oauthConfig.getTenantField()).getAsString();
+      userName = json.get("preferred_username").getAsString() + "@" + tenant;
 
     } else if (json.has("given_name")) {
-      userName = json.get("given_name").getAsString() + "@" + json.get(oauthConfig.getTenantField()).getAsString();
+      userName = json.get("given_name").getAsString() + "@" + tenant;
     } else {
       // use email as fallback
-      userName = email + "@" + json.get(oauthConfig.getTenantField()).getAsString();
+      userName = email + "@" + tenant;
     }
 
     logger.info("user info that  will be used is username: {} email: {} firstname: {} lastname: {}", userName, email, firstName, lastName);
