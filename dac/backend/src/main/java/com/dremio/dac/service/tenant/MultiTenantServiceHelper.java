@@ -10,13 +10,30 @@ import com.dremio.service.users.User;
  * A duplicate of this class, used by LocalJobsService, is com.dremio.service.tenant.MultiTenantServiceHelper.
  */
 public class MultiTenantServiceHelper {
+  private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(MultiTenantServiceHelper.class);
+
   public static final String DEFAULT_USER = "dremio"; //default admin username
   private static final String HOME_PREFIX = "@"; //default home prefix, copied from com.dremio.dac.model.spaces.HomeName
+
+  /**
+   * Prepare an informative message for the user
+   */
+  public static String getMessageWithTenant(String username) {
+    String message = "";
+    String tenant = getUserTenant(username);
+
+    if (tenant != null) {
+      message = "User can only create resources within their tenant " + tenant;
+    }
+    return message;
+  }
+
   /**
    * Extract tenant from username, which has the syntax <username>@<tenant>.
    * The tenant is found after the last "@" (username may contain more than one "@", e.g. if it is an email).
    */
   public static String getUserTenant(String username) {
+    logger.info("getting tenant for username {}", username);
     String tenant = null;
     //split username by @ and take last substring
     if (username != null) {
@@ -51,6 +68,7 @@ public class MultiTenantServiceHelper {
     String tenant = null;
     //split root by __ and take last substring
     if (path != null && path.length > 0) {
+      logger.info("getting tenant for resource {}", path[0]);
       String[] substrings = path[0].split("__");
       if (substrings.length > 1) {
         tenant = substrings[0];
@@ -74,14 +92,19 @@ public class MultiTenantServiceHelper {
    * Check if user has the required role and its tenant matches the resource tenant
    */
   public static boolean hasPermission(SecurityContext sc, String requiredRole, String userTenant, String resourceTenant) {
+    logger.info("user with tenant {} requests access to resource with tenant {} , role required for the operation is {}", userTenant, resourceTenant, requiredRole);
     //short-circuit if user is admin
     if(sc.isUserInRole("admin")){
+      logger.info("user is admin, has permission: true");
       return true;
     }
 
     if(userTenant != null && resourceTenant != null && sc.isUserInRole(requiredRole)) {
-      return isSameTenant(userTenant, resourceTenant);
+      boolean allowed = isSameTenant(userTenant, resourceTenant);
+      logger.info("comparing tenants, has permission: {}", allowed);
+      return allowed;
     } else {
+      logger.info("user does not have required role, has permission: false");
       return false;
     }
   }

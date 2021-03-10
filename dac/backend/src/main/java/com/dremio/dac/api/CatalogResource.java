@@ -102,7 +102,8 @@ public class CatalogResource {
   @POST
   public CatalogEntity createCatalogItem(CatalogEntity entity) throws NamespaceException, BadRequestException {
     if (!isAuthorized("user", getCatalogEntityRoot(entity))) {
-      throw new ForbiddenException(String.format("User not authorized to create entity with this path."));
+      throw new ForbiddenException(String.format("User not authorized to create entity with this path. %s",
+        MultiTenantServiceHelper.getMessageWithTenant(securityContext.getUserPrincipal().getName())));
     }
     try {
       return catalogServiceHelper.createCatalogItem(entity);

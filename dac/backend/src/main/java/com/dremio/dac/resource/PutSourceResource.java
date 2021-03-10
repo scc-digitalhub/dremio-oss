@@ -79,7 +79,8 @@ public class PutSourceResource {
   @Consumes(MediaType.APPLICATION_JSON)
   public SourceUI putSource(SourceUI source) throws NamespaceException, UserNotFoundException, SourceNotFoundException {
     if (!isAuthorized("user")) {
-      throw new ForbiddenException(String.format("User not authorized to access %s source.", sourceName.getName()));
+      throw new ForbiddenException(String.format("User not authorized to access %s source. %s", sourceName.getName(),
+        MultiTenantServiceHelper.getMessageWithTenant(securityContext.getUserPrincipal().getName())));
     }
 
     try {
