@@ -129,6 +129,10 @@ public class LogInLogOutResource {
       //assign role user to everyone but superadmin
       boolean isAdmin = userLogin.getUserName().equals(MultiTenantServiceHelper.DEFAULT_USER);
 
+      //show user management in the UI for internal and oauth authentication
+      boolean showUserAndUserProperties = "internal".equals(dremioConfig.getString(DremioConfig.WEB_AUTH_TYPE)) ||
+        "oauth".equals(dremioConfig.getString(DremioConfig.WEB_AUTH_TYPE));
+
       return Response.ok(
           new UserLoginSession(
               tokenDetails.token,
@@ -142,7 +146,7 @@ public class LogInLogOutResource {
               userConfig.getCreatedAt(),
               support.getClusterId().getIdentity(),
               support.getClusterId().getCreated(),
-              "internal".equals(dremioConfig.getString(DremioConfig.WEB_AUTH_TYPE)),
+              showUserAndUserProperties,
               DremioVersionInfo.getVersion(),
               perms
               )

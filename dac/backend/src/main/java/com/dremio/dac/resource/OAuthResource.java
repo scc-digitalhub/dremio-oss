@@ -1,7 +1,5 @@
 package com.dremio.dac.resource;
 
-import static javax.ws.rs.core.Response.Status.UNAUTHORIZED;
-
 import java.io.IOException;
 import java.io.StringWriter;
 import java.math.BigInteger;
@@ -235,7 +233,7 @@ public class OAuthResource {
       UserLoginSession login = new UserLoginSession(tokenDetails.token, userName, user.getFirstName(),
           user.getLastName(), tokenDetails.expiresAt, user.getEmail(), user.getUID().getId(), isAdmin,
           user.getCreatedAt(), support.getClusterId().getIdentity(), support.getClusterId().getCreated(),
-          true, DremioVersionInfo.getVersion(), perms);
+          false, DremioVersionInfo.getVersion(), perms);
 
       String response = buildResponse(login);
 
