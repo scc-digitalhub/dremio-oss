@@ -72,7 +72,7 @@ The first time you open Dremio, you will be asked to create an administrator acc
 
 ## Configuring Dremio for Authentication with OAuth2.0
 
-In order to authenticate on Dremio via OAuth2.0, the `services.coordinator.web.auth` property inside the configuration file `common/src/main/resources/dremio-reference.conf` must be updated with the following information:
+In order to authenticate on Dremio via OAuth2.0, the `services.coordinator.web.auth` property inside the configuration file `dremio.conf` (more info [here](https://docs.dremio.com/advanced-administration/dremio-conf/)) must be updated with the following information:
 
 * authorization URL: the authorization endpoint on your authorization server
 * token URL: the token endpoint on your authorization server
@@ -89,7 +89,7 @@ Although any OAuth2.0 authentication provider can be used with this extension, t
 
 On your AAC instance, create a new client app named `dremio` with the following properties:
 
-* redirect web server URLs: `http://localhost:9047/apiv2/oauth/callback`
+* redirect web server URLs: `<dremio_url>/apiv2/oauth/callback`
 * grant types: `Authorization Code`
 * enabled identity providers : `internal`
 * enabled scopes: `openid, profile, email, user.roles.me`
@@ -108,45 +108,48 @@ function claimMapping(claims) {
 
     if (claims.hasOwnProperty("roles") && claims.hasOwnProperty("space")) {
         var space = claims['space'];
-        //for debug with no space selection performed
+        //can't support no space selection performed
         if (Array.isArray(claims['space'])) {
-            space = claims['space'][0];
+            space = null;
         }
-
         //lookup for policy for selected space
         var tenant = null;
-        for (ri in claims['roles']) {
-            var role = claims['roles'][ri];
-            if (role.startsWith(prefix + space + ":")) {
-                var p = role.split(":")[1]
+        if(space !== null) {
+            for (ri in claims['roles']) {
+                var role = claims['roles'][ri];
+                if (role.startsWith(prefix + space + ":")) {
+                    var p = role.split(":")[1]
+                    
+                    //replace owner with USER
+                    if (owner.indexOf(p) !== -1) {
+                        p = "ROLE_USER"
+                    }
 
-                //replace owner with USER
-                if (owner.indexOf(p) !== -1) {
-                    p = "ROLE_USER"
-                }
-
-                if (valid.indexOf(p) !== -1) {
-                    tenant = space
-                    break;
+                    if (valid.indexOf(p) !== -1) {
+                        tenant = space
+                        break;
+                    }
                 }
             }
         }
 
         if (tenant != null) {
+            tenant =  tenant.replace(/\./g,'_')
             claims["dremio/tenant"] = tenant;
             claims["dremio/username"] = claims['username']+'@'+tenant;
         } 
     }
+
     return claims;
 }
 ```
 
 ### Configuring Dremio
 
-Open the file `common/src/main/resources/dremio-reference.conf` and update `services.coordinator.web.auth` as follows:
+Open your `dremio.conf` file and add the following configuration:
 
 ```
-auth: {
+services.coordinator.web.auth: {
     type: "oauth",
     oauth: {
         authorizationUrl: "<aac_url>/eauth/authorize"
@@ -155,13 +158,13 @@ auth: {
         callbackUrl: "<dremio_url>"
         clientId: "<your_client_id>"
         clientSecret: "<your_client_secret>"
-        tenantField: "dremio/username"
+        tenantField: "dremio/tenant"
         scope: "openid profile email user.roles.me"
     }
 }
 ```
 
-The `tenantField` property matches the claim defined in the function above, which holds both the username and the user tenant with the syntax `<username>@<tenant>`. That will be used as username in Dremio.
+The `tenantField` property matches the claim defined in the function above, which holds the user tenant selected during the login. Dremio will associate it to the username with the syntax `<username>@<tenant>`. That will be used as username in Dremio.
 
 ## Multitenancy
 
@@ -184,3 +187,13 @@ mytenant__myspace
 The admin user can access any resource. Regular users can only access resources inside their own home or belonging to their tenant. This implies that users can only query data and access job results according to these constraints.
 
 **NOTE**: currently, when you create a new source or space, you must **manually prefix its name with the tenant** you want it to belong to. Non-admin users cannot create sources or spaces with a different tenant than their own.
+
+## Additional Changes in the Fork
+
+### Sample Sources
+
+Sample sources are currently not supported by the multitenancy model implemented so far, as they are named automatically and thus cannot be prefixed manually with the appropriate tenant.
+
+### Source Management
+
+Differently from the original implementation, in which source management was restricted to admins only, non-admin users are allowed to manage (create, update and delete) sources in addition to spaces within their tenant. In the UI this privilege is optional and disabled by default ("edit" and "delete" buttons are not displayed in the menus), but it can be enabled in the admin console: navigate to **Admin > Cluster > Support > Support Keys**, enter `ui.space.allow-manage` key and enable it (see https://docs.dremio.com/advanced-administration/support-settings/#support-keys for details).
