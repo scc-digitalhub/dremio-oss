@@ -78,21 +78,26 @@ public class PutSourceResource {
   @Produces(MediaType.APPLICATION_JSON)
   @Consumes(MediaType.APPLICATION_JSON)
   public SourceUI putSource(SourceUI source) throws NamespaceException, UserNotFoundException, SourceNotFoundException {
-    if (!isAuthorized("user")) {
-      throw new ForbiddenException(String.format("User not authorized to access %s source. %s", sourceName.getName(),
+    //prefix source name with user tenant, here because MultiTenantServiceHelper cannot be called inside constructor
+    SourceName prefixedSourceName = new SourceName(MultiTenantServiceHelper.prefixResourceWithTenant(securityContext, sourceName.getName()));
+    SourcePath prefixedSourcePath = new SourcePath(prefixedSourceName);
+    logger.info("prefixed source name {} and path {}", prefixedSourceName.getName(), prefixedSourcePath.getSourceName().getName());
+
+    if (!isAuthorized("user", prefixedSourceName.getName())) {
+      throw new ForbiddenException(String.format("User not authorized to access %s source. %s", prefixedSourceName.getName(),
         MultiTenantServiceHelper.getMessageWithTenant(securityContext.getUserPrincipal().getName())));
     }
 
     try {
       //Following are set at server side.
-      source.setName(sourceName.getName());
+      source.setName(prefixedSourceName.getName());
       source.setCtime(System.currentTimeMillis());
 
       SourceConfig sourceConfig = sourceService.registerSourceWithRuntime(source);
 
-      final SourceState sourceState = sourceService.getSourceState(sourcePath.getSourceName().getName());
+      final SourceState sourceState = sourceService.getSourceState(prefixedSourcePath.getSourceName().getName());
       if (sourceState == null) {
-        throw new SourceNotFoundException(sourcePath.getSourceName().getName());
+        throw new SourceNotFoundException(prefixedSourcePath.getSourceName().getName());
       }
       source.setState(sourceState);
       source.setTag(sourceConfig.getTag());
@@ -106,9 +111,9 @@ public class PutSourceResource {
     }
   }
 
-  private boolean isAuthorized(String role) {
+  private boolean isAuthorized(String role, String sourceName) {
     String userTenant = MultiTenantServiceHelper.getUserTenant(securityContext.getUserPrincipal().getName());
-    String resourceTenant = MultiTenantServiceHelper.getResourceTenant(sourceName.getName());
+    String resourceTenant = MultiTenantServiceHelper.getResourceTenant(sourceName);
     return MultiTenantServiceHelper.hasPermission(securityContext, role, userTenant, resourceTenant);
   }
 }

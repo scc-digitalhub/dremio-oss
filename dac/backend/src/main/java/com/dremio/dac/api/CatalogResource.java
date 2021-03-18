@@ -101,6 +101,15 @@ public class CatalogResource {
 
   @POST
   public CatalogEntity createCatalogItem(CatalogEntity entity) throws NamespaceException, BadRequestException {
+    if (entity instanceof Space) {
+      Space space = (Space)entity;
+      String prefixedName = MultiTenantServiceHelper.prefixResourceWithTenant(securityContext, space.getName());
+      entity = new Space(space.getId(), prefixedName, space.getTag(), space.getCreatedAt(), space.getChildren());
+    } else if (entity instanceof Source) {
+      String prefixedName = MultiTenantServiceHelper.prefixResourceWithTenant(securityContext, ((Source)entity).getName());
+      ((Source)entity).setName(prefixedName);
+    }
+
     if (!isAuthorized("user", getCatalogEntityRoot(entity))) {
       throw new ForbiddenException(String.format("User not authorized to create entity with this path. %s",
         MultiTenantServiceHelper.getMessageWithTenant(securityContext.getUserPrincipal().getName())));

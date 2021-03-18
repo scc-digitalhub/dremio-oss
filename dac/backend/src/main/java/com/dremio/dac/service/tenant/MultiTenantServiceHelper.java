@@ -108,4 +108,24 @@ public class MultiTenantServiceHelper {
       return false;
     }
   }
+
+  /**
+   * Prefix the given resource name with the tenant of the current user, i.e., <tenant>__<resourceName>
+   */
+  public static String prefixResourceWithTenant(SecurityContext sc, String resourceName) {
+    if(sc.isUserInRole("admin")){
+      logger.info("user is admin, no prefixing {}", resourceName);
+      return resourceName;
+    }
+
+    String tenant = getUserTenant(sc.getUserPrincipal().getName());
+    logger.info("prefixResourceWithTenant, resource name is {}, user tenant is {}", resourceName, tenant);
+    if (tenant == null) {
+      logger.info("prefixResourceWithTenant, tenant is null, no prefixing {}", resourceName);
+      return resourceName;
+    } else {
+      logger.info("prefixResourceWithTenant, prefixing");
+      return tenant + "__" + resourceName;
+    }
+  }
 }
