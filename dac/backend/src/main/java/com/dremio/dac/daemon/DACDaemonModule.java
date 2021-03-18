@@ -119,6 +119,7 @@ import com.dremio.exec.store.sys.SystemTablePluginConfigProvider;
 import com.dremio.exec.store.sys.accel.AccelerationListManager;
 import com.dremio.exec.store.sys.accel.AccelerationManager;
 import com.dremio.exec.work.WorkStats;
+import com.dremio.exec.work.protector.ActiveQueryListService;
 import com.dremio.exec.work.protector.ForemenTool;
 import com.dremio.exec.work.protector.ForemenWorkManager;
 import com.dremio.exec.work.protector.UserWorker;
@@ -133,6 +134,7 @@ import com.dremio.resource.ClusterResourceInformation;
 import com.dremio.resource.GroupResourceInformation;
 import com.dremio.resource.QueryCancelTool;
 import com.dremio.resource.ResourceAllocator;
+import com.dremio.resource.RuleBasedEngineSelector;
 import com.dremio.resource.basic.BasicResourceAllocator;
 import com.dremio.sabot.exec.CancelQueryContext;
 import com.dremio.sabot.exec.CoordinatorHeapClawBackStrategy;
@@ -165,12 +167,16 @@ import com.dremio.service.conduit.server.ConduitServer;
 import com.dremio.service.conduit.server.ConduitServiceRegistry;
 import com.dremio.service.conduit.server.ConduitServiceRegistryImpl;
 import com.dremio.service.coordinator.ClusterCoordinator;
+import com.dremio.service.coordinator.ClusterServiceSetManager;
+import com.dremio.service.coordinator.DremioAssumeRoleCredentialsProviderV1;
+import com.dremio.service.coordinator.DremioAssumeRoleCredentialsProviderV2;
 import com.dremio.service.coordinator.ExecutorSetService;
 import com.dremio.service.coordinator.LocalExecutorSetService;
 import com.dremio.service.coordinator.NoOpClusterCoordinator;
 import com.dremio.service.coordinator.ProjectConfig;
 import com.dremio.service.coordinator.ProjectConfigImpl;
 import com.dremio.service.coordinator.ProjectConfigStore;
+import com.dremio.service.coordinator.SoftwareAssumeRoleCredentialsProvider;
 import com.dremio.service.coordinator.local.LocalClusterCoordinator;
 import com.dremio.service.coordinator.zk.ZKClusterCoordinator;
 import com.dremio.service.execselector.ExecutorSelectionService;
@@ -298,11 +304,13 @@ public class DACDaemonModule implements DACModule {
     }
 
     final MasterStatusListener masterStatusListener;
+    final Provider<ClusterServiceSetManager> clusterServiceSetManagerProvider =
+      () -> bootstrapRegistry.provider(ClusterCoordinator.class).get();
     if (!isMasterless) {
-      masterStatusListener = new MasterStatusListener(bootstrapRegistry.provider(ClusterCoordinator.class), config.getSabotConfig(), isMaster);
+      masterStatusListener = new MasterStatusListener(clusterServiceSetManagerProvider, config.getSabotConfig(), isMaster);
     } else {
       masterStatusListener =
-        new MasterlessStatusListener(bootstrapRegistry.provider(ClusterCoordinator.class), isMaster);
+        new MasterlessStatusListener(clusterServiceSetManagerProvider, isMaster);
     }
     // start master status listener
     bootstrapRegistry.bind(MasterStatusListener.class, masterStatusListener);
@@ -315,6 +323,7 @@ public class DACDaemonModule implements DACModule {
         .with(TenantContext.CTX_KEY, TenantContext.DEFAULT_SERVICE_CONTEXT)
         .with(UserContext.CTX_KEY, new UserContext(SYSTEM_USERNAME))
     );
+
   }
 
   @Override
@@ -563,10 +572,13 @@ public class DACDaemonModule implements DACModule {
     final Provider<NodeEndpoint> currentEndPoint =
       () -> registry.provider(SabotContext.class).get().getEndpoint();
 
+    final Provider<ClusterServiceSetManager> clusterServiceSetManagerProvider =
+      () -> registry.provider(ClusterCoordinator.class).get();
+
     // Periodic task scheduler service
     registry.bind(SchedulerService.class, new LocalSchedulerService(
       config.getInt(DremioConfig.SCHEDULER_SERVICE_THREAD_COUNT),
-      registry.provider(ClusterCoordinator.class), currentEndPoint, isDistributedCoordinator));
+      clusterServiceSetManagerProvider, currentEndPoint, isDistributedCoordinator));
 
     final OptionChangeBroadcaster systemOptionChangeBroadcaster =
       new OptionChangeBroadcaster(
@@ -797,6 +809,8 @@ public class DACDaemonModule implements DACModule {
       registry.bind(MaestroService.class, maestroServiceImpl);
       registry.bindProvider(ExecToCoordStatusHandler.class, maestroServiceImpl::getExecStatusHandler);
 
+      registry.bind(RuleBasedEngineSelector.class, RuleBasedEngineSelector.NO_OP);
+
       final ForemenWorkManager foremenWorkManager = new ForemenWorkManager(
         registry.provider(FabricService.class),
         registry.provider(SabotContext.class),
@@ -804,7 +818,8 @@ public class DACDaemonModule implements DACModule {
         registry.provider(MaestroService.class),
         registry.provider(JobTelemetryClient.class),
         registry.provider(MaestroForwarder.class),
-        bootstrapRegistry.lookup(Tracer.class));
+        bootstrapRegistry.lookup(Tracer.class),
+        registry.provider(RuleBasedEngineSelector.class));
 
       registry.bindSelf(foremenWorkManager);
       registry.bindProvider(ExecToCoordResultsHandler.class, foremenWorkManager::getExecToCoordResultsHandler);
@@ -1089,6 +1104,37 @@ public class DACDaemonModule implements DACModule {
       registry.bind(ProjectConfigStore.class, ProjectConfigStore.NO_OP);
       registry.bind(ProjectConfig.class, new ProjectConfigImpl(registry.provider(DremioConfig.class),
         registry.provider(ProjectConfigStore.class)));
+      // register a no-op assume role provider
+      // valid only in dcs
+      final SoftwareAssumeRoleCredentialsProvider softwareAssumeRoleCredentialsProvider = new SoftwareAssumeRoleCredentialsProvider();
+      DremioAssumeRoleCredentialsProviderV2.setAssumeRoleProvider(() -> {
+        return softwareAssumeRoleCredentialsProvider;
+      });
+
+      DremioAssumeRoleCredentialsProviderV1.setAssumeRoleProvider(() -> {
+        return softwareAssumeRoleCredentialsProvider;
+      });
+    }
+
+    registerActiveQueryListService(registry, isCoordinator, isDistributedMaster, conduitServiceRegistry);
+  }
+
+  private void registerActiveQueryListService(SingletonRegistry registry, boolean isCoordinator,
+                                              boolean isDistributedMaster, ConduitServiceRegistry conduitServiceRegistry) {
+    if (isCoordinator) {
+      ActiveQueryListService activeQueryListService = new ActiveQueryListService(
+        registry.provider(SchedulerService.class),
+        registry.provider(ExecutorServiceClientFactory.class),
+        registry.provider(NodeEndpoint.class),
+        registry.provider(ExecutorSetService.class),
+        registry.provider(MaestroService.class),
+        registry.provider(SabotContext.class),
+        registry.provider(ConduitProvider.class),
+        registry.provider(OptionManager.class),
+        isDistributedMaster);
+
+      registry.bindSelf(activeQueryListService);
+      conduitServiceRegistry.registerService(activeQueryListService);
     }
   }
 

@@ -36,6 +36,8 @@ service ExecutorService {
   rpc CancelFragments(exec.bit.control.CancelFragments) returns (google.protobuf.Empty) {}
 
   rpc GetNodeStats(google.protobuf.Empty) returns (exec.bit.control.NodeStatResp) {}
+
+  rpc ReconcileActiveQueries(exec.bit.control.ActiveQueryList) returns (google.protobuf.Empty) {}
 }
 
 
