@@ -7,7 +7,7 @@ import com.dremio.service.users.User;
 /**
  * Multi-tenancy helper class that is used by the APIs (annotated as RestResource and APIResource) to verify that a user
  * requesting a resource is allowed to access it, i.e., user tenant and resource tenant match.
- * A duplicate of this class, used by LocalJobsService, is com.dremio.service.tenant.MultiTenantServiceHelper.
+ * A duplicate of this class, used by ForemenWorkManager, is com.dremio.exec.tenant.MultiTenantServiceHelper.
  */
 public class MultiTenantServiceHelper {
   private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(MultiTenantServiceHelper.class);

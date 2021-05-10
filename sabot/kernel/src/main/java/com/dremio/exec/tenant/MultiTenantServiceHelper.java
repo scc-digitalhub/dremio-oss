@@ -1,4 +1,4 @@
-package com.dremio.service.tenant;
+package com.dremio.exec.tenant;
 
 import javax.ws.rs.core.SecurityContext;
 
@@ -99,6 +99,7 @@ public class MultiTenantServiceHelper {
    * Case-insensitive comparison between tenants
    */
   public static boolean isSameTenant(String userTenant, String resourceTenant) {
+    logger.info("comparing user tenant {} with resource tenant {}", userTenant, resourceTenant);
     return userTenant.equalsIgnoreCase(resourceTenant);
   }
 

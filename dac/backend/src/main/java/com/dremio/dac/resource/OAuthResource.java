@@ -230,10 +230,13 @@ public class OAuthResource {
         isAdmin = "admin".equals(role);
       }*/
 
+      //show user management in the UI for oauth authentication (true so that oauth users can set a password to use with Flight/ODBC/JDBC)
+      boolean showUserAndUserProperties = true;
+
       UserLoginSession login = new UserLoginSession(tokenDetails.token, userName, user.getFirstName(),
           user.getLastName(), tokenDetails.expiresAt, user.getEmail(), user.getUID().getId(), isAdmin,
           user.getCreatedAt(), support.getClusterId().getIdentity(), support.getClusterId().getCreated(),
-          false, DremioVersionInfo.getVersion(), perms);
+          showUserAndUserProperties, DremioVersionInfo.getVersion(), perms);
 
       String response = buildResponse(login);
 

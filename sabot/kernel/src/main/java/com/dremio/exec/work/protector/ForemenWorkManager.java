@@ -16,6 +16,7 @@
 package com.dremio.exec.work.protector;
 
 import static com.dremio.exec.ExecConstants.MAX_FOREMEN_PER_COORDINATOR;
+import static com.dremio.service.users.SystemUser.SYSTEM_USERNAME;
 
 import java.util.List;
 import java.util.Optional;
@@ -26,6 +27,7 @@ import java.util.concurrent.TimeUnit;
 import javax.inject.Provider;
 
 import org.apache.arrow.util.VisibleForTesting;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,6 +58,7 @@ import com.dremio.exec.rpc.ResponseSender;
 import com.dremio.exec.rpc.RpcException;
 import com.dremio.exec.server.SabotContext;
 import com.dremio.exec.server.options.SessionOptionManagerImpl;
+import com.dremio.exec.tenant.MultiTenantServiceHelper;
 import com.dremio.exec.work.SafeExit;
 import com.dremio.exec.work.foreman.TerminationListenerRegistry;
 import com.dremio.exec.work.rpc.CoordProtocol;
@@ -75,6 +78,9 @@ import com.dremio.service.Service;
 import com.dremio.service.commandpool.CommandPool;
 import com.dremio.service.jobresults.JobResultsRequest;
 import com.dremio.service.jobtelemetry.JobTelemetryClient;
+import com.dremio.service.namespace.source.proto.SourceConfig;
+import com.dremio.service.namespace.space.proto.HomeConfig;
+import com.dremio.service.namespace.space.proto.SpaceConfig;
 import com.dremio.services.fabric.api.FabricRunnerFactory;
 import com.dremio.services.fabric.api.FabricService;
 import com.dremio.telemetry.api.metrics.Metrics;
@@ -215,6 +221,54 @@ public class ForemenWorkManager implements Service, SafeExit {
     return externalIdToForeman.size() < foremenLimit;
   }
 
+  /**
+   * Verify that the query does not involve datasets the user is not allowed to access. In that case, stop query execution.
+   * @param username      username that is performing the query
+   * @param contextList   context path with period as separator
+   * @param sql           query
+   */
+  private boolean canUserPerformQuery(String username, String contextList, String sql) {
+    boolean allowed = true;
+    logger.info("checking if user {} can perform query {} in context {}", username, sql, contextList);
+
+    if (!username.equals(MultiTenantServiceHelper.DEFAULT_USER) && !username.equals(SYSTEM_USERNAME)) {//not admin
+      List<String> containers = Lists.newArrayList(); //all spaces/sources/homes mentioned in the query + query context
+
+      if (contextList != null && contextList.length() > 0) {
+        String contextRoot = contextList.split("\\.")[0];
+        containers.add(StringUtils.strip(contextRoot, "\""));
+      }
+
+      for (SpaceConfig space : dbContext.get().getNamespaceService(SYSTEM_USERNAME).getSpaces()) {
+        if (sql.contains(space.getName())) {
+          containers.add(space.getName());
+        }
+      }
+      for (HomeConfig home : dbContext.get().getNamespaceService(SYSTEM_USERNAME).getHomeSpaces()) {
+        if (sql.contains(MultiTenantServiceHelper.getUserHomePath(home.getOwner()))) {
+          containers.add(MultiTenantServiceHelper.getUserHomePath(home.getOwner()));
+        }
+      }
+      for (SourceConfig source : dbContext.get().getNamespaceService(SYSTEM_USERNAME).getSources()) {
+        if (!MultiTenantServiceHelper.isInternalSource(source.getName()) && sql.contains(source.getName())) {
+          containers.add(source.getName());
+        }
+      }
+
+      for (String container : containers) {
+        //unless container is user home, check container tenant against user tenant
+        if (!container.equals(MultiTenantServiceHelper.getUserHomePath(username))) {
+          String userTenant = MultiTenantServiceHelper.getUserTenant(username);
+          String resourceTenant = MultiTenantServiceHelper.getResourceTenant(container);
+          if (userTenant == null || resourceTenant == null || !MultiTenantServiceHelper.isSameTenant(userTenant, resourceTenant)) {
+            allowed = false;
+          }
+        }
+      }
+    }
+    return allowed;
+  }
+
   public void submit(
           final ExternalId externalId,
           final QueryObserver observer,
@@ -223,14 +277,22 @@ public class ForemenWorkManager implements Service, SafeExit {
           final TerminationListenerRegistry registry,
           final OptionProvider config,
           final ReAttemptHandler attemptHandler) {
+    logger.info("request for query submission, queryid: {} -rpctype: {} -query: {} -username: {} -defaultschemapath {}", ExternalIdHelper.toString(externalId), request.getRequestType(), request.getSql(), session.getCredentials().getUserName(), session.getDefaultSchemaName());
+    boolean userAllowed = canUserPerformQuery(session.getCredentials().getUserName(), session.getDefaultSchemaName(), request.getSql());
 
-    final DelegatingCompletionListener delegate = new DelegatingCompletionListener();
-    final Foreman foreman = newForeman(pool, commandPool.get(), delegate, externalId, observer, session, request,
-            config, attemptHandler, preparedHandles);
-    final ManagedForeman managed = new ManagedForeman(registry, foreman);
-    externalIdToForeman.put(foreman.getExternalId(), managed);
-    delegate.setListener(managed);
-    foreman.start();
+    if (userAllowed) {
+      logger.info("user is allowed to perform the query, submitting");
+      final DelegatingCompletionListener delegate = new DelegatingCompletionListener();
+      final Foreman foreman = newForeman(pool, commandPool.get(), delegate, externalId, observer, session, request,
+              config, attemptHandler, preparedHandles);
+      final ManagedForeman managed = new ManagedForeman(registry, foreman);
+      externalIdToForeman.put(foreman.getExternalId(), managed);
+      delegate.setListener(managed);
+      foreman.start();
+    } else {
+      logger.info("user is not allowed to perform the query, throwing UserException");
+      throw UserException.permissionError().message("Query contains datasets the user is not allowed to access").buildSilently();
+    }
   }
 
   protected Foreman newForeman(Executor executor, CommandPool commandPool, CompletionListener listener, ExternalId externalId,
