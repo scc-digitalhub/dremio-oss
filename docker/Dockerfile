@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:experimental
 
-FROM maven:3-jdk-8 as build
+FROM maven:3.6-jdk-8 as build
 WORKDIR /dremio
 COPY . ./dremio-oss/
 WORKDIR /dremio/dremio-oss

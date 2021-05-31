@@ -24,7 +24,7 @@
 # time real    2m2,517s
 
 #baseDEP min cache 20M <1m
-FROM maven:3-jdk-8 as basedep
+FROM maven:3.6-jdk-8 as basedep
 WORKDIR /dremio
 # RUN git clone -b multitenancy https://github.com/smartcommunitylab/dremio-oss.git
 COPY . /dremio/dremio-oss
