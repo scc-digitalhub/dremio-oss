@@ -186,14 +186,16 @@ mytenant__myspace
 
 The admin user can access any resource. Regular users can only access resources inside their own home or belonging to their tenant. This implies that users can only query data and access job results according to these constraints.
 
-**NOTE**: currently, when you create a new source or space, you must **manually prefix its name with the tenant** you want it to belong to. Non-admin users cannot create sources or spaces with a different tenant than their own.
+**NOTE**: currently, when non-admin users create a new source or space (sample sources included), that is **automatically prefixed** with their own tenant. Non-admin users cannot create sources or spaces with a different tenant than their own.
 
 ## Additional Changes in the Fork
-
-### Sample Sources
-
-Sample sources are currently not supported by the multitenancy model implemented so far, as they are named automatically and thus cannot be prefixed manually with the appropriate tenant.
 
 ### Source Management
 
 Differently from the original implementation, in which source management was restricted to admins only, non-admin users are allowed to manage (create, update and delete) sources in addition to spaces within their tenant. In the UI this privilege is optional and disabled by default ("edit" and "delete" buttons are not displayed in the menus), but it can be enabled in the admin console: navigate to **Admin > Cluster > Support > Support Keys**, enter `ui.space.allow-manage` key and enable it (see https://docs.dremio.com/advanced-administration/support-settings/#support-keys for details).
+
+### Arrow Flight and ODBC/JDBC Services
+
+While internal users can use their credentials to connect to Dremio Arrow Flight server endpoint and ODBC and JDBC services, users that log in via OAuth need to set an internal password in order to connect to Dremio with some client. Such password can be set in the Dremio UI on the Account Settings page.
+
+Instructions on how to connect to Dremio via JDBC from **WSO2 Data Services Server** are [included in the fork](https://github.com/scc-digitalhub/dremio-oss/tree/multitenancy/bundle).
