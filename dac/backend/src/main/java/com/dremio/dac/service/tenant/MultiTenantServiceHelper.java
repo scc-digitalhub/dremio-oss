@@ -38,7 +38,7 @@ public class MultiTenantServiceHelper {
     //split username by @ and take last substring
     if (username != null) {
       String[] substrings = username.split("@");
-      if (substrings.length > 0) {
+      if (substrings.length > 1) {
         tenant = substrings[substrings.length -1];
       }
     }
@@ -119,9 +119,13 @@ public class MultiTenantServiceHelper {
     }
 
     String tenant = getUserTenant(sc.getUserPrincipal().getName());
+    String resourceTenant = getResourceTenant(resourceName);
     logger.info("prefixResourceWithTenant, resource name is {}, user tenant is {}", resourceName, tenant);
     if (tenant == null) {
       logger.info("prefixResourceWithTenant, tenant is null, no prefixing {}", resourceName);
+      return resourceName;
+    } else if (resourceTenant != null && !resourceTenant.isEmpty() && isSameTenant(tenant, resourceTenant)) {
+      logger.info("prefixResourceWithTenant, resource has the correct tenant, no prefixing {}", resourceName);
       return resourceName;
     } else {
       logger.info("prefixResourceWithTenant, prefixing");
