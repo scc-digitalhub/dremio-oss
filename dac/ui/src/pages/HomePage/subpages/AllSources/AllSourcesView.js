@@ -118,7 +118,7 @@ export default class AllSourcesView extends Component {
   renderAddButton() {
     const { isExternalSource } = this.props;
     return (
-      <LinkButton
+      this.context.loggedInUser.admin && <LinkButton
         buttonStyle='primary'
         to={{ ...this.context.location, state: { modal: 'AddSourceModal', isExternalSource }}}
         style={allSpacesAndAllSources.addButton}>

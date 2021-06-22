@@ -126,7 +126,7 @@ export class LeftTree extends PureComponent {
   }
 
   getCanAddSource() {
-    return true; // All users can add sources in their tenant
+    return this.context.loggedInUser.admin;
   }
 
   getAddSourceHref(isExternalSource) {

@@ -92,6 +92,5 @@ export const manageSpaceRule = {
 };
 
 export const manageSourceRule = {
-  capabilities: [Capabilities.manageSpaces],
-  isAdmin: true //same restrictions to edit/remove sources as for spaces
+  isAdmin: true // only admins are allowed to edit/remove source
 };
