@@ -196,6 +196,7 @@ public class DremioConfig extends NestedConfig {
   public static final String WEB_AUTH_OAUTH_CLIENT_SECRET = "services.coordinator.web.auth.oauth.clientSecret";
   public static final String WEB_AUTH_OAUTH_TENANT_FIELD = "services.coordinator.web.auth.oauth.tenantField";
   public static final String WEB_AUTH_OAUTH_SCOPE = "services.coordinator.web.auth.oauth.scope";
+  public static final String WEB_AUTH_OAUTH_ROLE_FIELD = "services.coordinator.web.auth.oauth.roleField";
 
   private final Config unresolved;
   private final Config reference;

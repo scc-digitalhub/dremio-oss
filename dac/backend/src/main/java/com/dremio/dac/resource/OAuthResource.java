@@ -5,7 +5,9 @@ import java.io.StringWriter;
 import java.math.BigInteger;
 import java.net.URI;
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
 import java.util.concurrent.ExecutionException;
 
 import javax.inject.Inject;
@@ -39,7 +41,7 @@ import com.dremio.service.namespace.NamespaceService;
 import com.dremio.service.namespace.space.proto.HomeConfig;
 import com.dremio.service.tokens.TokenDetails;
 import com.dremio.service.tokens.TokenManager;
-import com.dremio.service.users.SimpleUser;
+import com.dremio.service.users.OAuthSimpleUser;
 import com.dremio.service.users.SystemUser;
 import com.dremio.service.users.User;
 import com.dremio.service.users.UserNotFoundException;
@@ -177,6 +179,7 @@ public class OAuthResource {
         logger.info("verifying if user with username {} exists", userInfo.getUserName());
         user = userService.getUser(userInfo.getUserName());
         logger.info("user already exists: {}", user);
+        user = userService.updateUser(userInfo, null);
 
       } catch (UserNotFoundException uex) {
         // create as new with random password
@@ -202,7 +205,7 @@ public class OAuthResource {
       }
 
       String userName = user.getUserName();
-      logger.info("logging in user {} with first name: {} last name: {} email: {}", userName, user.getFirstName(), user.getLastName(), user.getEmail());
+      logger.info("logging in user {}", user);
 
       // create a token for the session
       final String clientAddress = request.getRemoteAddr();
@@ -222,10 +225,10 @@ public class OAuthResource {
           opt.getOption(SupportService.USERS_DOWNLOAD), opt.getOption(SupportService.USERS_EMAIL),
           opt.getOption(SupportService.USERS_CHAT));
 
-      // build an "internal" session
-      // if required check oauth token for role, otherwise
-      // flag admin=false for all oauth users
-      boolean isAdmin = false;
+      //build an "internal" session
+      //flag isAdmin=true if user is tenant admin, otherwise flag isAdmin=false for oauth users
+      boolean isAdmin = ((OAuthSimpleUser)user).getRoles().contains("admin") ? true : false;
+      logger.info("building login session, is admin: {}", isAdmin);
       /*if (oauthConfig.requireRoles()) {
         isAdmin = "admin".equals(role);
       }*/
@@ -280,10 +283,10 @@ public class OAuthResource {
     return profile;
   }
 
-  private User createUser(String email, String firstName, String lastName, String userName) {
+  private User createUser(String email, String firstName, String lastName, String userName, List<String> roles) {
     long now = System.currentTimeMillis();
-    return SimpleUser.newBuilder().setEmail(email).setUserName(userName).setFirstName(firstName)
-        .setLastName(lastName).setModifiedAt(now).setCreatedAt(now).build();
+    return OAuthSimpleUser.newBuilder().setEmail(email).setUserName(userName).setFirstName(firstName)
+        .setLastName(lastName).setModifiedAt(now).setCreatedAt(now).setRoles(roles).build();
 
   }
 
@@ -292,6 +295,7 @@ public class OAuthResource {
     String userName = "";
     String firstName = "";
     String lastName = "";
+    List<String> roles = new ArrayList<String>();//list in case of future updates to allow user to have multiple tenants
 
     // if user has no tenant, return null
     if (!json.has(oauthConfig.getTenantField()) || json.get(oauthConfig.getTenantField()).getAsString().isEmpty()) {
@@ -337,9 +341,13 @@ public class OAuthResource {
       userName = email + "@" + tenant;
     }
 
-    logger.info("user info that  will be used is username: {} email: {} firstname: {} lastname: {}", userName, email, firstName, lastName);
+    if (json.has(oauthConfig.getRoleField())) {
+      roles.add(json.get(oauthConfig.getRoleField()).getAsString());
+    }
 
-    return createUser(email, firstName, lastName, userName);
+    logger.info("user info that  will be used is username: {} email: {} firstname: {} lastname: {} roles: {}", userName, email, firstName, lastName, roles);
+
+    return createUser(email, firstName, lastName, userName, roles);
   }
 
   private String buildResponse(UserLoginSession login)

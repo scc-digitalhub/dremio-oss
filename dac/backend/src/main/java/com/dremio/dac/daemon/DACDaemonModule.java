@@ -226,6 +226,7 @@ import com.dremio.service.spill.SpillService;
 import com.dremio.service.spill.SpillServiceImpl;
 import com.dremio.service.tokens.TokenManager;
 import com.dremio.service.tokens.TokenManagerImpl;
+import com.dremio.service.users.OAuthSimpleUserService;
 import com.dremio.service.users.SimpleUserService;
 import com.dremio.service.users.UserService;
 import com.dremio.services.fabric.FabricServiceImpl;
@@ -1239,15 +1240,8 @@ public class DACDaemonModule implements DACModule {
       return true;
     }
 
-    /* implementazione Matteo
     if ("oauth".equals(authType)) {
-      registry.bind(UserService.class, SimpleUserService.class);
-      logger.info("Internal+OAuth user/group service is configured.");
-      return true;
-    }
-    */
-    if ("oauth".equals(authType)) {
-      registry.bindProvider(UserService.class, () -> new SimpleUserService(registry.provider(LegacyKVStoreProvider.class)));
+      registry.bindProvider(UserService.class, () -> new OAuthSimpleUserService(registry.provider(LegacyKVStoreProvider.class)));
       logger.info("Internal+OAuth user/group service is configured.");
       return true;
     }

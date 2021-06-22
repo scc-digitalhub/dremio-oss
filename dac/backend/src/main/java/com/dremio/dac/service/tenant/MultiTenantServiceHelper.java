@@ -2,6 +2,8 @@ package com.dremio.dac.service.tenant;
 
 import javax.ws.rs.core.SecurityContext;
 
+import com.dremio.dac.model.usergroup.UserUI;
+import com.dremio.service.users.OAuthSimpleUser;
 import com.dremio.service.users.User;
 
 /**
@@ -99,7 +101,14 @@ public class MultiTenantServiceHelper {
       return true;
     }
 
-    if(userTenant != null && resourceTenant != null && sc.isUserInRole(requiredRole)) {
+    //check if user role within the tenant matches required role
+    boolean hasRole = true;
+    User user = ((UserUI)sc.getUserPrincipal()).getUser();
+    if("admin".equals(requiredRole) && (((OAuthSimpleUser)user).getRoles() == null || !((OAuthSimpleUser)user).getRoles().contains(requiredRole))) {
+      hasRole = false;
+    }
+
+    if(userTenant != null && resourceTenant != null && hasRole) {
       boolean allowed = isSameTenant(userTenant, resourceTenant);
       logger.info("comparing tenants, has permission: {}", allowed);
       return allowed;

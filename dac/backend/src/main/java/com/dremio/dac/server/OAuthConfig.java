@@ -18,8 +18,8 @@ public class OAuthConfig {
   private final String tenantField;
   private final String scope;
 
-  /*private final String roleField;
-  private final String roleUserMapping;
+  private final String roleField;
+  /*private final String roleUserMapping;
   private final String roleAdminMapping;*/
 
   private final DremioConfig config;
@@ -33,14 +33,14 @@ public class OAuthConfig {
         config.getString(DremioConfig.WEB_AUTH_OAUTH_CLIENT_ID),
         config.getString(DremioConfig.WEB_AUTH_OAUTH_CLIENT_SECRET),
         config.getString(DremioConfig.WEB_AUTH_OAUTH_TENANT_FIELD),
-        config.getString(DremioConfig.WEB_AUTH_OAUTH_SCOPE),/*
-        config.getString(DremioConfig.WEB_AUTH_OAUTH_ROLE_FIELD),
+        config.getString(DremioConfig.WEB_AUTH_OAUTH_SCOPE),
+        config.getString(DremioConfig.WEB_AUTH_OAUTH_ROLE_FIELD),/*
         config.getString(DremioConfig.WEB_AUTH_OAUTH_ROLE_USER),
         config.getString(DremioConfig.WEB_AUTH_OAUTH_ROLE_ADMIN),*/ config);
   }
 
   private OAuthConfig(String authorizationUrl, String tokenUrl, String userInfoUrl, String callbackUrl,
-      String clientId, String clientSecret, String tenantField, String scope, /* String roleField, String roleUserMapping, String roleAdminMapping,*/
+      String clientId, String clientSecret, String tenantField, String scope, String roleField, /*String roleUserMapping, String roleAdminMapping,*/
       DremioConfig config) {
     super();
     this.authorizationUrl = authorizationUrl;
@@ -51,8 +51,8 @@ public class OAuthConfig {
     this.clientSecret = clientSecret;
     this.tenantField = tenantField;
     this.scope = scope;
-    /*this.roleField = roleField;
-    this.roleUserMapping = roleUserMapping;
+    this.roleField = roleField;
+    /*this.roleUserMapping = roleUserMapping;
     this.roleAdminMapping = roleAdminMapping;*/
 
     this.config = config;
@@ -98,11 +98,11 @@ public class OAuthConfig {
     return scope;
   }
 
-  /*public String getRoleField() {
+  public String getRoleField() {
     return roleField;
   }
 
-  public String getRoleUserMapping() {
+  /*public String getRoleUserMapping() {
     return roleUserMapping;
   }
 
