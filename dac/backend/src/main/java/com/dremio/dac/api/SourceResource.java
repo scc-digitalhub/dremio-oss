@@ -134,7 +134,7 @@ public class SourceResource {
   @RolesAllowed({"admin", "user"})
   public SourceDeprecated addSource(SourceDeprecated source) {
     SourceConfig sourceConfig = source.toSourceConfig();
-    if (!isAuthorized("user", sourceConfig)) {
+    if (!isAuthorized("admin", sourceConfig)) {
       throw new ForbiddenException(String.format("User not authorized to access source %s.", source.getName()));
     }
 
@@ -164,7 +164,7 @@ public class SourceResource {
   @Path("/{id}")
   public SourceDeprecated updateSource(@PathParam("id") String id, SourceDeprecated source) throws NamespaceException {
     SourceConfig oldSourceConfig = sourceService.getById(id);
-    if (!isAuthorized("user", oldSourceConfig)) {
+    if (!isAuthorized("admin", oldSourceConfig)) {
       throw new ForbiddenException(String.format("User not authorized to access source %s.", id));
     }
 
@@ -183,7 +183,7 @@ public class SourceResource {
   @Path("/{id}")
   public Response deleteSource(@PathParam("id") String id) throws NamespaceException {
     SourceConfig config = sourceService.getById(id);
-    if (!isAuthorized("user", config)) {
+    if (!isAuthorized("admin", config)) {
       throw new ForbiddenException(String.format("User not authorized to access source %s.", id));
     }
     sourceService.deleteSource(config);

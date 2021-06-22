@@ -101,6 +101,7 @@ public class CatalogResource {
 
   @POST
   public CatalogEntity createCatalogItem(CatalogEntity entity) throws NamespaceException, BadRequestException {
+    String role = "user";
     if (entity instanceof Space) {
       Space space = (Space)entity;
       String prefixedName = MultiTenantServiceHelper.prefixResourceWithTenant(securityContext, space.getName());
@@ -108,9 +109,10 @@ public class CatalogResource {
     } else if (entity instanceof Source) {
       String prefixedName = MultiTenantServiceHelper.prefixResourceWithTenant(securityContext, ((Source)entity).getName());
       ((Source)entity).setName(prefixedName);
+      role = "admin";
     }
 
-    if (!isAuthorized("user", getCatalogEntityRoot(entity))) {
+    if (!isAuthorized(role, getCatalogEntityRoot(entity))) {
       throw new ForbiddenException(String.format("User not authorized to create entity with this path. %s",
         MultiTenantServiceHelper.getMessageWithTenant(securityContext.getUserPrincipal().getName())));
     }
@@ -140,7 +142,8 @@ public class CatalogResource {
   @PUT
   @Path("/{id}")
   public CatalogEntity updateCatalogItem(CatalogEntity entity, @PathParam("id") String id) throws NamespaceException, BadRequestException {
-    if (!isAuthorized("user", getCatalogEntityRoot(entity))) {
+    String role = entity instanceof Source ? "admin" : "user";
+    if (!isAuthorized(role, getCatalogEntityRoot(entity))) {
       throw new ForbiddenException(String.format("User not authorized to access entity with id [%s].", id));
     }
 
@@ -159,7 +162,8 @@ public class CatalogResource {
   @Path("/{id}")
   public void deleteCatalogItem(@PathParam("id") String id, @QueryParam("tag") String tag) throws NamespaceException, BadRequestException {
     Optional<CatalogEntity> entity = catalogServiceHelper.getCatalogEntityById(id, null);
-    if (entity.isPresent() && !isAuthorized("user", getCatalogEntityRoot(entity.get()))) {
+    String role = (entity.isPresent() && entity.get() instanceof Source) ? "admin" : "user";
+    if (entity.isPresent() && !isAuthorized(role, getCatalogEntityRoot(entity.get()))) {
       throw new ForbiddenException(String.format("User not authorized to access entity with id [%s].", id));
     }
 

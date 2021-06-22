@@ -178,7 +178,7 @@ public class SourceResource extends BaseResourceWithAllocator {
   @DELETE
   @Produces(MediaType.APPLICATION_JSON)
   public void deleteSource(@QueryParam("version") String version) throws NamespaceException, SourceNotFoundException {
-    if (!isAuthorized("user")) {
+    if (!isAuthorized("admin")) {
       throw new ForbiddenException(String.format("User not authorized to access %s source.", sourceName.getName()));
     }
     if (version == null) {

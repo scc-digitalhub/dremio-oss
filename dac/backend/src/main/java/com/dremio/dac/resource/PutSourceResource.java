@@ -83,7 +83,7 @@ public class PutSourceResource {
     SourcePath prefixedSourcePath = new SourcePath(prefixedSourceName);
     logger.info("prefixed source name {} and path {}", prefixedSourceName.getName(), prefixedSourcePath.getSourceName().getName());
 
-    if (!isAuthorized("user", prefixedSourceName.getName())) {
+    if (!isAuthorized("admin", prefixedSourceName.getName())) {
       throw new ForbiddenException(String.format("User not authorized to access %s source. %s", prefixedSourceName.getName(),
         MultiTenantServiceHelper.getMessageWithTenant(securityContext.getUserPrincipal().getName())));
     }
