@@ -5,8 +5,10 @@ WORKDIR /dremio
 COPY . ./dremio-oss/
 WORKDIR /dremio/dremio-oss
 RUN --mount=type=bind,target=/root/.m2,source=/root/.m2,from=smartcommunitylab/dremio:cache-alpine mvn -T 1C install -DskipTests=true -Dlicense.skip -pl :dremio-common -am
+RUN --mount=type=bind,target=/root/.m2,source=/root/.m2,from=smartcommunitylab/dremio:cache-alpine mvn -T 1C package -DskipTests=true -Dlicense.skip -pl :dremio-services-users
 RUN --mount=type=bind,target=/root/.m2,source=/root/.m2,from=smartcommunitylab/dremio:cache-alpine mvn -T 1C package -DskipTests=true -Dlicense.skip -pl :dremio-sabot-logical
 RUN --mount=type=bind,target=/root/.m2,source=/root/.m2,from=smartcommunitylab/dremio:cache-alpine mvn -T 1C package -Dmaven.test.skip=true -Dlicense.skip -pl :dremio-dac-backend
+RUN --mount=type=bind,target=/root/.m2,source=/root/.m2,from=smartcommunitylab/dremio:cache-alpine mvn -T 1C package -DskipTests=true -Dlicense.skip -pl :dremio-dac-ui
 RUN --mount=type=bind,target=/root/.m2,source=/root/.m2,from=smartcommunitylab/dremio:cache-alpine mvn -T 1C package -Dmaven.test.skip=true -Dlicense.skip -pl :dremio-distribution -am
 RUN mkdir -p /opt/dremio && mv /dremio/dremio-oss/distribution/server/target/dremio*.tar.gz /opt/dremio/dremio.tar.gz
 RUN tar vxfz /opt/dremio/dremio.tar.gz -C /opt/dremio --strip-components=1 && rm /opt/dremio/dremio.tar.gz
