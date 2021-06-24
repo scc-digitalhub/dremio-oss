@@ -81,7 +81,7 @@ In order to authenticate on Dremio via OAuth2.0, the `services.coordinator.web.a
 * client ID and client secret: the credentials of the client application configured on your authorization server
 * scope: the scope values
 
-As the DigitalHub extended Dremio to allow multitenancy, Dremio accepts usernames with the syntax `<username>@<tenant>`, therefore the configuration includes a further property named `tenantField`. It can be used to specify which user info field stores such information.
+As the DigitalHub extended Dremio to allow multitenancy, Dremio accepts usernames with the syntax `<username>@<tenant>`, therefore the configuration includes a further property named `tenantField`. It can be used to specify which user info field stores such information. The property `roleField` can be used to specify which user info field stores the role of the user within the tenant.
 
 Although any OAuth2.0 authentication provider can be used with this extension, the configuration required to use [AAC](https://github.com/scc-digitalhub/AAC) is provided as an example.
 
@@ -137,6 +137,7 @@ function claimMapping(claims) {
             tenant =  tenant.replace(/\./g,'_')
             claims["dremio/tenant"] = tenant;
             claims["dremio/username"] = claims['username']+'@'+tenant;
+            claims["dremio/role"] = "admin";
         } 
     }
 
@@ -160,20 +161,23 @@ services.coordinator.web.auth: {
         clientSecret: "<your_client_secret>"
         tenantField: "dremio/tenant"
         scope: "openid profile email user.roles.me"
+        roleField: "dremio/role"
     }
 }
 ```
 
 The `tenantField` property matches the claim defined in the function above, which holds the user tenant selected during the login. Dremio will associate it to the username with the syntax `<username>@<tenant>`. That will be used as username in Dremio.
 
+The `roleField` property matches another claim defined in the function, which holds the role of the user (either "user" or "admin") within the selected tenant. Such roles correspond to READ and WRITE privileges over tenant data.
+
 ## Multitenancy
 
 The multitenancy model implemented in Dremio is structured as follows:
 
-* admin privileges are not assignable, ADMIN role is reserved to `dremio` user, every other user is assigned USER role
+* admin privileges are not assignable, ADMIN (Dremio admin or system admin) role is reserved to `dremio` user, every other user is assigned either TENANT ADMIN role or USER role
 * each user is associated to a single tenant (during the authorization step on AAC, the user will be asked to select which one to use)
 * the tenant is attached to the username with the syntax `<username>@<tenant>`
-* all APIs accessible to regular users are protected so that non-admin users can only access resources within their own tenant
+* all APIs accessible to regular users are protected so that non-ADMIN users can only access resources within their own tenant
 * when a resource belongs to a tenant (i.e. is shared among all its users), such tenant is specified as a prefix in the resource path with the syntax `<tenant>__<rootname>/path/to/resource`
 
 In Dremio, resources are either containers (spaces, sources, homes) or inside a container (folders, datasets), therefore spaces and sources are prefixed with their tenant, while folders and datasets inherit it from their container, which is the root of their path, and do not need to be prefixed. For example, in the following resource tree, `myspace`, `myfolder` and `mydataset` all belong to `mytenant`:
@@ -184,15 +188,15 @@ mytenant__myspace
     └───mydataset
 ```
 
-The admin user can access any resource. Regular users can only access resources inside their own home or belonging to their tenant. This implies that users can only query data and access job results according to these constraints.
+The ADMIN user can access any resource. Regular users (i.e. tenant admins and users) can only access resources inside their own home or belonging to their tenant. This implies that users can only query data and access job results according to these constraints.
 
-**NOTE**: currently, when non-admin users create a new source or space (sample sources included), that is **automatically prefixed** with their own tenant. Non-admin users cannot create sources or spaces with a different tenant than their own.
+**NOTE**: currently, when non-ADMIN users create a new source or space (sample sources included), that is **automatically prefixed** with their own tenant. Non-ADMIN users cannot create sources or spaces with a different tenant than their own.
 
 ## Additional Changes in the Fork
 
 ### Source Management
 
-Differently from the original implementation, in which source management was restricted to admins only, non-admin users are allowed to manage (create, update and delete) sources in addition to spaces within their tenant. In the UI this privilege is optional and disabled by default ("edit" and "delete" buttons are not displayed in the menus), but it can be enabled in the admin console: navigate to **Admin > Cluster > Support > Support Keys**, enter `ui.space.allow-manage` key and enable it (see https://docs.dremio.com/advanced-administration/support-settings/#support-keys for details).
+Differently from the original implementation, in which source management was restricted to ADMIN only, users with TENANT ADMIN role are allowed to manage (create, update and delete) sources in addition to spaces *within their tenant*, while the other users can only manage spaces.
 
 ### Arrow Flight and ODBC/JDBC Services
 
