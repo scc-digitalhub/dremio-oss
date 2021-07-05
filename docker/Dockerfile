@@ -4,12 +4,13 @@ FROM maven:3.6-jdk-8 as build
 WORKDIR /dremio
 COPY . ./dremio-oss/
 WORKDIR /dremio/dremio-oss
+RUN --mount=type=bind,target=/root/.m2,source=/root/.m2,from=smartcommunitylab/dremio:cache-alpine mkdir -p /root/.m2/repository/org/pentaho/pentaho-aggdesigner-algorithm/5.1.5-jhyde && curl https://public.nexus.pentaho.org/repository/proxy-public-3rd-party-release/org/pentaho/pentaho-aggdesigner-algorithm/5.1.5-jhyde/pentaho-aggdesigner-algorithm-5.1.5-jhyde.jar -o /root/.m2/repository/org/pentaho/pentaho-aggdesigner-algorithm/5.1.5-jhyde/pentaho-aggdesigner-algorithm-5.1.5-jhyde.jar && curl https://public.nexus.pentaho.org/repository/proxy-public-3rd-party-release/org/pentaho/pentaho-aggdesigner-algorithm/5.1.5-jhyde/pentaho-aggdesigner-algorithm-5.1.5-jhyde.pom -o /root/.m2/repository/org/pentaho/pentaho-aggdesigner-algorithm/5.1.5-jhyde/pentaho-aggdesigner-algorithm-5.1.5-jhyde.pom
 RUN --mount=type=bind,target=/root/.m2,source=/root/.m2,from=smartcommunitylab/dremio:cache-alpine mvn -T 1C install -DskipTests=true -Dlicense.skip -pl :dremio-common -am
-RUN --mount=type=bind,target=/root/.m2,source=/root/.m2,from=smartcommunitylab/dremio:cache-alpine mvn -T 1C package -DskipTests=true -Dlicense.skip -pl :dremio-services-users
+RUN --mount=type=bind,target=/root/.m2,source=/root/.m2,from=smartcommunitylab/dremio:cache-alpine mvn -T 1C install -DskipTests=true -Dlicense.skip -pl :dremio-services-users
 RUN --mount=type=bind,target=/root/.m2,source=/root/.m2,from=smartcommunitylab/dremio:cache-alpine mvn -T 1C package -DskipTests=true -Dlicense.skip -pl :dremio-sabot-logical
-RUN --mount=type=bind,target=/root/.m2,source=/root/.m2,from=smartcommunitylab/dremio:cache-alpine mvn -T 1C package -Dmaven.test.skip=true -Dlicense.skip -pl :dremio-dac-backend
-RUN --mount=type=bind,target=/root/.m2,source=/root/.m2,from=smartcommunitylab/dremio:cache-alpine mvn -T 1C package -DskipTests=true -Dlicense.skip -pl :dremio-dac-ui
-RUN --mount=type=bind,target=/root/.m2,source=/root/.m2,from=smartcommunitylab/dremio:cache-alpine mvn -T 1C package -Dmaven.test.skip=true -Dlicense.skip -pl :dremio-distribution -am
+RUN --mount=type=bind,target=/root/.m2,source=/root/.m2,from=smartcommunitylab/dremio:cache-alpine mvn -T 1C install -Dmaven.test.skip=true -Dlicense.skip -pl :dremio-dac-backend
+RUN --mount=type=bind,target=/root/.m2,source=/root/.m2,from=smartcommunitylab/dremio:cache-alpine mvn -T 1C install -DskipTests=true -Dlicense.skip -pl :dremio-dac-ui
+RUN --mount=type=bind,target=/root/.m2,source=/root/.m2,from=smartcommunitylab/dremio:cache-alpine mvn -T 1C package -Dmaven.test.skip=true -Dlicense.skip -DskipTests=true -pl :dremio-distribution -am
 RUN mkdir -p /opt/dremio && mv /dremio/dremio-oss/distribution/server/target/dremio*.tar.gz /opt/dremio/dremio.tar.gz
 RUN tar vxfz /opt/dremio/dremio.tar.gz -C /opt/dremio --strip-components=1 && rm /opt/dremio/dremio.tar.gz
 
