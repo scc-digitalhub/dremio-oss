@@ -72,6 +72,22 @@ public interface TaskManager<T extends Task> extends GroupManager<T> {
     int getNumStaged();
 
     int getNumWorkRequests();
+
+    boolean isActive();
+
+    boolean isMarkedMigratable();
+
+    void markInactive();
+
+    void markActive();
+
+    void migrateAllTasks(int dstThread);
+
+    void markFree(int threadNumber);
+
+    void markMigratable(int threadNumber);
+
+    void resetMigratable(int threadNumber);
   }
 
   /**
@@ -89,8 +105,22 @@ public interface TaskManager<T extends Task> extends GroupManager<T> {
    *
    * @param thread thread index
    * @param listener wake up listener
+   * @param threadActive is the thread a active Thread or a standby thread.
    *
    * @return task provider
    */
-  TaskProvider<T> getTaskProvider(int thread, WakeUpListener listener);
+  TaskProvider<T> getTaskProvider(int thread, WakeUpListener listener, boolean threadActive);
+
+  /**
+   * Find a free thread
+   */
+  int getFreeThread();
+
+  void markFree(int threadId);
+
+  void mutexLock();
+
+  void mutexUnlock();
+
+  void deleteThreadMQ(int threadId);
 }

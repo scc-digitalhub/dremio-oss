@@ -26,9 +26,10 @@ import org.apache.calcite.rel.RelNode;
 
 import com.dremio.exec.planner.acceleration.DremioMaterialization;
 import com.dremio.exec.planner.acceleration.substitution.SubstitutionInfo;
-import com.dremio.exec.planner.physical.Prel;
 import com.dremio.exec.proto.UserBitShared.QueryProfile;
 import com.dremio.exec.store.sys.accel.AccelerationDetailsPopulator;
+import com.dremio.reflection.hints.ReflectionExplanationsAndQueryDistance;
+import com.dremio.sabot.kernel.proto.ReflectionExplanation;
 import com.dremio.service.accelerator.AccelerationDetailsUtils;
 import com.dremio.service.accelerator.AccelerationUtils;
 import com.dremio.service.accelerator.proto.AccelerationDetails;
@@ -64,6 +65,7 @@ import com.google.common.base.Function;
 import com.google.common.base.Optional;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.FluentIterable;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 
@@ -78,8 +80,6 @@ class ReflectionDetailsPopulatorImpl implements AccelerationDetailsPopulator {
   private final AccelerationDetails details = new AccelerationDetails();
   private final Map<String, ReflectionState> consideredReflections = Maps.newHashMap();
 
-  private Prel prel;
-  private QueryProfile profile;
   private List<String> substitutionErrors = Collections.emptyList();
 
   ReflectionDetailsPopulatorImpl(NamespaceService namespace, ReflectionService reflections) {
@@ -103,6 +103,24 @@ class ReflectionDetailsPopulatorImpl implements AccelerationDetailsPopulator {
     } catch (Exception e) {
       logger.error("AccelerationDetails populator failed to handle planSubstituted()", e);
     }
+  }
+
+  @Override
+  public void addReflectionHints(ReflectionExplanationsAndQueryDistance reflectionExplanationsAndQueryDistance) {
+    try {
+      // reflection was considered and matched
+      if (consideredReflections.containsKey(reflectionExplanationsAndQueryDistance.getReflectionId())) {
+        ReflectionState cr = consideredReflections.get(reflectionExplanationsAndQueryDistance.getReflectionId());
+        cr.queryDistance = reflectionExplanationsAndQueryDistance.getQueryDistance();
+        cr.explanations = reflectionExplanationsAndQueryDistance.getDisplayHintMessageList();
+      }
+    } catch (Exception e) {
+      logger.error("AccelerationDetails populator failed to handle planSubstituted()", e);
+    }
+  }
+
+  @Override
+  public void attemptCompleted(QueryProfile profile) {
   }
 
   @Override
@@ -131,11 +149,6 @@ class ReflectionDetailsPopulatorImpl implements AccelerationDetailsPopulator {
     final NamespaceKey datasetKey = new NamespaceKey(config.getFullPathList());
     // not all datasets have acceleration settings
     return isPhysicalDataset(config.getType()) ? reflectionSettings.getReflectionSettings(datasetKey) : null;
-  }
-
-  @Override
-  public void attemptCompleted(QueryProfile profile) {
-    this.profile = profile;
   }
 
   @Override
@@ -184,6 +197,8 @@ class ReflectionDetailsPopulatorImpl implements AccelerationDetailsPopulator {
               .setReflectionType(reflection.getType() == ReflectionType.RAW ? com.dremio.service.accelerator.proto.LayoutType.RAW : com.dremio.service.accelerator.proto.LayoutType.AGGREGATION)
               .setReflection(layoutDescriptor)
               .setSnowflake(reflectionState.snowflake)
+              .setQueryDistance(reflectionState.queryDistance)
+              .setReflectionExplanationList(reflectionState.explanations)
             );
           } else {
             // maybe its a external reflections?
@@ -214,6 +229,8 @@ class ReflectionDetailsPopulatorImpl implements AccelerationDetailsPopulator {
               .setAccelerationSettings(null)
               .setReflectionType(LayoutType.EXTERNAL)
               .setReflection(layoutDescriptor)
+              .setQueryDistance(reflectionState.queryDistance)
+              .setReflectionExplanationList(reflectionState.explanations)
             );
           }
         }
@@ -228,6 +245,7 @@ class ReflectionDetailsPopulatorImpl implements AccelerationDetailsPopulator {
 
     return AccelerationDetailsUtils.serialize(details);
   }
+
 
   private static LayoutDescriptor toLayoutDescriptor(final ReflectionGoal layout) {
     final ReflectionDetails details = Preconditions.checkNotNull(layout.getDetails(), "layout details is required");
@@ -322,6 +340,8 @@ class ReflectionDetailsPopulatorImpl implements AccelerationDetailsPopulator {
     private final boolean matched;
     private boolean chosen;
     private boolean snowflake;
+    private double queryDistance = Double.NaN;
+    private List<ReflectionExplanation> explanations = ImmutableList.of();
 
     ReflectionState(String materializationId, String reflectionId, boolean matched, boolean snowflake) {
       this.materializationId = Preconditions.checkNotNull(materializationId, "materializationId cannot be null");

@@ -23,6 +23,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import java.io.IOException;
 import java.net.UnknownHostException;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.Optional;
 import java.util.function.Consumer;
@@ -50,6 +51,7 @@ import com.dremio.dac.server.DremioServlet;
 import com.dremio.dac.server.LivenessService;
 import com.dremio.dac.server.RestServerV2;
 import com.dremio.dac.server.WebServer;
+import com.dremio.dac.service.admin.KVStoreReportService;
 import com.dremio.dac.service.catalog.CatalogServiceHelper;
 import com.dremio.dac.service.collaboration.CollaborationHelper;
 import com.dremio.dac.service.datasets.DACViewCreatorFactory;
@@ -176,6 +178,7 @@ import com.dremio.service.coordinator.NoOpClusterCoordinator;
 import com.dremio.service.coordinator.ProjectConfig;
 import com.dremio.service.coordinator.ProjectConfigImpl;
 import com.dremio.service.coordinator.ProjectConfigStore;
+import com.dremio.service.coordinator.ProjectRoleInitializer;
 import com.dremio.service.coordinator.SoftwareAssumeRoleCredentialsProvider;
 import com.dremio.service.coordinator.local.LocalClusterCoordinator;
 import com.dremio.service.coordinator.zk.ZKClusterCoordinator;
@@ -457,6 +460,19 @@ public class DACDaemonModule implements DACModule {
       )
     );
 
+    // should be after the kv store
+    registry.bind(ProjectRoleInitializer.class, new ProjectRoleInitializer() {
+      @Override
+      public void start() throws Exception {
+        // NO-OP
+      }
+
+      @Override
+      public void close() throws Exception {
+       // NO-OP
+      }
+    });
+
     registry.bind(
       LegacyKVStoreProvider.class,
       new LegacyKVStoreProviderAdapter(
@@ -627,19 +643,22 @@ public class DACDaemonModule implements DACModule {
       // Companion service to clean split orphans
       registry.bind(SplitOrphansCleanerService.class, new SplitOrphansCleanerService(
         registry.provider(SchedulerService.class),
-        registry.provider(NamespaceService.Factory.class)));
+        registry.provider(NamespaceService.Factory.class),
+        registry.provider(OptionManager.class)));
     }
 
+    final Provider<Iterable<NodeEndpoint>> executorsProvider = () -> sabotContextProvider.get().getExecutors();
     if(isExecutor) {
       registry.bind(SpillService.class, new SpillServiceImpl(
           config,
           new SpillServiceOptionsImpl(registry.provider(OptionManager.class)),
-          registry.provider(SchedulerService.class)
+          registry.provider(SchedulerService.class),
+          selfEndpoint,
+          (isMasterless) ? null : executorsProvider
         )
       );
     }
 
-    final Provider<Iterable<NodeEndpoint>> executorsProvider = () -> sabotContextProvider.get().getExecutors();
     registry.bind(GroupResourceInformation.class,
       new ClusterResourceInformation(registry.provider(ClusterCoordinator.class)));
 
@@ -647,7 +666,7 @@ public class DACDaemonModule implements DACModule {
     registry.bind(PDFSService.class, new PDFSService(
         registry.provider(FabricService.class),
         selfEndpoint,
-        executorsProvider,
+        isCoordinator ? executorsProvider : () -> Collections.singleton(selfEndpoint.get()),
         bootstrapRegistry.lookup(Tracer.class),
         sabotConfig,
         bootstrap.getAllocator(),
@@ -666,6 +685,22 @@ public class DACDaemonModule implements DACModule {
         () -> registry.provider(SabotContext.class).get().getEndpoint());
 
     registry.bindSelf(metadataRefreshInfoBroadcaster);
+
+    if (isCoordinator) {
+      registry.bind(ProjectConfigStore.class, ProjectConfigStore.NO_OP);
+      registry.bind(ProjectConfig.class, new ProjectConfigImpl(registry.provider(DremioConfig.class),
+        registry.provider(ProjectConfigStore.class)));
+
+      // register a no-op assume role provider
+      final SoftwareAssumeRoleCredentialsProvider softwareAssumeRoleCredentialsProvider = new SoftwareAssumeRoleCredentialsProvider();
+      DremioAssumeRoleCredentialsProviderV2.setAssumeRoleProvider(() -> {
+        return softwareAssumeRoleCredentialsProvider;
+      });
+
+      DremioAssumeRoleCredentialsProviderV1.setAssumeRoleProvider(() -> {
+        return softwareAssumeRoleCredentialsProvider;
+      });
+    }
 
     registry.bind(CatalogService.class, new CatalogServiceImpl(
         registry.provider(SabotContext.class),
@@ -696,6 +731,13 @@ public class DACDaemonModule implements DACModule {
     registry.bind(CommandPool.class, CommandPoolFactory.INSTANCE.newPool(config, bootstrapRegistry.lookup(Tracer.class)));
 
     final Provider<NamespaceService> namespaceServiceProvider = () -> sabotContextProvider.get().getNamespaceService(SYSTEM_USERNAME);
+
+    if (isCoordinator) {
+      registry.bind(KVStoreReportService.class,
+        new KVStoreReportService(registry.provider(LegacyKVStoreProvider.class),
+        namespaceServiceProvider,
+        registry.provider(java.util.concurrent.ExecutorService.class)));
+    }
 
     registry.bind(JobTelemetryClient.class,
       new JobTelemetryClient(registry.lookup(GrpcChannelBuilderFactory.class),
@@ -902,6 +944,7 @@ public class DACDaemonModule implements DACModule {
         registry.provider(SabotContext.class),
         registry.provider(ReflectionStatusService.class),
         bootstrap.getExecutor(),
+        registry.provider(ForemenWorkManager.class),
         isDistributedMaster,
         bootstrap.getAllocator());
 
@@ -1100,22 +1143,6 @@ public class DACDaemonModule implements DACModule {
     }
 
     registerHeapMonitorManager(registry, isCoordinator);
-
-    if (isCoordinator) {
-      registry.bind(ProjectConfigStore.class, ProjectConfigStore.NO_OP);
-      registry.bind(ProjectConfig.class, new ProjectConfigImpl(registry.provider(DremioConfig.class),
-        registry.provider(ProjectConfigStore.class)));
-      // register a no-op assume role provider
-      // valid only in dcs
-      final SoftwareAssumeRoleCredentialsProvider softwareAssumeRoleCredentialsProvider = new SoftwareAssumeRoleCredentialsProvider();
-      DremioAssumeRoleCredentialsProviderV2.setAssumeRoleProvider(() -> {
-        return softwareAssumeRoleCredentialsProvider;
-      });
-
-      DremioAssumeRoleCredentialsProviderV1.setAssumeRoleProvider(() -> {
-        return softwareAssumeRoleCredentialsProvider;
-      });
-    }
 
     registerActiveQueryListService(registry, isCoordinator, isDistributedMaster, conduitServiceRegistry);
   }

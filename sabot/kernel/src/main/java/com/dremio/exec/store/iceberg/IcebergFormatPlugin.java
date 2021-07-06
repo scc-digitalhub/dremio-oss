@@ -28,19 +28,24 @@ import com.dremio.exec.proto.UserBitShared;
 import com.dremio.exec.server.SabotContext;
 import com.dremio.exec.store.EmptyRecordReader;
 import com.dremio.exec.store.RecordReader;
+import com.dremio.exec.store.SplitAndPartitionInfo;
 import com.dremio.exec.store.dfs.FileDatasetHandle;
 import com.dremio.exec.store.dfs.FileSelection;
+import com.dremio.exec.store.dfs.FileSelectionProcessor;
 import com.dremio.exec.store.dfs.FileSystemPlugin;
 import com.dremio.exec.store.dfs.FormatMatcher;
 import com.dremio.exec.store.dfs.FormatPlugin;
+import com.dremio.exec.store.dfs.LayeredPluginFileSelectionProcessor;
 import com.dremio.exec.store.dfs.PreviousDatasetInfo;
 import com.dremio.exec.store.dfs.easy.EasyFormatPlugin;
+import com.dremio.exec.store.dfs.easy.EasySubScan;
 import com.dremio.exec.store.file.proto.FileProtobuf.FileUpdateKey;
 import com.dremio.exec.store.parquet.ParquetFormatConfig;
 import com.dremio.exec.store.parquet.ParquetFormatPlugin;
 import com.dremio.io.file.FileAttributes;
 import com.dremio.io.file.FileSystem;
 import com.dremio.sabot.exec.context.OperatorContext;
+import com.dremio.sabot.exec.fragment.FragmentExecutionContext;
 import com.dremio.sabot.exec.store.easy.proto.EasyProtobuf;
 import com.dremio.service.namespace.NamespaceKey;
 import com.dremio.service.namespace.dataset.proto.DatasetType;
@@ -112,6 +117,11 @@ public class IcebergFormatPlugin extends EasyFormatPlugin<IcebergFormatConfig> {
   }
 
   @Override
+  public FileSelectionProcessor getFileSelectionProcessor(FileSystem fs, FileSelection fileSelection) {
+    return new LayeredPluginFileSelectionProcessor(fs, fileSelection);
+  }
+
+  @Override
   public String getName(){
     return name;
   }
@@ -141,7 +151,19 @@ public class IcebergFormatPlugin extends EasyFormatPlugin<IcebergFormatConfig> {
                                       FileSystem dfs,
                                       EasyProtobuf.EasyDatasetSplitXAttr splitAttributes,
                                       List<SchemaPath> columns) throws ExecutionSetupException {
-    return new IcebergManifestListRecordReader(context, dfs, splitAttributes, columns, fsPlugin.getFsConfCopy());
+    throw new UnsupportedOperationException("unimplemented method");
+  }
+
+  @Override
+  public RecordReader getRecordReader(
+    OperatorContext context,
+    FileSystem dfs,
+    SplitAndPartitionInfo split,
+    EasyProtobuf.EasyDatasetSplitXAttr splitAttributes,
+    List<SchemaPath> columns,
+    FragmentExecutionContext fec,
+    EasySubScan config) throws ExecutionSetupException {
+    return new IcebergManifestListRecordReader(context, dfs, splitAttributes, columns, fsPlugin.getFsConfCopy(), config);
   }
 
   @Override
