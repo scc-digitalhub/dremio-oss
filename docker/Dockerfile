@@ -25,6 +25,7 @@ ARG USER_GROUP=dremio
 ARG USER_GROUP_ID=1025
 ARG USER_HOME=/home/${USER}
 
+RUN apk --no-cache add bash
 RUN  addgroup -g ${USER_GROUP_ID} ${USER_GROUP}; \
      adduser -u ${USER_ID} -D -g '' -h ${USER_HOME} -G ${USER_GROUP} ${USER} ;
 
